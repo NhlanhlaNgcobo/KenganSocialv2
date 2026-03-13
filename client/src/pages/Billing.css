@@ -1,0 +1,168 @@
+.billing-page {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.usage-overview {
+    margin-bottom: 8px;
+}
+
+.usage-card {
+    padding: 24px;
+}
+
+.usage-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.usage-header .label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.usage-header .val {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.usage-progress {
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background: var(--gradient-brand);
+    border-radius: var(--radius-full);
+}
+
+.usage-hint {
+    display: block;
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.plans-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+}
+
+.plan-card {
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.plan-card--active {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.1);
+}
+
+.plan-badge {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: var(--accent-primary);
+    color: white;
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.plan-header h3 {
+    font-size: 1.25rem;
+    margin-bottom: 16px;
+}
+
+.plan-price {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.plan-price .price {
+    font-size: 2.5rem;
+    font-weight: 800;
+}
+
+.plan-price .period {
+    font-size: 1rem;
+    color: var(--text-secondary);
+}
+
+.plan-desc {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 32px;
+    line-height: 1.5;
+}
+
+.plan-features {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 40px;
+    flex: 1;
+}
+
+.feature-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.9rem;
+}
+
+.payment-methods {
+    padding: 32px;
+}
+
+.card-brand-icon {
+    width: 48px;
+    height: 48px;
+    background: rgba(16, 185, 129, 0.1);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.card-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.card-number {
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.card-expiry {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.mb-lg {
+    margin-bottom: 24px;
+}
+
+.p-lg {
+    padding: 24px;
+}
+
+@media (max-width: 640px) {
+    .plan-card {
+        padding: 24px;
+    }
+}
