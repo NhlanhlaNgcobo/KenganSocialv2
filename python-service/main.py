@@ -94,6 +94,10 @@ def init_firebase():
     if firebase_admin._apps:
         return
     cred_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH", "serviceAccount.json")
+    # The path usually comes from server/.env, so a relative path is relative to server/.
+    server_relative = Path(__file__).resolve().parents[1] / "server" / cred_path
+    if not Path(cred_path).exists() and server_relative.exists():
+        cred_path = str(server_relative)
     if Path(cred_path).exists():
         cred = credentials.Certificate(cred_path)
     else:
