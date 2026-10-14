@@ -18,7 +18,7 @@ Working end to end on a local machine (tested):
 | Video editor | Multi-track timeline, templates, captions, music library, stabilisation, auto-framing, server export |
 | Launch video | Website or description to a short promo video with music and a caption |
 | Calendar | Monthly planning, scheduling through the Redis queue |
-| Music | 1,443 royalty-free tracks (CC BY 4.0) with genre and mood filters |
+| Music | Songs with vocals by independent artists (ccMixter + Jamendo via Openverse), CC BY / CC0 only, with genre and vocal filters |
 
 Not yet usable by testers:
 
@@ -34,14 +34,14 @@ Not yet usable by testers:
 
 Four parts need to run somewhere other than your laptop:
 
-| Part | Folder | Suggested host | Notes |
+| Part | Folder | Host | Notes |
 | --- | --- | --- | --- |
-| Web app | `client/` | Firebase Hosting (already configured in `firebase.json`) | `npm run build`, then `firebase deploy --only hosting` |
-| API | `server/` | A VPS or Cloud Run, 2 vCPU / 4 GB minimum | Needs FFmpeg and Chrome for Remotion (the `Dockerfile` installs FFmpeg). Run **one instance** for now, see 2.6 |
-| Video service | `python-service/` | A VM with 4+ vCPU / 8 GB (Hetzner CPX31, DigitalOcean CPU-optimised) | Runs Whisper transcription, scene detection, stabilisation. CPU is fine for testing; a GPU makes transcription about 10× faster |
-| Queue | Redis | Upstash or Redis Cloud free tier | Set `REDIS_URL` |
+| Web app | `client/` | **Vercel** (or Firebase Hosting, already configured in `firebase.json`) | Static Vite build. Set the `VITE_*` variables in the Vercel project, with `VITE_API_URL` pointing at the API's HTTPS domain |
+| API + video service | `server/` + `python-service/` | **One** Google Compute Engine VM in the `kengansocialv2` project, 4 vCPU / 8 GB | Must share a disk: the API passes local file paths to the video service (`/process/stabilize`, `/process/autoframe`, clip transcription). Needs FFmpeg, Chrome (Remotion) and Python 3.11+. A VM in the Firebase project gets Firestore access from its attached service account, no key file needed. Run **one instance** for now, see 2.6 |
+| Queue | Redis | **Upstash** free tier | Set `REDIS_URL` (the `rediss://` URL). The same URL works locally and in production |
+| Media storage | – | VM disk (`STORAGE_DRIVER=local`) for the pilot; Backblaze B2 (`STORAGE_DRIVER=s3`) when scaling | The project has no Firebase Storage bucket (needs the Blaze plan) |
 
-For a first test round, the simplest setup is one VM that runs the API, the video service and Redis together, with the web app on Firebase Hosting. Put the API behind a domain with HTTPS (for example `api.kengansocial.com`); the social platforms will not redirect to plain `http`.
+Vercel cannot run the API or the video service: they run FFmpeg, Whisper and Remotion jobs that take minutes and keep files on disk, beyond what serverless functions allow. Put the API behind a domain with HTTPS (for example `api.kengansocial.com`); the social platforms will not redirect to plain `http`.
 
 ### 2.2 Production settings
 
@@ -59,7 +59,7 @@ In `client/.env` before building: `VITE_API_URL=https://<api-domain>/api` and th
 
 ### 2.3 Firebase
 
-1. Deploy the indexes and rules from this repo: `firebase deploy --only firestore:indexes,firestore:rules,storage`. Two screens (scheduler queue, AI usage) fail with "query requires an index" until this is done.
+1. Firestore rules and the three composite indexes are deployed to `kengansocialv2` (October 2026). Redeploy after changing them: `firebase deploy --only firestore:indexes,firestore:rules` (deploy with an Owner login; the Admin SDK service account lacks the Service Usage permission the CLI checks).
 2. Firebase Auth, then Settings, then Authorized domains: add the production web domain.
 3. Google sign-in: configure the OAuth consent screen with the app name, logo, privacy policy URL and support email.
 4. Fix the Storage rule before using Storage: it checks `request.resource.size` on reads, where `request.resource` is empty, so reads are refused. Split it into `allow read` (membership only) and `allow write` (membership plus size).
@@ -88,7 +88,7 @@ With `NODE_ENV=production`, everyone starts on the Starter plan. For testers, se
 
 - **Uploads and rendered videos live on the API server's disk**, and their IDs are kept in memory. If the API restarts, uploads in progress and download links for older clips stop working. This is fine for a short pilot on one instance. Fix it before scaling (3.4).
 - **Rendering runs inside the API process**, one clip project and one launch video at a time. A 6-minute video takes about 5 minutes to turn into 3 clips on a laptop; testers working at once will queue behind each other.
-- **Firestore is in `nam5` (United States).** It works, but adds latency from South Africa, and is a cross-border transfer under POPIA (section 5). The location cannot be changed on an existing database.
+- **Firestore is in `africa-south1` (Johannesburg)**, so personal data stays in South Africa. AI providers still process transcripts abroad (section 5).
 - **Invites only work for people who already have an account.** Ask testers to sign up first, then add them from Settings.
 
 ### 2.7 Tester checklist
@@ -153,8 +153,8 @@ These allowed one workspace to reach another's data and are now closed. They wer
 
 ## 5. Legal and licences
 
-- **POPIA**: register an Information Officer with the Information Regulator. Keep the privacy policy accurate about what is stored (videos, transcripts, social tokens, messages and leads). Get consent at sign-up, provide data export and deletion, and disclose that data is processed in the US (Firestore `nam5`, AI providers).
-- **Music**: library tracks are Kevin MacLeod, CC BY 4.0. The credit line must appear with published videos; the app adds it to captions and shows it on add.
+- **POPIA**: register an Information Officer with the Information Regulator. Keep the privacy policy accurate about what is stored (videos, transcripts, social tokens, messages and leads). Get consent at sign-up, provide data export and deletion, and disclose that transcripts and article text are processed abroad by the AI providers (Firestore itself is in `africa-south1`).
+- **Music**: songs come from independent artists on ccMixter and Jamendo (via Openverse), CC BY / CC0 only (ShareAlike, NonCommercial and NoDerivatives are excluded). CC BY songs need the credit line with published videos; the app adds it to captions and shows it on add. ccMixter downloads send the track page as Referer (their hotlink check).
 - **Remotion** (launch videos) is free for companies of up to 3 people; larger companies need a Remotion company licence.
 - **AI providers**: transcripts and article text are sent to OpenRouter (Anthropic models) or Google Gemini. Mention this in the privacy policy.
 - **Platform policies**: automated DMs and comment replies must follow Meta's and TikTok's messaging rules (for example, Meta's 24-hour reply window).
