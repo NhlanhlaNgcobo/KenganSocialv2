@@ -1,53 +1,53 @@
 /**
- * Royalty-free music library (Kevin MacLeod / incompetech.com, CC BY 4.0), served by /api/music.
+ * Songs with vocals by independent artists (ccMixter + Openverse, CC BY / CC0 only), served by /api/music/songs.
  * Used by the video editor, autocut templates and launch videos.
  */
 import { apiClient } from './api';
 
 const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-export interface LibraryTrack {
+/** A song with vocals from ccMixter or Openverse (CC BY / CC0 only). Playable by musicPreview. */
+export interface Song {
     id: string;
     title: string;
     artist: string;
+    featuring: string;
     duration: number;
     bpm: number | null;
-    genreId: number;
     genre: string;
-    moods: string[];
-    instruments: string[];
+    vocals: 'female' | 'male' | 'vocal';
+    explicit: boolean;
     description: string;
-    credit: string;
-    license: string;
-    fileUrl: string;
-}
-
-export interface LibrarySummary {
-    total: number;
-    genres: { id: number; name: string; count: number }[];
-    moods: { name: string; count: number }[];
-    lengths: string[];
+    pageUrl: string;
     license: string;
     licenseUrl: string;
     source: string;
+    credit: string;
+    fileUrl: string;
 }
 
-export interface LibraryQuery {
+export interface SongGenres {
+    genres: { id: string; name: string }[];
+    vocals: ('any' | 'female' | 'male')[];
+    licenses: string[];
+    sources: string[];
+}
+
+export interface SongQuery {
     genre?: string;
-    mood?: string;
+    vocals?: 'any' | 'female' | 'male';
     q?: string;
-    length?: '' | 'short' | 'medium' | 'long';
     page?: number;
+    explicit?: boolean;
 }
 
-export interface LibraryPage {
-    total: number;
+export interface SongPage {
     page: number;
     hasMore: boolean;
-    tracks: LibraryTrack[];
+    tracks: Song[];
 }
 
-let summaryPromise: Promise<LibrarySummary> | null = null;
+let songGenresPromise: Promise<SongGenres> | null = null;
 
 async function authHeaders(): Promise<Record<string, string>> {
     const { auth } = await import('./firebase');
@@ -60,38 +60,40 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 export const musicApi = {
-    /** Genres, moods and licence. Cached for the session. */
-    summary(): Promise<LibrarySummary> {
-        if (!summaryPromise) {
-            summaryPromise = apiClient('/music').catch((error: Error) => {
-                summaryPromise = null;
+    /** Song genres and vocal filters. Cached for the session. */
+    songGenres(): Promise<SongGenres> {
+        if (!songGenresPromise) {
+            songGenresPromise = apiClient('/music/songs/genres').catch((error: Error) => {
+                songGenresPromise = null;
                 throw error;
             });
         }
-        return summaryPromise as Promise<LibrarySummary>;
+        return songGenresPromise as Promise<SongGenres>;
     },
 
-    async search(query: LibraryQuery = {}): Promise<LibraryPage> {
+    async searchSongs(query: SongQuery = {}): Promise<SongPage> {
         const params = new URLSearchParams();
-        Object.entries(query).forEach(([key, value]) => {
+        const { explicit, ...rest } = query;
+        Object.entries(rest).forEach(([key, value]) => {
             if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
         });
-        return apiClient(`/music/tracks?${params}`);
+        if (explicit) params.set('explicit', '1');
+        return apiClient(`/music/songs?${params}`);
     },
 
-    /** Picks a random track matching the filters (used by templates). */
-    async pick(query: LibraryQuery & { minSeconds?: number }): Promise<LibraryTrack | null> {
+    /** Picks a random song at least minSeconds long, loosening the filters until one fits. */
+    async pickSong(query: SongQuery & { minSeconds?: number }): Promise<Song | null> {
         const { minSeconds = 0, ...filters } = query;
-        const attempts: LibraryQuery[] = [filters, { ...filters, mood: '' }, { ...filters, genre: '' }, {}];
+        const attempts: SongQuery[] = [filters, { ...filters, vocals: 'any' }, { ...filters, genre: '' }, {}];
         for (const attempt of attempts) {
-            const page = await this.search(attempt);
-            const fitting = page.tracks.filter((t) => t.duration >= minSeconds && t.genre !== 'Stings');
+            const page = await this.searchSongs(attempt);
+            const fitting = page.tracks.filter((t) => t.duration >= minSeconds);
             if (fitting.length) return fitting[Math.floor(Math.random() * fitting.length)];
         }
         return null;
     },
 
-    async download(track: Pick<LibraryTrack, 'fileUrl'>): Promise<Blob> {
+    async download(track: Pick<Song, 'fileUrl'>): Promise<Blob> {
         const root = API_URL.replace(/\/api$/, '');
         const response = await fetch(`${root}${track.fileUrl}`, { headers: await authHeaders() });
         if (!response.ok) {
@@ -121,7 +123,7 @@ export const musicPreview = {
         };
     },
     current: () => previewId,
-    async objectUrl(track: LibraryTrack): Promise<string> {
+    async objectUrl(track: Pick<Song, 'id' | 'fileUrl'>): Promise<string> {
         let url = previewUrls.get(track.id);
         if (!url) {
             url = URL.createObjectURL(await musicApi.download(track));
@@ -129,7 +131,7 @@ export const musicPreview = {
         }
         return url;
     },
-    async toggle(track: LibraryTrack) {
+    async toggle(track: Pick<Song, 'id' | 'fileUrl'>) {
         if (previewId === track.id) return this.stop();
         const url = await this.objectUrl(track);
         previewAudio?.pause();

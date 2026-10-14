@@ -15,6 +15,7 @@ const router = express.Router();
 
 const PEXELS_API_KEY = process.env.PEXELS_API_KEY || '';
 const OPENVERSE = 'https://api.openverse.org/v1';
+const OPENVERSE_AUDIO_LICENSES = 'by,cc0,pdm';
 const MAX_FILE_BYTES = 300 * 1024 * 1024;
 const CACHE_MS = 10 * 60 * 1000;
 
@@ -45,7 +46,9 @@ router.get('/music', async (req: Request, res: Response) => {
     try {
         const assets = await cached(`music:${q}`, async () => {
             const { data } = await axios.get(`${OPENVERSE}/audio/`, {
-                params: { q, page_size: 20, license_type: 'commercial', extension: 'mp3', mature: false },
+                // CC BY / CC0 / PD only. BY-SA is "commercial" too, but music synced to video is an
+                // adaptation under CC 4.0, so it would force the user's video under BY-SA.
+                params: { q, page_size: 20, license: OPENVERSE_AUDIO_LICENSES, extension: 'mp3', mature: false },
                 timeout: 15000,
             });
             return (data.results || []).map((r: any) => ({
@@ -141,6 +144,7 @@ async function resolveFileUrl(provider: string, id: string): Promise<string | nu
         if (!UUID.test(id)) return null;
         const kind = provider === 'openverse-audio' ? 'audio' : 'images';
         const { data } = await axios.get(`${OPENVERSE}/${kind}/${id}/`, { timeout: 15000 });
+        if (kind === 'audio' && !OPENVERSE_AUDIO_LICENSES.split(',').includes(String(data.license || '').toLowerCase())) return null;
         return data.url || null;
     }
     if (provider === 'pexels-video') {

@@ -24,10 +24,10 @@ export function normalizeLaunchRequest(body = {}) {
         format: FORMATS[body.format] ? body.format : 'landscape',
         duration: Math.min(30, Math.max(12, Number(body.duration) || 20)),
         music: body.music !== false,
-        // Optional library choices; empty means "match the tone".
+        // Optional song choices; empty means "match the tone".
         musicGenre: typeof body.musicGenre === 'string' ? body.musicGenre.trim().slice(0, 40) : '',
-        musicMood: typeof body.musicMood === 'string' ? body.musicMood.trim().slice(0, 40) : '',
-        musicTrackId: typeof body.musicTrackId === 'string' && /^[0-9a-f]{16}$/.test(body.musicTrackId) ? body.musicTrackId : '',
+        musicVocals: ['any', 'female', 'male'].includes(body.musicVocals) ? body.musicVocals : 'any',
+        musicTrackId: typeof body.musicTrackId === 'string' && /^(ccm-\d{1,9}|ov-[0-9a-f-]{36})$/.test(body.musicTrackId) ? body.musicTrackId : '',
     };
 }
 
@@ -47,7 +47,7 @@ export async function createLaunchVideo(request, { onStage = () => {}, onProgres
 
     onStage('Choosing music', 35);
     const music = request.music
-        ? await findMusic({ trackId: request.musicTrackId, genre: request.musicGenre, mood: request.musicMood, tone, query: plan.musicQuery }, total)
+        ? await findMusic({ trackId: request.musicTrackId, genre: request.musicGenre, vocals: request.musicVocals, tone }, total)
         : null;
 
     onStage('Rendering', 40);

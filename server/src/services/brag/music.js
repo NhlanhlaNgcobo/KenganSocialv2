@@ -1,92 +1,62 @@
 import fs from 'fs';
-import axios from 'axios';
-import { safeGet } from '../../utils/safe-fetch.js';
-import { getTrack, getTrackFile, pickTrack } from '../music-library.js';
+import { getSong, getSongFile, pickSong, SONG_GENRES } from '../songs-library.js';
 
 /**
- * Background music for launch videos.
- *  1. The royalty-free library (Kevin MacLeod / incompetech, CC BY 4.0): a track the user picked,
- *     or one matching their genre/mood, or the tone's default.
- *  2. Openverse (Creative Commons, commercial use allowed) if the library is unreachable.
+ * Background music for launch videos: songs with vocals by independent artists
+ * (ccMixter + Openverse, CC BY / CC0 only; see songs-library.js).
+ * A song the user picked, or one matching their genre/vocals, or the tone's default genre.
  * /brag bundles tracks whose licence it leaves unverified, so they are not used here.
  */
-const OPENVERSE = 'https://api.openverse.org/v1/audio/';
 const MAX_BYTES = 15 * 1024 * 1024;
 
-/** Default genre and mood per tone, used when the user leaves music on "Match the tone". */
-export const TONE_MUSIC = {
-    default: { genre: 'Electronica', mood: 'Bouncy' },
-    polished: { genre: 'Modern', mood: 'Calming' },
-    'yc-parody': { genre: 'Contemporary', mood: 'Uplifting' },
-    chaotic: { genre: 'Rock', mood: 'Driving' },
-    deadpan: { genre: 'Jazz', mood: 'Relaxed' },
-    cinematic: { genre: 'Soundtrack', mood: 'Epic' },
-    'app-store': { genre: 'Pop', mood: 'Bright' },
-};
+const genreName = (id) => SONG_GENRES.find((g) => g.id === id)?.name || id;
 
-async function fromLibrary({ trackId, genre, mood, tone }, minSeconds) {
-    const defaults = TONE_MUSIC[tone] || TONE_MUSIC.default;
-    let track = trackId ? await getTrack(trackId) : null;
-    if (!track) {
-        track = await pickTrack({
-            genre: genre || (mood ? undefined : defaults.genre),
-            mood: mood || (genre ? undefined : defaults.mood),
-            minSeconds: minSeconds + 1,
-            maxSeconds: 300,
-        });
-    }
-    if (!track) return null;
-    const file = await getTrackFile(track);
-    const buffer = fs.readFileSync(file);
-    if (buffer.length > MAX_BYTES) throw new Error('Track too large to embed');
-    return {
-        dataUrl: `data:audio/mpeg;base64,${buffer.toString('base64')}`,
-        title: track.title,
-        trackId: track.id,
-        credit: track.credit,
-    };
-}
+/** Default song genre per tone, used when the user leaves music on "Match the tone". */
+export const TONE_MUSIC = Object.fromEntries(
+    Object.entries({
+        default: 'electronic',
+        polished: 'acoustic',
+        'yc-parody': 'pop',
+        chaotic: 'rock',
+        deadpan: 'jazz',
+        cinematic: 'trip_hop',
+        'app-store': 'pop',
+    }).map(([tone, genre]) => [tone, { genre, genreName: genreName(genre), vocals: 'any' }])
+);
 
-async function fromOpenverse(query, minSeconds) {
-    // Jamendo (via Openverse) has full produced songs; fall back to every source.
-    const attempts = [
-        { q: query, source: 'jamendo' },
-        { q: 'upbeat', source: 'jamendo' },
-        { q: query },
-        { q: 'upbeat electronic' },
-    ];
-    for (const { q, source } of attempts) {
+/**
+ * @param {{ trackId?: string, genre?: string, vocals?: string, tone?: string }} choice
+ * @param {number} minSeconds  the video length; the song must cover it
+ */
+export async function findMusic({ trackId, genre, vocals, tone }, minSeconds) {
+    const exclude = [];
+    let chosen = trackId ? await getSong(trackId).catch(() => null) : null;
+    // A few tries: a pick can fail to download or be too large to embed.
+    for (let attempt = 0; attempt < 3; attempt++) {
         try {
-            const { data } = await axios.get(OPENVERSE, {
-                params: { q, page_size: 20, license_type: 'commercial', extension: 'mp3', mature: false, ...(source ? { source } : {}) },
-                timeout: 15000,
-            });
-            const track = (data.results || []).find((r) => r.url && (r.duration || 0) / 1000 >= minSeconds + 1 && (r.duration || 0) / 1000 <= 600);
-            if (!track) continue;
-            const { data: audio } = await safeGet(track.url, { responseType: 'arraybuffer', maxBytes: MAX_BYTES, timeout: 30000 });
+            const track =
+                chosen && chosen.duration >= minSeconds + 1
+                    ? chosen
+                    : await pickSong({
+                          genre: genre || (TONE_MUSIC[tone] || TONE_MUSIC.default).genre,
+                          vocals: vocals || 'any',
+                          minSeconds: minSeconds + 1,
+                          exclude,
+                      });
+            chosen = null;
+            if (!track) return null;
+            exclude.push(track.id);
+            const buffer = fs.readFileSync(await getSongFile(track));
+            if (buffer.length > MAX_BYTES) continue;
             return {
-                dataUrl: `data:audio/mpeg;base64,${Buffer.from(audio).toString('base64')}`,
+                dataUrl: `data:audio/mpeg;base64,${buffer.toString('base64')}`,
                 title: track.title,
-                trackId: null,
-                credit: String(track.attribution || `"${track.title}" by ${track.creator}`).split('. To view')[0],
+                trackId: track.id,
+                credit: track.credit,
             };
         } catch (error) {
-            console.warn(`[Brag] Music search "${q}" failed:`, error.message);
+            console.warn('[Brag] Music failed:', error.message);
         }
     }
     return null;
-}
-
-/**
- * @param {{ trackId?: string, genre?: string, mood?: string, tone?: string, query?: string }} choice
- * @param {number} minSeconds  the video length; the track must cover it
- */
-export async function findMusic(choice, minSeconds) {
-    try {
-        const track = await fromLibrary(choice, minSeconds);
-        if (track) return track;
-    } catch (error) {
-        console.warn('[Brag] Music library failed, falling back to Openverse:', error.message);
-    }
-    return fromOpenverse(choice.query || 'upbeat electronic', minSeconds);
 }

@@ -55,7 +55,7 @@ export default function LaunchPage() {
     const setEditorVideo = useEditorStore((s) => s.setVideo);
     const [source, setSource] = useState('website');
     const [form, setForm] = useState({ url: '', name: '', description: '', focus: '', tone: 'default', format: 'landscape', duration: 20, music: true });
-    const [music, setMusic] = useState({ genre: '', mood: '', track: null });
+    const [music, setMusic] = useState({ genre: '', vocals: '', track: null });
     const [toneMusic, setToneMusic] = useState({});
     const [job, setJob] = useState(null);
     const [error, setError] = useState('');
@@ -66,7 +66,7 @@ export default function LaunchPage() {
 
     const set = (partial) => setForm((f) => ({ ...f, ...partial }));
 
-    // Default genre/mood per tone, so the picker can say what "match the tone" means.
+    // Default genre per tone, so the picker can say what "match the tone" means.
     useEffect(() => {
         apiClient('/brag/tones')
             .then(({ tones }) => setToneMusic(Object.fromEntries((tones || []).map((t) => [t.id, t.music]))))
@@ -114,7 +114,7 @@ export default function LaunchPage() {
                 duration: request.duration,
                 music: request.music,
                 ...(request.music
-                    ? { musicGenre: music.genre, musicMood: music.mood, musicTrackId: music.track?.id || '' }
+                    ? { musicGenre: music.genre, musicVocals: music.vocals || 'any', musicTrackId: music.track?.id || '' }
                     : {}),
                 focus: request.focus,
                 ...(source === 'website' ? { url: request.url, name: request.name } : { name: request.name, description: request.description }),

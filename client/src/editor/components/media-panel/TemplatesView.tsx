@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, Wand2 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
-import { musicApi, type LibrarySummary } from '../../../lib/music-api';
-import { applyTemplate, TEMPLATES, type AutoCutTemplate } from '../../lib/templates';
+import { musicApi, type SongGenres } from '../../../lib/music-api';
+import { applyTemplate, TEMPLATES, type AutoCutTemplate, type TemplateMusic } from '../../lib/templates';
 import { useAiStore } from '../../stores/ai-store';
 import { useTimelineStore } from '../../stores/timeline-store';
 import { useUiStore } from '../../stores/ui-store';
@@ -21,16 +21,16 @@ export function TemplatesView() {
     const [running, setRunning] = useState<{ stage: string; progress: number } | null>(null);
     const controller = useRef<AbortController | null>(null);
     const allowAi = plan !== 'starter';
-    const [library, setLibrary] = useState<LibrarySummary | null>(null);
-    const [music, setMusic] = useState({ genre: TEMPLATES[0].music?.genre || '', mood: TEMPLATES[0].music?.mood || '' });
+    const [songGenres, setSongGenres] = useState<SongGenres | null>(null);
+    const [music, setMusic] = useState<Pick<TemplateMusic, 'genre' | 'vocals'>>({ genre: TEMPLATES[0].music?.genre || '', vocals: TEMPLATES[0].music?.vocals || 'any' });
 
     useEffect(() => {
-        musicApi.summary().then(setLibrary).catch(() => setLibrary(null));
+        musicApi.songGenres().then(setSongGenres).catch(() => setSongGenres(null));
     }, []);
 
     const choose = (t: AutoCutTemplate) => {
         setSelected(t);
-        setMusic({ genre: t.music?.genre || '', mood: t.music?.mood || '' });
+        setMusic({ genre: t.music?.genre || '', vocals: t.music?.vocals || 'any' });
     };
 
     const textFields = [
@@ -114,21 +114,23 @@ export function TemplatesView() {
                     <div className="ke-music-filters">
                         <select className="ke-select ke-select--sm" value={music.genre} onChange={(e) => setMusic((m) => ({ ...m, genre: e.target.value }))} disabled={!!running} aria-label="Music genre">
                             <option value="">No music</option>
-                            {(library?.genres || []).filter((g) => g.name !== 'Stings').map((g) => (
-                                <option key={g.id} value={g.name}>
+                            {(songGenres?.genres || []).map((g) => (
+                                <option key={g.id} value={g.id}>
                                     {g.name}
                                 </option>
                             ))}
-                            {!library && music.genre ? <option value={music.genre}>{music.genre}</option> : null}
+                            {!songGenres && music.genre ? <option value={music.genre}>{music.genre}</option> : null}
                         </select>
-                        <select className="ke-select ke-select--sm" value={music.mood} onChange={(e) => setMusic((m) => ({ ...m, mood: e.target.value }))} disabled={!!running || !music.genre} aria-label="Music mood">
-                            <option value="">Any mood</option>
-                            {(library?.moods || []).map((m) => (
-                                <option key={m.name} value={m.name}>
-                                    {m.name}
-                                </option>
-                            ))}
-                            {!library && music.mood ? <option value={music.mood}>{music.mood}</option> : null}
+                        <select
+                            className="ke-select ke-select--sm"
+                            value={music.vocals}
+                            onChange={(e) => setMusic((m) => ({ ...m, vocals: e.target.value as TemplateMusic['vocals'] }))}
+                            disabled={!!running || !music.genre}
+                            aria-label="Vocals"
+                        >
+                            <option value="any">Any vocals</option>
+                            <option value="female">Female vocals</option>
+                            <option value="male">Male vocals</option>
                         </select>
                     </div>
                 </div>

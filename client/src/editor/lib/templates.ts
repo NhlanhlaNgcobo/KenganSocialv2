@@ -11,7 +11,7 @@ import { getCanvasSize, useProjectStore } from '../stores/project-store';
 import { useTimelineStore } from '../stores/timeline-store';
 import type { AspectRatio, ClipTransform, MediaElement, TextElement, VideoFilter } from '../types';
 import { DEFAULT_AUTO_EDIT, mapWordsToTimeline, runAnalysis, type AnalysisMode } from './ai';
-import { musicApi } from '../../lib/music-api';
+import { musicApi, type SongQuery } from '../../lib/music-api';
 import { DEFAULT_TRANSFORM, fillScale } from './transform';
 
 export type CutStrategy = 'highlights' | 'longest-speech' | 'even' | 'tidy';
@@ -36,13 +36,13 @@ export interface AutoCutTemplate {
     hookText?: string;
     ctaText?: string;
     lowerThird?: string;
-    /** Background music from the royalty-free library; genre/mood are library filters. */
+    /** Background song; genre/vocals are song-library filters (see music-api.ts). */
     music?: TemplateMusic | null;
 }
 
 export interface TemplateMusic {
     genre: string;
-    mood: string;
+    vocals: NonNullable<SongQuery['vocals']>;
     volume: number;
     originalVolume: number;
 }
@@ -93,7 +93,7 @@ export const TEMPLATES: AutoCutTemplate[] = [
         filter: 'vivid',
         hookText: 'Meet the new drop',
         ctaText: 'Shop now',
-        music: { genre: 'Pop', mood: 'Bright', volume: 0.5, originalVolume: 0.25 },
+        music: { genre: 'pop', vocals: 'any', volume: 0.5, originalVolume: 0.25 },
     },
     {
         id: 'beat-montage',
@@ -107,7 +107,7 @@ export const TEMPLATES: AutoCutTemplate[] = [
         framing: 'punch',
         captions: null,
         filter: 'drama',
-        music: { genre: 'Electronica', mood: 'Driving', volume: 0.7, originalVolume: 0 },
+        music: { genre: 'electronic', vocals: 'any', volume: 0.7, originalVolume: 0 },
     },
     {
         id: 'talking-head',
@@ -233,7 +233,7 @@ export interface ApplyOptions {
     ctaText?: string;
     lowerThird?: string;
     /** Music choice: undefined keeps the template default, null means no music. */
-    music?: { genre: string; mood: string } | null;
+    music?: Pick<TemplateMusic, 'genre' | 'vocals'> | null;
     allowAi: boolean;
     onStage?: (stage: string, progress: number) => void;
     signal?: AbortSignal;
@@ -327,10 +327,10 @@ export async function applyTemplate(template: AutoCutTemplate, mediaId: string, 
     if (music) {
         report('Adding music', 85);
         try {
-            const track = await musicApi.pick({ genre: music.genre, mood: music.mood, minSeconds: total });
+            const track = await musicApi.pickSong({ genre: music.genre, vocals: music.vocals, minSeconds: total });
             if (track) {
                 const blob = await musicApi.download(track);
-                const [item] = await useMediaStore.getState().addFiles([new File([blob], `${track.title.slice(0, 50)}.mp3`, { type: 'audio/mpeg' })], projectKey);
+                const [item] = await useMediaStore.getState().addFiles([new File([blob], `${track.artist} - ${track.title}`.replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 60) + '.mp3', { type: 'audio/mpeg' })], projectKey);
                 if (item) {
                     const store = useTimelineStore.getState();
                     const audioTrackId = store.addTrack('audio');
@@ -347,7 +347,7 @@ export async function applyTemplate(template: AutoCutTemplate, mediaId: string, 
                         speed: 1,
                         filter: 'none',
                     });
-                    musicNote = ` Music: “${track.title}” by Kevin MacLeod (CC BY 4.0), credit it in your caption.`;
+                    musicNote = ` Music: “${track.title}” by ${track.artist}. Credit it in your caption: ${track.credit}`;
                 }
             }
         } catch (error) {
