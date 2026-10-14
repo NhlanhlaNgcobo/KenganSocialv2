@@ -61,3 +61,6 @@ firebase-debug.log
 # Build caches
 *.tsbuildinfo
 *.err
+
+# Local media storage (STORAGE_DRIVER=local)
+server/uploads/

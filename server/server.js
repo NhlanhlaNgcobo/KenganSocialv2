@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { initializeFirebaseAdmin } from './src/config/firebase.js';
+import { getStorageDriver, LOCAL_UPLOAD_DIR } from './src/services/storage.service.js';
 
 // Initialize Firebase Admin SDK immediately
 initializeFirebaseAdmin();
@@ -102,6 +103,9 @@ app.use(morgan('dev'));
 // Routes
 // ---------------------
 app.use('/public', express.static(path.join(process.cwd(), 'public')));
+if (getStorageDriver() === 'local') {
+    app.use('/uploads', express.static(LOCAL_UPLOAD_DIR));
+}
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/workspaces', workspaceRoutes);

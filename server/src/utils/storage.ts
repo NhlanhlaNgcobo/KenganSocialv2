@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import { getStorageDriver, getPrefixSizeBytes } from '../services/storage.service.js';
 
 function getCandidateBuckets() {
     const configured = process.env.FIREBASE_STORAGE_BUCKET;
@@ -18,6 +19,16 @@ function getCandidateBuckets() {
  * @returns Total size in Gigabytes (GB)
  */
 export async function calculateWorkspaceStorage(workspaceId: string): Promise<number> {
+    if (getStorageDriver() !== 'firebase') {
+        try {
+            const totalBytes = (await getPrefixSizeBytes(`workspaces/${workspaceId}/`)) || 0;
+            return parseFloat((totalBytes / (1024 * 1024 * 1024)).toFixed(4));
+        } catch (err) {
+            console.error(`[Storage] Failed to calculate usage for ${workspaceId}:`, err);
+            return 0;
+        }
+    }
+
     for (const bucketName of getCandidateBuckets()) {
         try {
             const bucket = admin.storage().bucket(bucketName);
