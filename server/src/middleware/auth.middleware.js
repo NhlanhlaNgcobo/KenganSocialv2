@@ -1,4 +1,4 @@
-import { getAuth } from '../config/firebase.js';
+import { getAuth, getFirestore } from '../config/firebase.js';
 
 /**
  * Verifies Firebase ID token from Authorization header.
@@ -33,14 +33,20 @@ export function requireRole(...allowedRoles) {
             return res.status(401).json({ error: 'Authentication required' });
         }
 
-        const workspaceId = req.headers['x-workspace-id'] || req.params.workspaceId;
+        // Controllers act on the workspace in the URL, so that is the one checked. A header
+        // naming a different workspace is refused rather than silently ignored.
+        const paramId = req.params.workspaceId;
+        const headerId = req.headers['x-workspace-id'];
+        if (paramId && headerId && paramId !== headerId) {
+            return res.status(403).json({ error: 'Workspace mismatch' });
+        }
+        const workspaceId = paramId || headerId;
 
         if (!workspaceId) {
             return res.status(400).json({ error: 'Workspace ID required' });
         }
 
         try {
-            const { getFirestore } = await import('../config/firebase.js');
             const db = getFirestore();
 
             const memberDoc = await db
@@ -71,5 +77,20 @@ export function requireRole(...allowedRoles) {
             console.error('[Auth Middleware] Role check failed:', error.message);
             return res.status(500).json({ error: 'Authorization check failed' });
         }
+    };
+}
+
+/**
+ * For handlers that read workspaceId from the request body: checks membership of that
+ * workspace (the body must agree with any x-workspace-id header), then defers to requireRole.
+ */
+export function requireBodyWorkspace(...allowedRoles) {
+    const check = requireRole(...allowedRoles);
+    return (req, res, next) => {
+        const bodyId = req.body?.workspaceId;
+        const headerId = req.headers['x-workspace-id'];
+        if (bodyId && headerId && bodyId !== headerId) return res.status(403).json({ error: 'Workspace mismatch' });
+        if (bodyId) req.headers['x-workspace-id'] = String(bodyId);
+        return check(req, res, next);
     };
 }

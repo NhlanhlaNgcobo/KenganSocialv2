@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Upload, Video, Type, Sparkles, Save, Send, Calendar, X,
     Smartphone, Instagram, Facebook, Linkedin, Twitter, Youtube,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
+import { useEditorStore } from '../stores/editorStore';
 import './ContentStudio.css';
 
 const PLATFORMS = [
@@ -35,6 +36,8 @@ const CAPTION_STYLES = [
 export default function ContentStudioPage() {
     const { currentWorkspace } = useWorkspace();
     const navigate = useNavigate();
+    const location = useLocation();
+    const setVideo = useEditorStore(state => state.setVideo);
     const videoRef = useRef(null);
     const previewVideoRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -51,7 +54,8 @@ export default function ContentStudioPage() {
     const [videoInfo, setVideoInfo] = useState(null);
 
     // Content state
-    const [caption, setCaption] = useState('');
+    // AI Tools can hand over generated text via router state ("Send to Studio").
+    const [caption, setCaption] = useState(() => location.state?.caption || '');
     const [selectedPlatforms, setSelectedPlatforms] = useState([]);
     const [subtitles, setSubtitles] = useState([]);
     const [selectedStyle, setSelectedStyle] = useState(CAPTION_STYLES[0]);
@@ -157,6 +161,9 @@ export default function ContentStudioPage() {
 
     // Navigate to manual video editor
     const handleManualEdit = () => {
+        if (pendingVideoFile) {
+            setVideo(pendingVideoFile, URL.createObjectURL(pendingVideoFile));
+        }
         setShowEditChoice(false);
         navigate('/editor');
     };
@@ -172,7 +179,7 @@ export default function ContentStudioPage() {
 
         try {
             setAnalyzing(true);
-            setSuccessMsg('📤 Uploading video for AI analysis...');
+            setSuccessMsg('Uploading video for analysis…');
 
             const { auth } = await import('../lib/firebase');
             const token = await auth.currentUser?.getIdToken();
@@ -220,10 +227,16 @@ export default function ContentStudioPage() {
                 setEndTime(data.videoInfo.durationMs);
             }
 
-            const source = data.analysis._source === 'whisper' ? '🎤 Whisper (real audio)'
-                : data.analysis._source === 'fallback' ? '⚠️ Fallback (no API)'
-                    : '🤖 Gemini (video AI)';
-            setSuccessMsg(`✅ Video analyzed via ${source} — ${data.analysis.transcription?.length || 0} subtitles, ${data.analysis.keyMoments?.length || 0} key moments.`);
+            const SOURCES = {
+                whisper: 'OpenAI Whisper',
+                'local-whisper': 'local Whisper (offline)',
+                gemini: 'Gemini',
+            };
+            if (data.analysis._source === 'fallback') {
+                setSuccessMsg('Video uploaded, but no transcription service was available, so no captions were added. You can still crop and render, or add captions manually.');
+            } else {
+                setSuccessMsg(`Analysed with ${SOURCES[data.analysis._source] || 'AI'} — ${data.analysis.transcription?.length || 0} subtitles, ${data.analysis.keyMoments?.length || 0} key moments.`);
+            }
             setActiveTab('captions');
         } catch (err) {
             console.error('Upload/analyze error:', err);
@@ -247,7 +260,7 @@ export default function ContentStudioPage() {
         setRendering(true);
         setRenderProgress(0);
         setError('');
-        setSuccessMsg('🎬 Rendering video...');
+        setSuccessMsg('Rendering video…');
 
         try {
             const { auth } = await import('../lib/firebase');
@@ -299,7 +312,7 @@ export default function ContentStudioPage() {
                         // Fix the URL: ensure no double /api
                         const base = API_URL.endsWith('/api') ? API_URL.replace('/api', '') : API_URL;
                         setRenderedVideoUrl(`${base}${status.downloadUrl}`);
-                        setSuccessMsg('✅ Video rendered! Preview it on the mobile view.');
+                        setSuccessMsg('Video rendered. Preview it in the phone view.');
                         setPreviewPlaying(false); // Reset preview to allow playing new output
                     } else if (status.status === 'failed') {
                         clearInterval(pollInterval);
@@ -426,8 +439,8 @@ export default function ContentStudioPage() {
         <div className="content-studio animate-fade-in">
             <div className="page-header">
                 <div>
-                    <h1>Content Studio</h1>
-                    <p className="page-subtitle">Upload → AI Analyze → Edit → Render → Publish</p>
+                    <h1>New post</h1>
+                    <p className="page-subtitle">Upload one video, caption it and publish it to your connected accounts. For long videos, use Clips.</p>
                 </div>
                 <div className="flex gap-md header-actions">
                     <button className="btn btn-secondary" onClick={handleSaveDraft} disabled={saving || !caption}>
@@ -489,7 +502,7 @@ export default function ContentStudioPage() {
                         <>
                             {/* Upload */}
                             <section className="editor-section">
-                                <div className="section-title"><Upload size={18} /><h3>Upload Video</h3></div>
+                                <div className="section-title"><Upload size={18} /><h3>Video</h3></div>
                                 <div className="media-dropzone glass" onDrop={(e) => { e.preventDefault(); if (e.dataTransfer?.files?.[0]) handleMediaUpload(e.dataTransfer.files[0]); }} onDragOver={(e) => e.preventDefault()}>
                                     {media ? (
                                         <div className="media-preview">
@@ -513,7 +526,7 @@ export default function ContentStudioPage() {
                                                 onChange={(e) => { if (e.target.files?.[0]) handleMediaUpload(e.target.files[0]); }} hidden />
                                             <div className="dropzone-icon"><Video size={36} /></div>
                                             <p>Drop your video here or <span>browse</span></p>
-                                            <span className="dropzone-hint">MP4, MOV up to 100MB — AI will analyze it automatically</span>
+                                            <span className="dropzone-hint">MP4 or MOV up to 100 MB</span>
                                         </div>
                                     )}
                                 </div>
@@ -522,25 +535,34 @@ export default function ContentStudioPage() {
                             {/* Video Edit Mode Choice */}
                             {showEditChoice && media && mediaType === 'video' && (
                                 <section className="editor-section animate-slide-in">
-                                    <div className="section-title"><Scissors size={18} /><h3>Choose Editing Mode</h3></div>
+                                    <div className="section-title"><Scissors size={18} /><h3>How do you want to edit it?</h3></div>
                                     <div className="edit-mode-container" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '16px' }}>
                                         <button
                                             className="edit-mode-card glass btn-reset"
-                                            disabled={true}
+                                            onClick={handleManualEdit}
                                             style={{
                                                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
-                                                padding: '24px', cursor: 'not-allowed', textAlign: 'center', borderRadius: '12px',
-                                                border: '2px solid var(--border-color)',
-                                                background: 'rgba(255,255,255,0.03)', width: '100%',
-                                                opacity: 0.6, filter: 'grayscale(100%)'
+                                                padding: '24px', cursor: 'pointer', textAlign: 'center', borderRadius: '12px',
+                                                transition: 'all 0.2s', border: '2px solid var(--border-color)',
+                                                background: 'rgba(255,255,255,0.03)', width: '100%'
+                                            }}
+                                            onMouseEnter={e => {
+                                                e.currentTarget.style.borderColor = 'var(--accent, #a78bfa)';
+                                                e.currentTarget.style.transform = 'translateY(-4px)';
+                                                e.currentTarget.style.background = 'rgba(167,139,250,0.07)';
+                                            }}
+                                            onMouseLeave={e => {
+                                                e.currentTarget.style.borderColor = 'var(--border-color)';
+                                                e.currentTarget.style.transform = 'translateY(0)';
+                                                e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
                                             }}
                                         >
-                                            <div style={{ background: 'var(--bg-secondary)', padding: '12px', borderRadius: '50%', marginBottom: '4px' }}>
-                                                <Scissors size={24} style={{ color: 'var(--text-muted)' }} />
+                                            <div style={{ background: 'rgba(167,139,250,0.15)', padding: '12px', borderRadius: '50%', marginBottom: '4px' }}>
+                                                <Scissors size={24} style={{ color: 'var(--accent, #a78bfa)' }} />
                                             </div>
                                             <strong style={{ fontSize: '1.1rem' }}>Manual Editor</strong>
                                             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Full creative control — Trim, Speed, Filters, Text & More</p>
-                                            <div className="btn btn-sm btn-ghost" style={{ marginTop: '12px' }}>Coming Soon <AlertCircle size={14} /></div>
+                                            <div className="btn btn-sm btn-secondary" style={{ marginTop: '12px' }}>Launch Editor <Scissors size={14} /></div>
                                         </button>
 
                                         <button
@@ -568,7 +590,7 @@ export default function ContentStudioPage() {
                                             </div>
                                             <strong style={{ fontSize: '1.1rem' }}>AI Auto-Edit</strong>
                                             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Smart Automation — Gemini analyzes and crops for you</p>
-                                            <div className="btn btn-sm btn-primary" style={{ marginTop: '12px' }}>Start AI Magic <Sparkles size={14} /></div>
+                                            <div className="btn btn-sm btn-primary" style={{ marginTop: '12px' }}>Auto-edit with AI <Sparkles size={14} /></div>
                                         </button>
                                     </div>
                                 </section>
@@ -576,7 +598,7 @@ export default function ContentStudioPage() {
 
                             {/* Reference Style Video */}
                             <section className="editor-section">
-                                <div className="section-title"><Smartphone size={18} /><h3>TikTok Style Reference (Optional)</h3></div>
+                                <div className="section-title"><Smartphone size={18} /><h3>Style reference (optional)</h3></div>
                                 <div className="glass" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                         <input type="text" className="input" placeholder="Paste a TikTok link here..." value={referenceUrl}
@@ -639,7 +661,7 @@ export default function ContentStudioPage() {
                             {/* Render Range / Trim */}
                             {analysis && (
                                 <section className="editor-section">
-                                    <div className="section-title"><Scissors size={18} /><h3>Render Range</h3></div>
+                                    <div className="section-title"><Scissors size={18} /><h3>Part to keep</h3></div>
                                     <div className="range-controls glass">
                                         <div className="range-input-group">
                                             <div className="range-field">
@@ -663,7 +685,7 @@ export default function ContentStudioPage() {
                             {/* Output Quality */}
                             {analysisJobId && (
                                 <section className="editor-section">
-                                    <div className="section-title"><Monitor size={18} /><h3>Output Quality</h3></div>
+                                    <div className="section-title"><Monitor size={18} /><h3>Quality</h3></div>
                                     <div className="flex gap-md" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                                         <label className={`radio-card ${renderQuality === 'standard' ? 'active' : ''}`} style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                             <input type="radio" value="standard" checked={renderQuality === 'standard'} onChange={() => setRenderQuality('standard')} hidden />
@@ -682,7 +704,7 @@ export default function ContentStudioPage() {
                             {/* Render Actions */}
                             {analysisJobId && (
                                 <section className="editor-section">
-                                    <div className="section-title"><Scissors size={18} /><h3>Render Video</h3></div>
+                                    <div className="section-title"><Scissors size={18} /><h3>Render</h3></div>
                                     <div className="render-actions">
                                         <button className="btn btn-primary" onClick={() => handleRenderVideo('full')} disabled={rendering}>
                                             {rendering ? <><Loader2 size={16} className="spin" /> Rendering...</> : <><Scissors size={16} /> Crop to Vertical + Captions</>}
@@ -710,7 +732,7 @@ export default function ContentStudioPage() {
 
                             {/* Platforms */}
                             <section className="editor-section">
-                                <div className="section-title"><Calendar size={18} /><h3>Publishing Destinations</h3></div>
+                                <div className="section-title"><Calendar size={18} /><h3>Publish to</h3></div>
 
                                 <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'flex-end' }}>
                                     <button
@@ -723,7 +745,7 @@ export default function ContentStudioPage() {
                                             }
                                         }}
                                     >
-                                        <Check size={14} /> Toggle All Connections
+                                        <Check size={14} /> Select all
                                     </button>
                                 </div>
 
@@ -778,7 +800,7 @@ export default function ContentStudioPage() {
                     {activeTab === 'captions' && (
                         <>
                             <section className="editor-section">
-                                <div className="section-title"><FileText size={18} /><h3>Video Subtitles</h3></div>
+                                <div className="section-title"><FileText size={18} /><h3>Subtitles</h3></div>
                                 <div className="ai-subtitle-actions">
                                     {!analysis && (
                                         <p className="section-desc">Upload a video on the Editor tab — Gemini will generate subtitles automatically.</p>
@@ -820,7 +842,7 @@ export default function ContentStudioPage() {
                     {activeTab === 'music' && (
                         <>
                             <section className="editor-section">
-                                <div className="section-title"><Music size={18} /><h3>Background Music</h3></div>
+                                <div className="section-title"><Music size={18} /><h3>Background music</h3></div>
                                 <div className="music-grid">
                                     {[
                                         { id: 'Soft Corners of the Day.mp3', name: 'Soft Corners of the Day' },
@@ -848,7 +870,7 @@ export default function ContentStudioPage() {
                                 )}
                             </section>
                             <section className="editor-section">
-                                <div className="section-title"><Volume2 size={18} /><h3>Music Volume</h3></div>
+                                <div className="section-title"><Volume2 size={18} /><h3>Music volume</h3></div>
                                 <div className="style-controls">
                                     <div className="control-row">
                                         <label>Level</label>
@@ -864,7 +886,7 @@ export default function ContentStudioPage() {
                     {activeTab === 'styles' && (
                         <>
                             <section className="editor-section">
-                                <div className="section-title"><Palette size={18} /><h3>Caption Styles</h3></div>
+                                <div className="section-title"><Palette size={18} /><h3>Caption style</h3></div>
                                 <div className="style-grid">
                                     {CAPTION_STYLES.map(style => (
                                         <button key={style.id} className={`style-card ${selectedStyle.id === style.id ? 'active' : ''}`}
@@ -903,7 +925,7 @@ export default function ContentStudioPage() {
                 {/* ====== RIGHT: Live Preview ====== */}
                 <div className="studio-preview">
                     <div className="preview-header">
-                        <h3>Live Preview</h3>
+                        <h3>Preview</h3>
                         <div className="preview-tabs">
                             <button className={`preview-tab ${previewMode === 'mobile' ? 'active' : ''}`} onClick={() => setPreviewMode('mobile')}><Smartphone size={14} /> Mobile</button>
                             <button className={`preview-tab ${previewMode === 'desktop' ? 'active' : ''}`} onClick={() => setPreviewMode('desktop')}><Monitor size={14} /> Desktop</button>

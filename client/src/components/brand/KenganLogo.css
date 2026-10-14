@@ -1,0 +1,46 @@
+.kengan-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+}
+
+.kengan-mark {
+    display: block;
+    flex-shrink: 0;
+    width: auto;
+}
+
+.kengan-mark__solid {
+    fill: var(--text-primary);
+}
+
+.kengan-mark__detail {
+    fill: #a8a8ae;
+}
+
+.kengan-mark__play {
+    fill: #8e8e95;
+}
+
+/* Matches whatever surface the logo sits on so the ribbon reads as a cut. */
+.kengan-mark__cut {
+    stroke: var(--kengan-logo-surface, var(--bg-primary));
+}
+
+.kengan-logo__word {
+    font-size: 1rem;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.kengan-logo__word-strong {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.kengan-logo__word-light {
+    font-weight: 400;
+    color: var(--text-secondary);
+}

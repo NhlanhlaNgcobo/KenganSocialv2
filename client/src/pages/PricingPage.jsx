@@ -1,8 +1,15 @@
+import { Link } from 'react-router-dom';
 import LandingNavbar from '../components/layout/LandingNavbar';
+import { useAuth } from '../context/AuthContext';
 import { Check, X } from 'lucide-react';
 import './LandingPage.css'; // Reusing for background styles
 
 export default function PricingPage() {
+    const { user } = useAuth();
+    // Signed-in users upgrade from Billing; visitors start by creating an account.
+    const startUrl = user ? '/dashboard/billing' : '/register';
+    const linkStyle = { width: '100%', marginBottom: '32px', textDecoration: 'none' };
+
     return (
         <div className="landing-page bg-primary" style={{ minHeight: '100vh', paddingBottom: '100px' }}>
             <div className="bg-grid absolute-inset" />
@@ -12,13 +19,13 @@ export default function PricingPage() {
 
             <main className="container animate-slide-in" style={{ marginTop: '120px', position: 'relative', zIndex: 10, textAlign: 'center' }}>
                 <div className="badge badge-brand" style={{ margin: '0 auto 24px' }}>
-                    <span className="badge-dot" /> Simple & Transparent
+                    <span className="badge-dot" /> Monthly, in rand
                 </div>
                 <h1 style={{ fontSize: '3rem', fontWeight: '800', marginBottom: '24px', lineHeight: '1.2' }}>
-                    Scale Your Social <span className="text-gradient">Empire</span>
+                    Pricing
                 </h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', maxWidth: '600px', margin: '0 auto 64px' }}>
-                    Choose the perfect plan to streamline your workflow and expand your brand's reach across all platforms.
+                    Start free. Upgrade for AI captions, auto-edit, more exports and more connected accounts. Cancel any time.
                 </p>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '32px', textAlign: 'left' }}>
@@ -31,7 +38,7 @@ export default function PricingPage() {
                         </div>
                         <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '14px' }}>Perfect for individuals getting started with social automation.</p>
 
-                        <button className="btn btn-secondary" style={{ width: '100%', marginBottom: '32px' }}>Start Free Trial</button>
+                        <Link to={startUrl} className="btn btn-secondary" style={linkStyle}>Start Free Trial</Link>
 
                         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <li style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px' }}><Check size={18} className="text-brand" /> 1 account per platform (max 4)</li>
@@ -53,7 +60,7 @@ export default function PricingPage() {
                         </div>
                         <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '14px' }}>Everything you need to grow your brand aggressively.</p>
 
-                        <button className="btn btn-primary" style={{ width: '100%', marginBottom: '32px' }}>Get Started</button>
+                        <Link to={startUrl} className="btn btn-primary" style={linkStyle}>Get Started</Link>
 
                         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <li style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px' }}><Check size={18} className="text-brand" /> Up to 3 accounts per platform (max 12)</li>
@@ -72,7 +79,7 @@ export default function PricingPage() {
                         </div>
                         <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '14px' }}>For teams managing multiple clients at scale.</p>
 
-                        <button className="btn btn-secondary" style={{ width: '100%', marginBottom: '32px' }}>Get Started</button>
+                        <Link to={startUrl} className="btn btn-secondary" style={linkStyle}>Get Started</Link>
 
                         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <li style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px' }}><Check size={18} className="text-brand" /> Up to 10 accounts per platform (max 40)</li>
@@ -92,7 +99,7 @@ export default function PricingPage() {
                         </div>
                         <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '14px' }}>For large-scale operations and custom requirements.</p>
 
-                        <button className="btn btn-secondary" style={{ width: '100%', marginBottom: '32px' }}>Contact Us</button>
+                        <a href="mailto:info@kengansocial.com?subject=Enterprise%20plan%20enquiry" className="btn btn-secondary" style={linkStyle}>Contact Us</a>
 
                         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <li style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px' }}><Check size={18} className="text-brand" /> 30+ accounts per platform</li>

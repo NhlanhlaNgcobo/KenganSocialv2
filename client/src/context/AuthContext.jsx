@@ -15,10 +15,11 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [profile, setProfile] = useState(null);
+    const [workspace, setWorkspace] = useState(null);
+    const [plan, setPlan] = useState('starter');
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // If Firebase is not configured, just stop loading
         if (!isFirebaseConfigured || !auth) {
             setLoading(false);
             return;
@@ -27,28 +28,37 @@ export function AuthProvider({ children }) {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser);
 
-            if (firebaseUser) {
-                try {
-                    const data = await apiClient('/auth/profile');
-                    setProfile(data.user);
-                } catch (err) {
-                    // Profile doesn't exist yet — auto-create it
-                    try {
-                        const data = await apiClient('/auth/profile', {
-                            method: 'POST',
-                            body: JSON.stringify({
-                                displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-                                photoURL: firebaseUser.photoURL,
-                            }),
-                        });
-                        setProfile(data.user);
-                    } catch (createErr) {
-                        console.error('Failed to auto-create profile:', createErr);
-                        setProfile(null);
-                    }
-                }
-            } else {
+            if (!firebaseUser) {
                 setProfile(null);
+                setWorkspace(null);
+                setPlan('starter');
+                setLoading(false);
+                return;
+            }
+
+            try {
+                const data = await apiClient('/auth/me');
+                setProfile(data.user);
+                setWorkspace(data.workspace || null);
+                setPlan(data.plan || data.user?.plan || 'starter');
+            } catch (_profileErr) {
+                try {
+                    const data = await apiClient('/auth/profile', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+                            photoURL: firebaseUser.photoURL,
+                        }),
+                    });
+                    setProfile(data.user);
+                    setWorkspace(data.workspace || null);
+                    setPlan(data.workspace?.plan || data.user?.plan || 'starter');
+                } catch (createErr) {
+                    console.error('Failed to auto-create profile:', createErr);
+                    setProfile(null);
+                    setWorkspace(null);
+                    setPlan('starter');
+                }
             }
 
             setLoading(false);
@@ -71,16 +81,13 @@ export function AuthProvider({ children }) {
             await updateProfile(result.user, { displayName });
         }
 
-        // Create profile on backend
         let data;
         try {
             data = await apiClient('/auth/profile', {
                 method: 'POST',
                 body: JSON.stringify({ displayName }),
             });
-        } catch (err) {
-            // Profile may already exist due to onAuthStateChanged triggering first.
-            // Update the existing profile with the correct displayName.
+        } catch (_profileErr) {
             data = await apiClient('/auth/profile', {
                 method: 'PUT',
                 body: JSON.stringify({ displayName }),
@@ -89,6 +96,8 @@ export function AuthProvider({ children }) {
 
         if (data?.user) {
             setProfile(data.user);
+            setWorkspace(data.workspace || null);
+            setPlan(data.workspace?.plan || data.user?.plan || 'starter');
         }
 
         return result.user;
@@ -98,7 +107,6 @@ export function AuthProvider({ children }) {
         if (!auth || !googleProvider) throw new Error('Firebase is not configured');
         const result = await signInWithPopup(auth, googleProvider);
 
-        // Try creating profile — will 409 if exists
         try {
             const data = await apiClient('/auth/profile', {
                 method: 'POST',
@@ -108,10 +116,13 @@ export function AuthProvider({ children }) {
                 }),
             });
             setProfile(data.user);
+            setWorkspace(data.workspace || null);
+            setPlan(data.workspace?.plan || data.user?.plan || 'starter');
         } catch {
-            // Profile exists, fetch it
-            const data = await apiClient('/auth/profile');
+            const data = await apiClient('/auth/me');
             setProfile(data.user);
+            setWorkspace(data.workspace || null);
+            setPlan(data.plan || data.user?.plan || 'starter');
         }
 
         return result.user;
@@ -123,11 +134,15 @@ export function AuthProvider({ children }) {
         }
         setUser(null);
         setProfile(null);
+        setWorkspace(null);
+        setPlan('starter');
     };
 
     const value = {
         user,
         profile,
+        workspace,
+        plan,
         loading,
         isFirebaseConfigured,
         login,

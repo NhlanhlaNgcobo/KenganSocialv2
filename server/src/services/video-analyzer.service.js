@@ -2,18 +2,21 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import axios from 'axios';
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
+import { GEMINI_MODEL } from '../config/ai-models.js';
+import { FFMPEG, probe, run } from './ffmpeg-runner.js';
 
 /**
  * @fileoverview
  * Video Analyzer — Real transcription from video audio.
  * 
  * Priority chain:
- * 1. Gemini 2.0 Flash (multimodal — sends actual video for analysis)
- * 2. OpenAI Whisper (extracts audio → real speech-to-text transcription)
- * 3. Local fallback (synthetic — only when both APIs are down)
+ * 1. OpenAI Whisper (extracts audio → speech-to-text, plus GPT key moments)
+ * 2. Local Whisper in the Python video service (free, offline)
+ * 3. Gemini (multimodal — sends a small proxy of the video; retries busy models)
+ * 4. No captions (only when every service above is unavailable)
  */
 
 const ANALYSIS_PROMPT = `You are a professional video editor AI. Analyze this video and return a JSON response with:
@@ -43,7 +46,16 @@ export async function analyzeVideo(videoPath, options = {}) {
         }
     }
 
-    // 2. Fallback: Gemini (multimodal — sends actual video)
+    // 2. Local Whisper in the Python video service: free, offline, real transcription.
+    try {
+        const result = await analyzeWithLocalWhisper(videoPath);
+        console.log('[Video Analyzer] ✅ Local Whisper transcription succeeded');
+        return result;
+    } catch (err) {
+        console.warn(`[Video Analyzer] ❌ Local Whisper failed: ${err.message}`);
+    }
+
+    // 3. Gemini (multimodal — sends a small proxy of the video)
     if (process.env.GEMINI_API_KEY) {
         try {
             const result = await analyzeWithGemini(videoPath, options);
@@ -54,9 +66,63 @@ export async function analyzeVideo(videoPath, options = {}) {
         }
     }
 
-    // 3. Last resort: local fallback
-    console.log('[Video Analyzer] ⚠️ All APIs failed — using local fallback');
+    // 4. Nothing could transcribe: return no captions rather than invented ones.
+    console.log('[Video Analyzer] ⚠️ All transcription services failed — returning no captions');
     return generateLocalFallback(options.context);
+}
+
+// -------------------------------------------------------
+// Local Whisper (faster-whisper in the Python video service)
+// -------------------------------------------------------
+const PYTHON_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
+
+async function analyzeWithLocalWhisper(videoPath) {
+    const info = await probe(videoPath);
+    if (!info.hasAudio) throw new Error('Video has no audio track to transcribe');
+
+    let data;
+    try {
+        const response = await axios.post(
+            `${PYTHON_URL}/process/transcribe`,
+            // "nano" selects the base model, which is small enough to run on CPU quickly.
+            { videoUrl: videoPath, jobId: `analyze_${uuidv4()}`, workspaceId: 'content-studio', plan: 'nano' },
+            { timeout: 15 * 60 * 1000 }
+        );
+        data = response.data;
+    } catch (err) {
+        if (err.code === 'ECONNREFUSED') throw new Error('Python video service is not running');
+        throw new Error(err.response?.data?.detail?.message || err.message);
+    }
+
+    const words = data.words || [];
+    if (!words.length) throw new Error('No speech detected');
+
+    // Group words into caption lines of up to 5 words, breaking on pauses and sentence ends.
+    const transcription = [];
+    let line = null;
+    for (const w of words) {
+        const text = String(w.text || '').trim();
+        if (!text) continue;
+        const startsNew = !line || line.words.length >= 5 || w.start - line.endMs > 700 || /[.!?]$/.test(line.words[line.words.length - 1]);
+        if (startsNew) {
+            if (line) transcription.push({ text: line.words.join(' '), startMs: line.startMs, endMs: line.endMs });
+            line = { words: [text], startMs: w.start, endMs: w.end };
+        } else {
+            line.words.push(text);
+            line.endMs = w.end;
+        }
+    }
+    if (line) transcription.push({ text: line.words.join(' '), startMs: line.startMs, endMs: line.endMs });
+
+    const fullText = transcription.map((t) => t.text).join(' ');
+    return {
+        transcription,
+        keyMoments: [],
+        suggestedCuts: [],
+        summary: fullText.slice(0, 200),
+        suggestedCaption: fullText.slice(0, 100),
+        _source: 'local-whisper',
+    };
 }
 
 // -------------------------------------------------------
@@ -64,7 +130,6 @@ export async function analyzeVideo(videoPath, options = {}) {
 // -------------------------------------------------------
 async function analyzeWithGemini(videoPath, options) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     let prompt = ANALYSIS_PROMPT;
     if (options.context) prompt += `\nContext: ${options.context}`;
@@ -76,15 +141,43 @@ async function analyzeWithGemini(videoPath, options) {
         prompt += `\n\nIMPORTANT: You have also been provided with a REFERENCE TikTok style video link: ${options.referenceUrl}. You MUST analyze its editing style, typography, and pacing. Use this exact style to influence the 'keyMoments', 'suggestedCuts', and 'suggestedCaption' you generate for the main video. Match the hook punchiness and vibe. Use web search or your internet knowledge to analyze it if possible, otherwise infer from the URL slug.`;
     }
 
-    // Now load the main video to analyze
-    const videoBuffer = fs.readFileSync(videoPath);
-    const mimeType = videoPath.endsWith('.mov') ? 'video/quicktime' : 'video/mp4';
-    parts.push({ inlineData: { mimeType, data: videoBuffer.toString('base64') } });
+    // Inline requests are capped at ~20MB, so send a small proxy instead of the original.
+    // Gemini samples video at about 1 fps, so 360p at low bitrate loses nothing it uses.
+    const proxyPath = path.join(os.tmpdir(), `gemini_proxy_${uuidv4()}.mp4`);
+    try {
+        await run(FFMPEG, [
+            '-hide_banner', '-y', '-i', videoPath,
+            '-vf', 'scale=-2:360,fps=2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '34',
+            '-c:a', 'aac', '-b:a', '48k', '-ac', '1', '-movflags', '+faststart', proxyPath,
+        ]);
+        const size = fs.statSync(proxyPath).size;
+        if (size > 19 * 1024 * 1024) throw new Error('Video is too long for inline Gemini analysis');
+        parts.push({ inlineData: { mimeType: 'video/mp4', data: fs.readFileSync(proxyPath).toString('base64') } });
+    } finally {
+        try { fs.unlinkSync(proxyPath); } catch { }
+    }
     parts.push({ text: prompt });
 
-    const result = await model.generateContent(parts);
-
-    return parseJsonResponse(result.response.text());
+    // Google returns 503/429 when a model is overloaded and 404 when one is retired;
+    // retry busy models, then fall through to other current ones.
+    const models = [...new Set([GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-lite-latest'])];
+    let lastError;
+    for (const modelId of models) {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+                const result = await genAI.getGenerativeModel({ model: modelId }).generateContent(parts);
+                return { ...parseJsonResponse(result.response.text()), _source: 'gemini' };
+            } catch (err) {
+                lastError = err;
+                if (/\b404\b|no longer available|not found/i.test(err.message)) break; // retired: next model
+                const retryable = /\b(503|429|500)\b|overloaded|high demand/i.test(err.message);
+                if (!retryable) throw err;
+                console.warn(`[Video Analyzer] Gemini ${modelId} busy (attempt ${attempt + 1}), retrying...`);
+                await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+            }
+        }
+    }
+    throw lastError;
 }
 
 // -------------------------------------------------------
@@ -97,23 +190,18 @@ async function analyzeWithWhisper(videoPath, options) {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     // --- Step 1: Extract audio from video using FFmpeg ---
+    const info = await probe(videoPath);
+    if (!info.hasAudio) throw new Error('Video has no audio track to transcribe');
+
     const audioPath = path.join(os.tmpdir(), `audio_${uuidv4()}.mp3`);
     console.log('[Video Analyzer] Extracting audio with FFmpeg...');
-
-    await new Promise((resolve, reject) => {
-        exec(
-            `ffmpeg -i "${videoPath}" -vn -acodec libmp3lame -ar 16000 -ac 1 -q:a 4 "${audioPath}" -y`,
-            { timeout: 30000 },
-            (err, stdout, stderr) => {
-                if (err) {
-                    console.error('[FFmpeg] Audio extraction error:', stderr);
-                    reject(new Error('Failed to extract audio from video'));
-                } else {
-                    resolve();
-                }
-            }
-        );
-    });
+    try {
+        // No shell and no fixed timeout: long uploads used to be killed silently after 30s.
+        await run(FFMPEG, ['-hide_banner', '-y', '-i', videoPath, '-map', '0:a:0', '-vn', '-acodec', 'libmp3lame', '-ar', '16000', '-ac', '1', '-q:a', '4', audioPath]);
+    } catch (err) {
+        console.error('[FFmpeg] Audio extraction error:', err.message);
+        throw new Error(`Failed to extract audio from video: ${err.message}`);
+    }
 
     // Check if audio file was created and has content
     if (!fs.existsSync(audioPath) || fs.statSync(audioPath).size < 1000) {
@@ -269,39 +357,14 @@ Base timestamps on the actual content. Duration is ${whisperResult.duration || 3
 // 3. Local Fallback (synthetic — no API)
 // -------------------------------------------------------
 function generateLocalFallback(context) {
-    const topic = context || 'social media content';
-    const lines = [
-        `Creating amazing ${topic}`,
-        'Let me show you how',
-        'First tip is consistency',
-        'Post every single day',
-        'Engage with your audience',
-        'Reply to every comment',
-        'Use trending sounds',
-        'Keep videos under 60 seconds',
-        'Hook them in 3 seconds',
-        'Add captions always',
-        'Quality over quantity',
-        'Be authentic and real',
-    ];
-
+    // No invented captions: burning made-up text into a user's video is worse than none.
+    const topic = context || 'your video';
     return {
-        transcription: lines.map((text, i) => ({
-            text,
-            startMs: i * 3000,
-            endMs: (i + 1) * 3000,
-        })),
-        keyMoments: [
-            { startMs: 0, endMs: 6000, description: 'Opening hook', score: 9 },
-            { startMs: 9000, endMs: 18000, description: 'Main tips', score: 8 },
-            { startMs: 27000, endMs: 36000, description: 'Closing advice', score: 7 },
-        ],
-        suggestedCuts: [
-            { startMs: 0, endMs: 15000, reason: 'Strong opening with tips' },
-            { startMs: 15000, endMs: 30000, reason: 'Engagement advice segment' },
-        ],
-        summary: `A short-form video about ${topic} with actionable tips.`,
-        suggestedCaption: `🔥 ${topic.charAt(0).toUpperCase() + topic.slice(1)} tips you NEED! 💡 #ContentCreator #SocialMedia`,
+        transcription: [],
+        keyMoments: [],
+        suggestedCuts: [],
+        summary: '',
+        suggestedCaption: `New video about ${topic} 🎬`,
         _source: 'fallback',
     };
 }

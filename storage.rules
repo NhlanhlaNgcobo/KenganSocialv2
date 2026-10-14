@@ -2,9 +2,10 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     // Allow authenticated users to read any file in their workspace
+    // Restrict access to specific workspace media based on auth uid
     match /{workspaceId}/media/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null 
+      allow read, write: if request.auth != null 
+        && (request.auth.uid == workspaceId || workspaceId in get(/databases/(default)/documents/users/$(request.auth.uid)).data.workspaces)
         && request.resource.size < 50 * 1024 * 1024; // 50MB limit
     }
     

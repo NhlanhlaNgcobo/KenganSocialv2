@@ -1,9 +1,12 @@
+import 'dotenv/config';
 import admin from 'firebase-admin';
 import { readFileSync } from 'fs';
 
 let db;
 let auth;
 let storage;
+
+initializeFirebaseAdmin();
 
 export function initializeFirebaseAdmin() {
     if (admin.apps.length > 0) return;

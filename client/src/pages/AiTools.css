@@ -33,9 +33,9 @@
 }
 
 .ai-tool-card.active {
-    background: rgba(139, 92, 246, 0.1);
+    background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
     border-color: var(--accent-primary);
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.1);
+    box-shadow: none;
 }
 
 .tool-icon-wrapper {

@@ -43,3 +43,21 @@ temp/
 python-editor/renders/
 server/python-editor/renders/
 public/renders/
+
+# Music library cache
+server/.cache/
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Firebase / tooling
+.firebase/
+firebase-debug.log
+.claude/settings.local.json
+
+# Build caches
+*.tsbuildinfo
+*.err

@@ -1,0 +1,62 @@
+/**
+ * Clips API: long video → ranked short clips. Server: /api/clips.
+ */
+import { apiClient } from './api';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_ROOT = API_URL.replace(/\/api$/, '');
+
+async function authHeaders() {
+    const { auth } = await import('./firebase');
+    const headers = {};
+    const token = await auth?.currentUser?.getIdToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const workspaceId = localStorage.getItem('kengan_current_workspace_id');
+    if (workspaceId) headers['x-workspace-id'] = workspaceId;
+    return headers;
+}
+
+/** Uploads a video with progress (fetch cannot report upload progress). Resolves to the upload ID. */
+export async function uploadVideo(file, onProgress = () => {}) {
+    const headers = await authHeaders();
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_URL}/video/manual-edit/upload`);
+        Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+        xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
+        xhr.onload = () => {
+            let body = {};
+            try {
+                body = JSON.parse(xhr.responseText);
+            } catch {
+                /* non-JSON error page */
+            }
+            if (xhr.status >= 200 && xhr.status < 300 && body.uploadId) resolve(body.uploadId);
+            else reject(new Error(body.error || `Upload failed (${xhr.status})`));
+        };
+        xhr.onerror = () => reject(new Error('Upload failed. Check your connection and try again.'));
+        const form = new FormData();
+        form.append('video', file, file.name);
+        xhr.send(form);
+    });
+}
+
+export const clipsApi = {
+    create: (body) => apiClient('/clips', { method: 'POST', body }),
+    list: () => apiClient('/clips'),
+    get: (id) => apiClient(`/clips/${encodeURIComponent(id)}`),
+    remove: (id) => apiClient(`/clips/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    async download(downloadUrl) {
+        const response = await fetch(`${API_ROOT}${downloadUrl}`, { headers: await authHeaders() });
+        if (!response.ok) throw new Error(response.status === 404 ? 'This clip has expired. Generate it again.' : `Download failed (${response.status})`);
+        return response.blob();
+    },
+};
+
+export function formatTime(seconds) {
+    const s = Math.max(0, Math.round(seconds || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = String(s % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+}

@@ -16,6 +16,7 @@ export function WorkspaceProvider({ children }) {
         } else {
             setWorkspaces([]);
             setCurrentWorkspace(null);
+            localStorage.removeItem('kengan_current_workspace_id');
             setLoading(false);
         }
     }, [profile]);
@@ -28,7 +29,13 @@ export function WorkspaceProvider({ children }) {
 
             // Set current workspace from profile default or first available
             const defaultWs = data.workspaces.find(ws => ws.id === profile.defaultWorkspaceId);
-            setCurrentWorkspace(defaultWs || data.workspaces[0] || null);
+            const nextWorkspace = defaultWs || data.workspaces[0] || null;
+            setCurrentWorkspace(nextWorkspace);
+            if (nextWorkspace?.id) {
+                localStorage.setItem('kengan_current_workspace_id', nextWorkspace.id);
+            } else {
+                localStorage.removeItem('kengan_current_workspace_id');
+            }
         } catch (error) {
             console.error('Failed to fetch workspaces:', error);
         } finally {
@@ -40,6 +47,7 @@ export function WorkspaceProvider({ children }) {
         const ws = workspaces.find(w => w.id === workspaceId);
         if (ws) {
             setCurrentWorkspace(ws);
+            localStorage.setItem('kengan_current_workspace_id', ws.id);
         }
     };
 

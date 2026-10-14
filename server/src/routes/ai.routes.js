@@ -16,7 +16,7 @@ import {
     getRenderStatus,
     serveRenderedFile,
 } from '../controllers/video-edit.controller.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
+import { requireAuth, requireBodyWorkspace, requireRole } from '../middleware/auth.middleware.js';
 import multer from 'multer';
 import os from 'os';
 
@@ -27,12 +27,12 @@ const router = express.Router();
 router.use(requireAuth);
 
 // --- Text Generation ---
-router.post('/generate', generateAI);
-router.post('/generate-media', generateMediaRequest);
+router.post('/generate', requireBodyWorkspace('owner', 'admin', 'editor'), generateAI);
+router.post('/generate-media', requireBodyWorkspace('owner', 'admin', 'editor'), generateMediaRequest);
 
 // --- Credits & Usage ---
-router.get('/credits/:workspaceId', getCredits);
-router.get('/usage/:workspaceId', getUsageLogs);
+router.get('/credits/:workspaceId', requireRole('owner', 'admin', 'editor', 'viewer'), getCredits);
+router.get('/usage/:workspaceId', requireRole('owner', 'admin', 'editor', 'viewer'), getUsageLogs);
 
 // --- Captions (SRT) ---
 router.post('/captions/parse', parseSrtFile);
@@ -40,7 +40,7 @@ router.post('/captions/export', exportSrtFile);
 router.post('/captions/tiktok', generateTikTokStyleCaptions);
 
 // --- Video Rendering (legacy) ---
-router.post('/video/render', queueVideoRender);
+router.post('/video/render', requireBodyWorkspace('owner', 'admin', 'editor'), queueVideoRender);
 router.get('/video/render/:jobId', getRenderJobStatus);
 
 // --- Video Editing Pipeline (NEW) ---

@@ -1,0 +1,183 @@
+.billing-page {
+    padding: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.billing-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 32px;
+}
+
+.current-plan-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+}
+
+.plan-info h2 {
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 8px;
+    text-transform: capitalize;
+}
+
+.plan-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    background: #DCFCE7;
+    color: #166534;
+    border-radius: 100px;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.usage-section h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 24px;
+}
+
+.usage-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 32px;
+}
+
+.usage-item {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.usage-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.progress-bar-bg {
+    height: 12px;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.progress-fill.normal {
+    background: var(--accent-primary);
+}
+
+.progress-fill.warning {
+    background: #f59e0b;
+}
+
+.progress-fill.danger {
+    background: #ef4444;
+}
+
+/* ── PRICING MODAL ── */
+.pricing-modal {
+    max-width: 1000px;
+    width: 90%;
+}
+
+.plans-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-top: 32px;
+}
+
+.plan-picker-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.plan-picker-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent-primary);
+}
+
+.plan-picker-card.popular {
+    border: 2px solid var(--accent-primary);
+    position: relative;
+}
+
+.plan-picker-card.popular::after {
+    content: "Most Popular";
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent-primary);
+    color: var(--accent-contrast);
+    padding: 2px 12px;
+    border-radius: 100px;
+    font-size: 0.7rem;
+    font-weight: 800;
+}
+
+.plan-picker-card h4 {
+    font-size: 1.25rem;
+    font-weight: 800;
+}
+
+.price-box {
+    margin: 16px 0;
+}
+
+.price-main {
+    font-size: 2rem;
+    font-weight: 800;
+}
+
+.price-sub {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.plan-features {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 0.85rem;
+}
+
+.feature-check {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+}
+
+/* ── OVERAGE ALERT ── */
+.overage-alert {
+    background: #FEF2F2;
+    border: 1px solid #FEE2E2;
+    padding: 16px;
+    border-radius: 12px;
+    color: #991B1B;
+    margin-top: 24px;
+    display: flex;
+    gap: 12px;
+}

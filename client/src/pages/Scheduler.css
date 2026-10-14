@@ -97,12 +97,12 @@
 }
 
 .calendar-cell.today {
-    background: rgba(139, 92, 246, 0.05);
+    background: color-mix(in srgb, var(--accent-primary) 5%, transparent);
 }
 
 .calendar-cell.today .cell-day {
     background: var(--accent-primary);
-    color: white;
+    color: var(--accent-contrast);
     width: 24px;
     height: 24px;
     display: flex;
@@ -295,7 +295,7 @@
 
 .calendar-cell.today .cell-date {
     background: var(--accent-primary);
-    color: white;
+    color: var(--accent-contrast);
     width: 24px;
     height: 24px;
     display: inline-flex;

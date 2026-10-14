@@ -103,7 +103,8 @@ export async function renderEditedVideo(req, res) {
         // Create render job
         const renderId = uuidv4();
         const mode = options?.mode || 'full';
-        const musicId = options?.musicId;
+        // Firestore rejects undefined values, so optional fields default to null.
+        const musicId = options?.musicId || null;
         const musicVolume = options?.musicVolume || 0.2;
 
         await db.collection('render_jobs').doc(renderId).set({

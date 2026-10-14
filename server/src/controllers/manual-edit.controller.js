@@ -8,6 +8,7 @@ import {
     getUploadPath,
     processEditConfig,
 } from '../services/manual-edit.service.js';
+import { normalizeTimelineConfig, renderTimeline } from '../services/timeline-render.service.js';
 
 const RENDER_DIR = path.join(os.tmpdir(), 'kengan-renders');
 if (!fs.existsSync(RENDER_DIR)) fs.mkdirSync(RENDER_DIR, { recursive: true });
@@ -30,8 +31,8 @@ export async function uploadSourceVideo(req, res) {
         fs.copyFileSync(file.path, stablePath);
         try { fs.unlinkSync(file.path); } catch { }
 
-        // Store the mapping
-        storeUpload(uploadId, stablePath);
+        // Store the mapping, bound to the uploading user
+        storeUpload(uploadId, stablePath, req.user.uid);
 
         console.log(`[ManualEdit] Upload stored: ${uploadId} → ${stablePath}`);
 
@@ -53,18 +54,28 @@ export async function uploadSourceVideo(req, res) {
 export async function processManualEdit(req, res) {
     try {
         const editConfig = req.body;
+        const isTimeline = editConfig?.version === 2;
 
-        if (!editConfig || !editConfig.clips || editConfig.clips.length === 0) {
-            return res.status(400).json({ error: 'Edit config must contain at least one clip' });
-        }
+        if (isTimeline) {
+            // Validates structure, limits and source ownership before a job is created.
+            try {
+                normalizeTimelineConfig(editConfig, req.user.uid);
+            } catch (validationError) {
+                return res.status(validationError.status || 400).json({ error: validationError.message });
+            }
+        } else {
+            if (!editConfig || !editConfig.clips || editConfig.clips.length === 0) {
+                return res.status(400).json({ error: 'Edit config must contain at least one clip' });
+            }
 
-        // Validate all sources exist
-        for (const clip of editConfig.clips) {
-            const clipPath = getUploadPath(clip.source);
-            if (!clipPath || !fs.existsSync(clipPath)) {
-                return res.status(400).json({
-                    error: `Source video not found for upload ID: ${clip.source}. Upload the video first.`
-                });
+            // Validate all sources exist
+            for (const clip of editConfig.clips) {
+                const clipPath = getUploadPath(clip.source, req.user.uid);
+                if (!clipPath || !fs.existsSync(clipPath)) {
+                    return res.status(400).json({
+                        error: `Source video not found for upload ID: ${clip.source}. Upload the video first.`
+                    });
+                }
             }
         }
 
@@ -91,12 +102,20 @@ export async function processManualEdit(req, res) {
         // ---- Background Processing ----
         const jobRef = db.collection('manual_edit_jobs').doc(jobId);
 
+        // Throttle progress writes to one per percent step.
+        let lastProgress = -1;
+        const onProgress = async (progress) => {
+            if (progress === lastProgress) return;
+            lastProgress = progress;
+            try {
+                await jobRef.update({ progress });
+            } catch { }
+        };
+
         try {
-            const outputPath = await processEditConfig(editConfig, async (progress) => {
-                try {
-                    await jobRef.update({ progress });
-                } catch { }
-            });
+            const outputPath = isTimeline
+                ? await renderTimeline(editConfig, req.user.uid, onProgress)
+                : await processEditConfig(editConfig, onProgress);
 
             const filename = path.basename(outputPath);
 
@@ -139,11 +158,24 @@ export async function getManualEditStatus(req, res) {
         }
 
         const data = doc.data();
+        if (data.userId !== req.user.uid) {
+            return res.status(404).json({ error: 'Edit job not found' });
+        }
         res.json({
             jobId: data.id,
             status: data.status,
             progress: data.progress || 0,
             downloadUrl: data.downloadUrl || null,
+            outputUploadId: data.outputUploadId || null,
+            summary: data.summary || null,
+            // Launch videos (/api/brag) report extra detail.
+            stage: data.stage || null,
+            plan: data.plan || null,
+            planner: data.planner || null,
+            shareCopy: data.shareCopy || null,
+            poster: data.poster || null,
+            musicCredit: data.musicCredit || null,
+            musicTrackId: data.musicTrackId || null,
             error: data.error || null,
         });
     } catch (error) {
@@ -158,10 +190,19 @@ export async function getManualEditStatus(req, res) {
 // -------------------------------------------------------
 export async function serveManualEditFile(req, res) {
     try {
-        const { filename } = req.params;
+        // basename() strips any directory parts, including decoded "../" sequences.
+        const filename = path.basename(req.params.filename || '');
         const filePath = path.join(RENDER_DIR, filename);
 
-        if (!fs.existsSync(filePath)) {
+        // Only the user who ran the job may download its output.
+        const db = getFirestore();
+        const owned = await db.collection('manual_edit_jobs')
+            .where('userId', '==', req.user.uid)
+            .where('outputFilename', '==', filename)
+            .limit(1)
+            .get();
+
+        if (owned.empty || !fs.existsSync(filePath)) {
             return res.status(404).json({ error: 'File not found or expired' });
         }
 

@@ -3,7 +3,10 @@ import {
     CreditCard,
     Check,
     ShieldCheck,
-    Loader2
+    Loader2,
+    Coins,
+    Zap,
+    TrendingUp
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
@@ -15,13 +18,13 @@ const PLANS_DISPLAY = [
         name: 'Creator Starter',
         price: 'R249',
         period: '/ month',
-        description: 'Perfect for creators just starting out.',
+        description: 'Perfect for creators building their first repeatable content and DM funnel.',
         features: [
             '1 account per platform (max 4)',
             '1,000 AI credits/month',
             '3 automation rules',
             'Basic analytics',
-            'Standard processing speed'
+            'Standard processing speed',
         ],
     },
     {
@@ -29,35 +32,35 @@ const PLANS_DISPLAY = [
         name: 'Creator Pro',
         price: 'R499',
         period: '/ month',
-        description: 'Scale your presence across all platforms.',
+        description: 'For growth-stage creators and marketers running multiple active funnels.',
         features: [
             'Up to 3 accounts per platform (max 12)',
             '5,000 AI credits/month',
             'Unlimited automation rules',
             'Priority processing',
-            'Advanced analytics'
+            'Advanced analytics',
         ],
         badge: 'Popular',
     },
     {
         id: 'agency',
-        name: 'Agency Plan',
-        price: 'R3199',
+        name: 'Agency',
+        price: 'R1999',
         period: '/ month',
-        description: 'For teams managing multiple clients at scale.',
+        description: 'For teams managing multiple clients, leads, and cross-channel operations.',
         features: [
             'Up to 10 accounts per platform (max 40)',
             '20,000 AI credits/month',
             'Team access (3 seats)',
             'CRM export',
             'Client reporting dashboard',
-            'Faster compute queue'
+            'Faster compute queue',
         ],
     },
     {
         id: 'enterprise',
         name: 'Enterprise',
-        price: 'Custom',
+        price: 'R4,999+',
         period: '',
         description: 'For large organizations and enterprises.',
         features: [
@@ -67,9 +70,15 @@ const PLANS_DISPLAY = [
             'Dedicated compute',
             'SLA support',
             '5+ team members',
-            'Custom integrations'
+            'Custom integrations',
         ],
     },
+];
+
+const TOP_UPS = [
+    { label: '1,000 credits', price: 'R149' },
+    { label: '5,000 credits', price: 'R599' },
+    { label: '20,000 credits', price: 'R1,999' },
 ];
 
 export default function BillingPage() {
@@ -87,7 +96,7 @@ export default function BillingPage() {
     const loadBilling = async () => {
         try {
             setLoading(true);
-            const data = await apiClient(`/billing/${currentWorkspace.id}`);
+            const data = await apiClient('/billing/status');
             setBillingInfo(data);
         } catch (error) {
             console.error('Billing load error:', error);
@@ -101,11 +110,10 @@ export default function BillingPage() {
         setUpgrading(planId);
 
         try {
-            const data = await apiClient('/billing/checkout', {
+            const data = await apiClient('/billing/create-checkout', {
                 method: 'POST',
                 body: JSON.stringify({
-                    workspaceId: currentWorkspace.id,
-                    planId,
+                    planName: planId,
                 }),
             });
 
@@ -114,26 +122,26 @@ export default function BillingPage() {
             }
         } catch (error) {
             console.error('Checkout error:', error);
-            // If Stripe isn't configured, show a friendly message
-            alert(error.message || 'Stripe is not configured yet. Set STRIPE_SECRET_KEY in your .env');
+            alert(error.message || 'Paystack is not configured yet. Set PAYSTACK_SECRET_KEY in your server environment.');
         } finally {
             setUpgrading(null);
         }
     };
 
-    const currentPlan = billingInfo?.plan || 'free';
+    const currentPlan = billingInfo?.plan || 'creator_starter';
     const currentCredits = billingInfo?.credits ?? 0;
 
-    // Calculate usage percentages
     const maxCredits = billingInfo?.planDetails?.credits || 50;
     const creditPercent = Math.min((currentCredits / maxCredits) * 100, 100);
+    const paymentStatus = billingInfo?.paymentStatus || 'inactive';
+    const provider = billingInfo?.provider || 'paystack';
 
     return (
         <div className="billing-page animate-fade-in">
             <div className="page-header">
                 <div>
                     <h1>Plans & Billing</h1>
-                    <p className="page-subtitle">Manage your subscription and usage limits.</p>
+                    <p className="page-subtitle">Manage Paystack subscriptions, AI credits, and workspace growth capacity.</p>
                 </div>
             </div>
 
@@ -151,13 +159,38 @@ export default function BillingPage() {
                 <div className="card glass usage-card">
                     <div className="usage-header">
                         <span className="label">Current Plan</span>
-                        <span className="val" style={{ textTransform: 'capitalize' }}>{loading ? '...' : currentPlan}</span>
+                        <span className="val" style={{ textTransform: 'capitalize' }}>{loading ? '...' : currentPlan.replace('_', ' ')}</span>
                     </div>
                 </div>
                 <div className="card glass usage-card">
                     <div className="usage-header">
-                        <span className="label">Billing Status</span>
-                        <span className="val">{billingInfo?.stripeSubscriptionId ? 'Active' : 'No Subscription'}</span>
+                        <span className="label">Payment Rail</span>
+                        <span className="val">{provider === 'paystack' ? 'Paystack' : provider}</span>
+                    </div>
+                    <span className="usage-hint">Status: {paymentStatus}</span>
+                </div>
+            </div>
+
+            <div className="prototype-billing-grid">
+                <div className="card billing-insight-card">
+                    <div className="billing-insight-card__icon"><TrendingUp size={18} /></div>
+                    <div>
+                        <h3>Subscription Ready</h3>
+                        <p>Checkout is aligned to South African ZAR pricing and Paystack-based payment collection.</p>
+                    </div>
+                </div>
+                <div className="card billing-insight-card">
+                    <div className="billing-insight-card__icon"><Zap size={18} /></div>
+                    <div>
+                        <h3>Usage Gating</h3>
+                        <p>Plans unlock more automations, AI rendering throughput, and account capacity as the workspace scales.</p>
+                    </div>
+                </div>
+                <div className="card billing-insight-card">
+                    <div className="billing-insight-card__icon"><Coins size={18} /></div>
+                    <div>
+                        <h3>Credit Top-Ups</h3>
+                        <p>Top-up packs are modeled for heavier AI editing, DM automation, and caption generation bursts.</p>
                     </div>
                 </div>
             </div>
@@ -207,6 +240,24 @@ export default function BillingPage() {
             <section className="payment-methods card">
                 <div className="flex justify-between items-center mb-lg">
                     <div className="section-title mb-0">
+                        <Coins size={20} className="text-brand" />
+                        <h3 className="mb-0">AI Credit Top-Ups</h3>
+                    </div>
+                </div>
+                <div className="topup-grid">
+                    {TOP_UPS.map((pack) => (
+                        <div key={pack.label} className="card glass topup-card">
+                            <span className="topup-card__label">{pack.label}</span>
+                            <strong>{pack.price}</strong>
+                            <span className="card-expiry">Attach to Paystack checkout when top-up flow is enabled.</span>
+                        </div>
+                    ))}
+                </div>
+            </section>
+
+            <section className="payment-methods card">
+                <div className="flex justify-between items-center mb-lg">
+                    <div className="section-title mb-0">
                         <CreditCard size={20} className="text-brand" />
                         <h3 className="mb-0">Payment Method</h3>
                     </div>
@@ -216,15 +267,15 @@ export default function BillingPage() {
                         <ShieldCheck size={24} className="text-success" />
                     </div>
                     <div className="card-details">
-                        {billingInfo?.stripeCustomerId ? (
+                        {billingInfo?.paystackCustomerCode ? (
                             <>
-                                <span className="card-number">Stripe Connected</span>
-                                <span className="card-expiry">Customer ID: {billingInfo.stripeCustomerId.substring(0, 10)}...</span>
+                                <span className="card-number">Paystack Connected</span>
+                                <span className="card-expiry">Customer Code: {billingInfo.paystackCustomerCode.substring(0, 10)}...</span>
                             </>
                         ) : (
                             <>
                                 <span className="card-number">No payment method</span>
-                                <span className="card-expiry">Upgrade to add a payment method</span>
+                                <span className="card-expiry">Start checkout to attach a Paystack payment method</span>
                             </>
                         )}
                     </div>

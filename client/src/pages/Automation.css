@@ -178,7 +178,7 @@
 }
 
 .automation-row.active {
-    border-color: rgba(139, 92, 246, 0.3);
+    border-color: color-mix(in srgb, var(--accent-primary) 30%, transparent);
 }
 
 .auto-left {
@@ -228,7 +228,7 @@
 }
 
 .flow-step.trigger {
-    background: rgba(139, 92, 246, 0.15);
+    background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
     color: var(--accent-primary);
 }
 

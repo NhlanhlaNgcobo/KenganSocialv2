@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Instagram,
     Facebook,
@@ -10,9 +10,12 @@ import {
     AlertCircle,
     Plus,
     RefreshCw,
-    MoreVertical,
     Trash2,
-    Loader2
+    Loader2,
+    Upload,
+    MessageSquare,
+    Video,
+    ExternalLink,
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
@@ -28,14 +31,26 @@ const PLATFORM_META = {
 };
 
 const ALL_PLATFORMS = ['tiktok', 'instagram', 'facebook', 'linkedin', 'twitter', 'youtube'];
+const REAL_OAUTH_PLATFORMS = new Set(['youtube', 'instagram', 'tiktok', 'linkedin']);
 
-const PLACEHOLDER_CONNECTIONS = [
-    { id: 'sim_tiktok', platform: 'tiktok', username: 'kengan_social', status: 'active', followers: '12.4K', connectedAt: '2026-01-15' },
-    { id: 'sim_instagram', platform: 'instagram', username: 'kengansocial', status: 'active', followers: '8.2K', connectedAt: '2026-01-10' },
-    { id: 'sim_facebook', platform: 'facebook', username: 'KenganSocial Page', status: 'active', followers: '3.1K', connectedAt: '2026-02-01' },
-    { id: 'sim_youtube', platform: 'youtube', username: 'KenganSocial', status: 'active', followers: '1.5K', connectedAt: '2026-02-05' },
-    { id: 'sim_twitter', platform: 'twitter', username: 'kengansocial', status: 'expired', followers: '950', connectedAt: '2025-12-20' },
-];
+function normalizeConnection(raw) {
+    return {
+        id: raw.id || raw.platform,
+        platform: raw.platform,
+        username: raw.username || raw.accountName || raw.accountId || 'Connected account',
+        followers:
+            raw.followers ??
+            raw.followersCount ??
+            raw.subscriberCount ??
+            0,
+        status: raw.status || 'active',
+        groupName: raw.groupName || '',
+        connectedAt: raw.connectedAt || raw.createdAt || null,
+        photoURL: raw.photoURL || raw.accountAvatar || null,
+        accountName: raw.accountName || raw.username || '',
+        ...raw,
+    };
+}
 
 export default function ConnectionsPage() {
     const { currentWorkspace } = useWorkspace();
@@ -43,124 +58,223 @@ export default function ConnectionsPage() {
     const [loading, setLoading] = useState(true);
     const [connecting, setConnecting] = useState(null);
     const [customFolders, setCustomFolders] = useState([]);
+    const [youtubeVideos, setYoutubeVideos] = useState([]);
+    const [youtubeComments, setYoutubeComments] = useState([]);
+    const [youtubeLoading, setYoutubeLoading] = useState(false);
+    const [youtubeRefreshLoading, setYoutubeRefreshLoading] = useState(false);
+    const [youtubeUploadLoading, setYoutubeUploadLoading] = useState(false);
+    const [youtubeMessage, setYoutubeMessage] = useState('');
+    const [youtubeUploadForm, setYoutubeUploadForm] = useState({
+        videoUrl: '',
+        title: '',
+        description: '',
+        privacyStatus: 'private',
+    });
+
+    const youtubeConnection = connections.find((connection) => connection.platform === 'youtube');
 
     useEffect(() => {
         fetchConnections();
     }, [currentWorkspace?.id]);
 
+    useEffect(() => {
+        if (youtubeConnection && currentWorkspace?.id) {
+            loadYoutubeAssets();
+        } else {
+            setYoutubeVideos([]);
+            setYoutubeComments([]);
+        }
+    }, [youtubeConnection?.id, currentWorkspace?.id]);
+
     const fetchConnections = async () => {
         setLoading(true);
         try {
-            if (currentWorkspace?.id) {
-                const data = await apiClient(`/workspaces/${currentWorkspace.id}/connections`);
-                const live = data.connections || [];
-                setConnections(live.length > 0 ? live : PLACEHOLDER_CONNECTIONS);
-            } else {
-                setConnections(PLACEHOLDER_CONNECTIONS);
+            if (!currentWorkspace?.id) {
+                setConnections([]);
+                return;
             }
+
+            const data = await apiClient(`/workspaces/${currentWorkspace.id}/connections`);
+            const live = (data.connections || []).map(normalizeConnection);
+            setConnections(live);
         } catch (error) {
-            console.warn('Connections API unavailable, using placeholders:', error.message);
-            setConnections(PLACEHOLDER_CONNECTIONS);
+            console.warn('Connections API unavailable:', error.message);
+            setConnections([]);
         } finally {
             setLoading(false);
         }
     };
 
+    const loadYoutubeAssets = async () => {
+        setYoutubeLoading(true);
+        setYoutubeMessage('');
+        try {
+            const [videosData, commentsData] = await Promise.all([
+                apiClient('/connections/youtube/videos'),
+                apiClient('/connections/youtube/comments'),
+            ]);
+
+            setYoutubeVideos(videosData.videos || []);
+            setYoutubeComments(commentsData.comments || []);
+        } catch (error) {
+            console.error('Failed to load YouTube assets:', error);
+            setYoutubeMessage(error.message || 'Failed to load YouTube videos and comments.');
+        } finally {
+            setYoutubeLoading(false);
+        }
+    };
+
     const updateConnectionGroup = async (connectionId, groupName) => {
         try {
-            // Optimistic update
-            setConnections(prev => prev.map(c => c.id === connectionId ? { ...c, groupName } : c));
-            if (currentWorkspace?.id && !connectionId.startsWith('sim_')) {
+            setConnections((prev) => prev.map((connection) => (
+                connection.id === connectionId ? { ...connection, groupName } : connection
+            )));
+
+            if (currentWorkspace?.id) {
                 await apiClient(`/workspaces/${currentWorkspace.id}/connections/${connectionId}`, {
                     method: 'PUT',
-                    body: JSON.stringify({ groupName })
+                    body: { groupName },
                 });
             }
-        } catch (err) {
-            console.error('Failed to update group:', err);
+        } catch (error) {
+            console.error('Failed to update group:', error);
+            await fetchConnections();
         }
     };
 
     const handleAddFolder = () => {
-        const name = prompt("Enter Client or Agency Name:");
+        const name = prompt('Enter Client or Agency Name:');
         if (name && !customFolders.includes(name)) {
-            setCustomFolders(p => [...p, name]);
+            setCustomFolders((previous) => [...previous, name]);
         }
     };
 
-    const handleConnect = async (platformId, targetGroup = '') => {
+    const handleConnect = async (platformId) => {
         setConnecting(platformId);
+        setYoutubeMessage('');
+
         try {
-            if (currentWorkspace?.id) {
-                await apiClient(`/workspaces/${currentWorkspace.id}/connections`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        platform: platformId,
-                        accountId: `mock_${Date.now()}`,
-                        username: `${platformId}_user`,
-                        accessToken: 'mock_token',
-                        groupName: targetGroup || null
-                    }),
-                });
-                await fetchConnections();
-            } else {
-                // Simulate connection locally
-                await new Promise(r => setTimeout(r, 1000));
-                const meta = PLATFORM_META[platformId];
-                setConnections(prev => [
-                    ...prev,
-                    {
-                        id: `sim_${platformId}_${Date.now()}`,
-                        platform: platformId,
-                        username: `${platformId}_user`,
-                        status: 'active',
-                        followers: '0',
-                        groupName: targetGroup || null,
-                        connectedAt: new Date().toISOString(),
-                    },
-                ]);
+            if (!currentWorkspace?.id) {
+                throw new Error('Select a workspace before connecting a platform.');
             }
+
+            if (!REAL_OAUTH_PLATFORMS.has(platformId)) {
+                throw new Error(`${PLATFORM_META[platformId]?.name || platformId} OAuth is not wired yet.`);
+            }
+
+            const data = await apiClient(`/connections/${platformId}/auth-url`);
+            window.location.assign(data.url);
         } catch (error) {
-            // Simulate locally on failure
-            console.warn('Connect API failed, simulating locally');
-            await new Promise(r => setTimeout(r, 800));
-            setConnections(prev => [
-                ...prev,
-                {
-                    id: `sim_${platformId}_${Date.now()}`,
-                    platform: platformId,
-                    username: `${platformId}_user`,
-                    status: 'active',
-                    followers: '0',
-                    groupName: targetGroup || null,
-                    connectedAt: new Date().toISOString(),
-                },
-            ]);
-        } finally {
+            console.error('Connection launch failed:', error);
+            setYoutubeMessage(error.message || 'Failed to start OAuth connection.');
             setConnecting(null);
         }
     };
 
-    const handleDisconnect = async (connectionId) => {
+    const handleDisconnect = async (connection) => {
         try {
-            if (currentWorkspace?.id && !connectionId.startsWith('sim_')) {
-                await apiClient(`/workspaces/${currentWorkspace.id}/connections/${connectionId}`, {
-                    method: 'DELETE',
-                });
-                await fetchConnections();
-            } else {
-                // Remove locally
-                setConnections(prev => prev.filter(c => c.id !== connectionId));
+            if (currentWorkspace?.id) {
+                if (connection.id === connection.platform) {
+                    await apiClient(`/connections/${connection.platform}`, {
+                        method: 'DELETE',
+                    });
+                } else {
+                    await apiClient(`/workspaces/${currentWorkspace.id}/connections/${connection.id}`, {
+                        method: 'DELETE',
+                    });
+                }
             }
+            await fetchConnections();
         } catch (error) {
-            // Remove locally on failure
-            setConnections(prev => prev.filter(c => c.id !== connectionId));
+            console.error('Failed to disconnect platform:', error);
+            setYoutubeMessage(error.message || 'Failed to disconnect platform.');
         }
     };
 
-    // Build display list: merge live connections with all platform slots
-    const connectedMap = {};
-    connections.forEach(c => { connectedMap[c.platform] = c; });
+    const handleRefreshYoutube = async () => {
+        setYoutubeRefreshLoading(true);
+        setYoutubeMessage('');
+        try {
+            await apiClient('/connections/youtube/refresh', { method: 'POST' });
+            await fetchConnections();
+            await loadYoutubeAssets();
+            setYoutubeMessage('YouTube connection refreshed.');
+        } catch (error) {
+            setYoutubeMessage(error.message || 'Failed to refresh YouTube token.');
+        } finally {
+            setYoutubeRefreshLoading(false);
+        }
+    };
+
+    const handleYoutubeUpload = async (event) => {
+        event.preventDefault();
+        setYoutubeUploadLoading(true);
+        setYoutubeMessage('');
+
+        try {
+            const payload = {
+                videoUrl: youtubeUploadForm.videoUrl.trim(),
+                title: youtubeUploadForm.title.trim(),
+                description: youtubeUploadForm.description.trim(),
+                privacyStatus: youtubeUploadForm.privacyStatus,
+            };
+
+            const data = await apiClient('/connections/youtube/upload', {
+                method: 'POST',
+                body: payload,
+            });
+
+            setYoutubeMessage(`Uploaded to YouTube successfully. Video ID: ${data.videoId}`);
+            setYoutubeUploadForm({
+                videoUrl: '',
+                title: '',
+                description: '',
+                privacyStatus: 'private',
+            });
+            await loadYoutubeAssets();
+        } catch (error) {
+            setYoutubeMessage(error.message || 'Failed to upload to YouTube.');
+        } finally {
+            setYoutubeUploadLoading(false);
+        }
+    };
+
+    const handleDeleteYoutubeVideo = async (videoId) => {
+        if (!window.confirm('Delete this YouTube video permanently?')) {
+            return;
+        }
+
+        try {
+            await apiClient(`/connections/youtube/videos/${videoId}`, {
+                method: 'DELETE',
+            });
+            setYoutubeVideos((prev) => prev.filter((video) => video.id !== videoId));
+            setYoutubeComments((prev) => prev.filter((comment) => comment.videoId !== videoId));
+            setYoutubeMessage('Video deleted from YouTube.');
+        } catch (error) {
+            setYoutubeMessage(error.message || 'Failed to delete YouTube video.');
+        }
+    };
+
+    const allFolders = Array.from(new Set([
+        ...customFolders,
+        ...connections.map((connection) => connection.groupName).filter(Boolean),
+    ]));
+    const grouped = { Ungrouped: [] };
+    allFolders.forEach((folder) => {
+        grouped[folder] = [];
+    });
+
+    connections.forEach((connection) => {
+        const group = connection.groupName || 'Ungrouped';
+        if (!grouped[group]) {
+            grouped[group] = [];
+        }
+        grouped[group].push(connection);
+    });
+
+    const groupsToRender = allFolders.map((folder) => [folder, grouped[folder]]);
+    groupsToRender.push(['Ungrouped', grouped.Ungrouped]);
 
     return (
         <div className="connections-page animate-fade-in">
@@ -189,122 +303,312 @@ export default function ConnectionsPage() {
                     <div className="page-header">
                         <h3 style={{ marginTop: '32px' }}>Workspace Folders</h3>
                     </div>
-                    {(() => {
-                        const allFolders = Array.from(new Set([...customFolders, ...connections.map(c => c.groupName).filter(Boolean)]));
-                        const grouped = { 'Ungrouped': [] };
-                        allFolders.forEach(f => grouped[f] = []);
 
-                        connections.forEach(curr => {
-                            const group = curr.groupName || 'Ungrouped';
-                            if (!grouped[group]) grouped[group] = [];
-                            grouped[group].push(curr);
-                        });
-
-                        const groupsToRender = allFolders.map(folder => [folder, grouped[folder]]);
-                        if (grouped['Ungrouped'].length > 0) {
-                            groupsToRender.push(['Ungrouped', grouped['Ungrouped']]);
-                        } else if (allFolders.length === 0) {
-                            groupsToRender.push(['Ungrouped', []]);
-                        }
-
-                        return groupsToRender.map(([group, groupConns]) => (
-                            <div key={group} className="connection-group-section" style={{
+                    {groupsToRender.map(([group, groupConnections]) => (
+                        <div
+                            key={group}
+                            className="connection-group-section"
+                            style={{
                                 marginBottom: '48px',
                                 background: 'var(--bg-secondary)',
                                 padding: '24px',
                                 borderRadius: '12px',
-                                border: '1px solid var(--border-color)'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-                                    <h4 style={{
-                                        color: 'var(--text-primary)',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.05em',
-                                        fontSize: '15px'
-                                    }}>
-                                        {group === 'Ungrouped' ? 'General / Ungrouped' : `Client: ${group}`}
-                                    </h4>
-                                    <span className="text-muted text-sm">{groupConns.length} accounts</span>
-                                </div>
+                                border: '1px solid var(--border-color)',
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+                                <h4 style={{
+                                    color: 'var(--text-primary)',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.05em',
+                                    fontSize: '15px',
+                                }}>
+                                    {group === 'Ungrouped' ? 'General / Ungrouped' : `Client: ${group}`}
+                                </h4>
+                                <span className="text-muted text-sm">{groupConnections.length} accounts</span>
+                            </div>
 
-                                <div className="connections-grid stagger-children">
-                                    {groupConns.map((conn) => {
-                                        const meta = PLATFORM_META[conn.platform] || PLATFORM_META.instagram;
-                                        const Icon = meta.icon;
+                            <div className="connections-grid stagger-children">
+                                {groupConnections.map((connection) => {
+                                    const meta = PLATFORM_META[connection.platform] || PLATFORM_META.instagram;
+                                    const Icon = meta.icon;
 
-                                        return (
-                                            <div key={conn.id} className="connection-card card connection-card--connected">
-                                                <div className="connection-card__header">
-                                                    <div
-                                                        className="platform-icon"
-                                                        style={{ backgroundColor: `${meta.color}15`, color: meta.color }}
-                                                    >
-                                                        <Icon size={24} />
-                                                    </div>
-                                                    <div className="connection-card__actions">
-                                                        <button className="btn-icon btn-ghost" onClick={() => handleDisconnect(conn.id)} title="Disconnect">
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </div>
+                                    return (
+                                        <div key={connection.id} className="connection-card card connection-card--connected">
+                                            <div className="connection-card__header">
+                                                <div
+                                                    className="platform-icon"
+                                                    style={{ backgroundColor: `${meta.color}15`, color: meta.color }}
+                                                >
+                                                    <Icon size={24} />
                                                 </div>
-
-                                                <div className="connection-card__body">
-                                                    <h3>{meta.name}</h3>
-                                                    <p className="username">@{conn.username}</p>
-                                                    {conn.followers && (
-                                                        <p className="followers-count">{conn.followers} followers</p>
-                                                    )}
-                                                    <div className={`status-badge ${conn.status}`}>
-                                                        {conn.status === 'active' ? (
-                                                            <><CheckCircle2 size={12} /> Active</>
-                                                        ) : (
-                                                            <><AlertCircle size={12} /> Expired</>
-                                                        )}
-                                                    </div>
-
-                                                    <div style={{ marginTop: '12px' }}>
-                                                        <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Move to Folder</label>
-                                                        <select
-                                                            className="input input-sm"
-                                                            value={conn.groupName || ''}
-                                                            onChange={(e) => updateConnectionGroup(conn.id, e.target.value)}
-                                                            style={{ width: '100%', border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}
-                                                        >
-                                                            <option value="">General / Ungrouped</option>
-                                                            {allFolders.map(f => <option key={f} value={f}>{f}</option>)}
-                                                        </select>
-                                                    </div>
+                                                <div className="connection-card__actions">
+                                                    <button className="btn-icon btn-ghost" onClick={() => handleDisconnect(connection)} title="Disconnect">
+                                                        <Trash2 size={16} />
+                                                    </button>
                                                 </div>
                                             </div>
-                                        );
-                                    })}
 
-                                    {/* Add connection slot specific to this folder */}
-                                    <div className="connection-card card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '260px', borderStyle: 'dashed', background: 'transparent' }}>
-                                        <div className="platform-icon" style={{ backgroundColor: `var(--bg-primary)`, color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                                            <Plus size={24} />
+                                            <div className="connection-card__body">
+                                                <h3>{meta.name}</h3>
+                                                <p className="username">@{connection.username}</p>
+                                                {Number(connection.followers) > 0 && (
+                                                    <p className="followers-count">{Number(connection.followers).toLocaleString()} followers</p>
+                                                )}
+                                                <div className={`status-badge ${connection.status}`}>
+                                                    {connection.status === 'active' ? (
+                                                        <><CheckCircle2 size={12} /> Active</>
+                                                    ) : (
+                                                        <><AlertCircle size={12} /> Expired</>
+                                                    )}
+                                                </div>
+
+                                                <div style={{ marginTop: '12px' }}>
+                                                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                                                        Move to Folder
+                                                    </label>
+                                                    <select
+                                                        className="input input-sm"
+                                                        value={connection.groupName || ''}
+                                                        onChange={(event) => updateConnectionGroup(connection.id, event.target.value)}
+                                                        style={{ width: '100%', border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}
+                                                    >
+                                                        <option value="">General / Ungrouped</option>
+                                                        {allFolders.map((folder) => (
+                                                            <option key={folder} value={folder}>{folder}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <h4 style={{ marginBottom: '16px', fontSize: '14px' }}>Add Account to {group === 'Ungrouped' ? 'General' : group}</h4>
-                                        <select
-                                            id={`add-connection-select-${group}`}
-                                            className="input mb-sm"
-                                            style={{ width: '80%' }}
-                                            onChange={(e) => {
-                                                if (e.target.value) {
-                                                    const targetGrp = group === 'Ungrouped' ? '' : group;
-                                                    handleConnect(e.target.value, targetGrp);
-                                                    e.target.value = '';
-                                                }
-                                            }}
-                                        >
-                                            <option value="">Select Platform...</option>
-                                            {ALL_PLATFORMS.map(p => <option key={p} value={p}>{PLATFORM_META[p].name}</option>)}
-                                        </select>
+                                    );
+                                })}
+
+                                <div
+                                    className="connection-card card"
+                                    style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        minHeight: '260px',
+                                        borderStyle: 'dashed',
+                                        background: 'transparent',
+                                    }}
+                                >
+                                    <div className="platform-icon" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                                        <Plus size={24} />
                                     </div>
+                                    <h4 style={{ marginBottom: '16px', fontSize: '14px' }}>
+                                        Add Account to {group === 'Ungrouped' ? 'General' : group}
+                                    </h4>
+                                    <select
+                                        id={`add-connection-select-${group}`}
+                                        className="input mb-sm"
+                                        style={{ width: '80%' }}
+                                        onChange={(event) => {
+                                            if (event.target.value) {
+                                                handleConnect(event.target.value);
+                                                event.target.value = '';
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Select Platform...</option>
+                                        {ALL_PLATFORMS.map((platform) => (
+                                            <option key={platform} value={platform}>{PLATFORM_META[platform].name}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
-                        ));
-                    })()}
+                        </div>
+                    ))}
+
+                    <section className="card youtube-studio">
+                        <div className="youtube-studio__header">
+                            <div>
+                                <h3>YouTube Studio</h3>
+                                <p className="page-subtitle">
+                                    Connect a Google account, pull channel videos and comments, upload by URL, and delete videos.
+                                </p>
+                            </div>
+                            <div className="youtube-studio__actions">
+                                {!youtubeConnection ? (
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={() => handleConnect('youtube')}
+                                        disabled={connecting === 'youtube'}
+                                    >
+                                        {connecting === 'youtube' ? <Loader2 size={16} className="spin" /> : <Youtube size={16} />}
+                                        Connect YouTube
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button className="btn btn-secondary" onClick={handleRefreshYoutube} disabled={youtubeRefreshLoading}>
+                                            {youtubeRefreshLoading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}
+                                            Refresh Token
+                                        </button>
+                                        <button className="btn btn-secondary" onClick={loadYoutubeAssets} disabled={youtubeLoading}>
+                                            {youtubeLoading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}
+                                            Reload Data
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {youtubeMessage ? (
+                            <div className="youtube-studio__message">{youtubeMessage}</div>
+                        ) : null}
+
+                        {!youtubeConnection ? (
+                            <div className="youtube-studio__empty">
+                                <Youtube size={28} />
+                                <div>
+                                    <h4>YouTube is not connected yet</h4>
+                                    <p>Use Google OAuth to grant upload, video read, and comment read access for this workspace.</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="youtube-studio__summary">
+                                    <div className="youtube-metric card">
+                                        <Video size={18} />
+                                        <div>
+                                            <strong>{youtubeVideos.length}</strong>
+                                            <span>Videos loaded</span>
+                                        </div>
+                                    </div>
+                                    <div className="youtube-metric card">
+                                        <MessageSquare size={18} />
+                                        <div>
+                                            <strong>{youtubeComments.length}</strong>
+                                            <span>Comments loaded</span>
+                                        </div>
+                                    </div>
+                                    <div className="youtube-metric card">
+                                        <CheckCircle2 size={18} />
+                                        <div>
+                                            <strong>{youtubeConnection.accountName || youtubeConnection.username}</strong>
+                                            <span>Connected channel</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="youtube-studio__layout">
+                                    <form className="card youtube-upload-card" onSubmit={handleYoutubeUpload}>
+                                        <div className="youtube-upload-card__header">
+                                            <h4>Upload to YouTube</h4>
+                                            <Upload size={18} />
+                                        </div>
+                                        <label>
+                                            Public video URL
+                                            <input
+                                                className="input"
+                                                value={youtubeUploadForm.videoUrl}
+                                                onChange={(event) => setYoutubeUploadForm((prev) => ({ ...prev, videoUrl: event.target.value }))}
+                                                placeholder="https://..."
+                                                required
+                                            />
+                                        </label>
+                                        <label>
+                                            Title
+                                            <input
+                                                className="input"
+                                                value={youtubeUploadForm.title}
+                                                onChange={(event) => setYoutubeUploadForm((prev) => ({ ...prev, title: event.target.value }))}
+                                                placeholder="Video title"
+                                                required
+                                            />
+                                        </label>
+                                        <label>
+                                            Description
+                                            <textarea
+                                                className="input"
+                                                rows={5}
+                                                value={youtubeUploadForm.description}
+                                                onChange={(event) => setYoutubeUploadForm((prev) => ({ ...prev, description: event.target.value }))}
+                                                placeholder="Description"
+                                            />
+                                        </label>
+                                        <label>
+                                            Privacy
+                                            <select
+                                                className="input"
+                                                value={youtubeUploadForm.privacyStatus}
+                                                onChange={(event) => setYoutubeUploadForm((prev) => ({ ...prev, privacyStatus: event.target.value }))}
+                                            >
+                                                <option value="private">Private</option>
+                                                <option value="unlisted">Unlisted</option>
+                                                <option value="public">Public</option>
+                                            </select>
+                                        </label>
+                                        <button className="btn btn-primary full-width" type="submit" disabled={youtubeUploadLoading}>
+                                            {youtubeUploadLoading ? <Loader2 size={16} className="spin" /> : <Upload size={16} />}
+                                            Upload Video
+                                        </button>
+                                    </form>
+
+                                    <div className="youtube-list-panel">
+                                        <div className="youtube-list-panel__section card">
+                                            <div className="youtube-list-panel__header">
+                                                <h4>Recent Videos</h4>
+                                                <span>{youtubeVideos.length}</span>
+                                            </div>
+                                            <div className="youtube-list">
+                                                {youtubeVideos.length === 0 ? (
+                                                    <p className="not-connected">No videos returned yet.</p>
+                                                ) : youtubeVideos.map((video) => (
+                                                    <div key={video.id} className="youtube-list-item">
+                                                        <div className="youtube-list-item__content">
+                                                            {video.thumbnailUrl ? (
+                                                                <img src={video.thumbnailUrl} alt={video.title} className="youtube-thumb" />
+                                                            ) : null}
+                                                            <div>
+                                                                <strong>{video.title}</strong>
+                                                                <p>{video.viewCount.toLocaleString()} views • {video.commentCount.toLocaleString()} comments</p>
+                                                                <p>{video.privacyStatus}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="youtube-list-item__actions">
+                                                            <a
+                                                                className="btn btn-ghost"
+                                                                href={`https://www.youtube.com/watch?v=${video.id}`}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                            >
+                                                                <ExternalLink size={14} />
+                                                            </a>
+                                                            <button className="btn btn-ghost" onClick={() => handleDeleteYoutubeVideo(video.id)}>
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="youtube-list-panel__section card">
+                                            <div className="youtube-list-panel__header">
+                                                <h4>Recent Comments</h4>
+                                                <span>{youtubeComments.length}</span>
+                                            </div>
+                                            <div className="youtube-list">
+                                                {youtubeComments.length === 0 ? (
+                                                    <p className="not-connected">No comments returned yet.</p>
+                                                ) : youtubeComments.map((comment) => (
+                                                    <div key={comment.id} className="youtube-comment-item">
+                                                        <strong>{comment.authorDisplayName}</strong>
+                                                        <p>{comment.textDisplay}</p>
+                                                        <span>Likes: {comment.likeCount} • Video: {comment.videoId || 'channel'}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </section>
                 </>
             )}
 

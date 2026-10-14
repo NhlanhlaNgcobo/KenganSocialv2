@@ -138,11 +138,11 @@ export default function AutomationPage() {
         <div className="automation-page animate-fade-in">
             <div className="page-header">
                 <div>
-                    <h1>Social Automations</h1>
-                    <p className="page-subtitle">Create smart automations to engage your audience 24/7.</p>
+                    <h1>Automation</h1>
+                    <p className="page-subtitle">Reply to comments and DMs automatically and turn the replies into leads.</p>
                 </div>
                 <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-                    <Plus size={18} /> New Automation
+                    <Plus size={18} /> New automation
                 </button>
             </div>
 
@@ -153,12 +153,12 @@ export default function AutomationPage() {
             ) : automations.length === 0 ? (
                 <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
                     <Zap size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 16px' }} />
-                    <h3>No Automations Yet</h3>
+                    <h3>No automations yet</h3>
                     <p style={{ color: 'var(--text-secondary)', maxWidth: 420, margin: '8px auto 24px' }}>
-                        Automate your DMs, comments, and lead capture to grow while you sleep.
+                        Start with a keyword reply: when someone comments “price” on a post, send them a DM with your price list.
                     </p>
-                    <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-                        <Plus size={16} /> Create First Automation
+                    <button className="btn btn-primary" style={{ margin: '0 auto' }} onClick={() => setShowCreate(true)}>
+                        <Plus size={16} /> Create an automation
                     </button>
                 </div>
             ) : (

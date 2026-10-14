@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Sparkles,
     MessageSquare,
@@ -19,16 +20,17 @@ import { apiClient } from '../lib/api';
 import './AiTools.css';
 
 const AI_TOOLS = [
-    { id: 'caption', name: 'Caption Generator', icon: MessageSquare, description: 'Generate engaging captions for any platform in seconds.' },
-    { id: 'hashtags', name: 'Hashtag Generator', icon: Hash, description: 'Get relevant, trending hashtags to boost your reach.' },
-    { id: 'script', name: 'Video Script Writer', icon: FileText, description: 'Professional scripts for TikToks, Reels, and Shorts.' },
-    { id: 'hook', name: 'Hook Generator', icon: Zap, description: 'Scroll-stopping opening lines for your content.' },
-    { id: 'research', name: 'Competitor Research', icon: Target, description: 'Type an industry to get 5 optimal ad directions.' },
-    { id: 'nanobanana', name: 'Nanobanana Creator', icon: Wand2, description: 'Create viral, high-energy Nanobanana style content.' },
+    { id: 'caption', name: 'Captions', icon: MessageSquare, description: 'A caption for one platform, in your voice.' },
+    { id: 'hashtags', name: 'Hashtags', icon: Hash, description: 'A mix of broad and niche hashtags for a topic.' },
+    { id: 'script', name: 'Video script', icon: FileText, description: 'A 30–60 second script for TikTok, Reels or Shorts.' },
+    { id: 'hook', name: 'Hooks', icon: Zap, description: 'Opening lines for the first two seconds of a video.' },
+    { id: 'research', name: 'Ad angles', icon: Target, description: 'Five ad directions for an industry.' },
+    { id: 'nanobanana', name: 'Nanobanana style', icon: Wand2, description: 'High-energy, fast-cut ideas in the Nanobanana style.' },
 ];
 
 export default function AiToolsPage() {
     const { currentWorkspace } = useWorkspace();
+    const navigate = useNavigate();
     const [selectedTool, setSelectedTool] = useState('caption');
     const [input, setInput] = useState('');
     const [tone, setTone] = useState('Professional');
@@ -106,8 +108,8 @@ export default function AiToolsPage() {
         <div className="ai-tools-page animate-fade-in">
             <div className="page-header">
                 <div>
-                    <h1>AI Content Tools</h1>
-                    <p className="page-subtitle">Supercharge your content with advanced AI generation.</p>
+                    <h1>AI writer</h1>
+                    <p className="page-subtitle">Write captions, hooks, hashtags and scripts. Edit the result before you post.</p>
                 </div>
                 {credits !== null && (
                     <div className="credits-badge glass">
@@ -205,7 +207,13 @@ export default function AiToolsPage() {
                                         <button className="btn-icon btn-ghost" title="Copy" onClick={handleCopy}>
                                             {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
                                         </button>
-                                        <button className="btn-icon btn-ghost" title="Send to Studio"><Send size={16} /></button>
+                                        <button
+                                            className="btn-icon btn-ghost"
+                                            title="Use as caption in Content Studio"
+                                            onClick={() => navigate('/dashboard/content', { state: { caption: result } })}
+                                        >
+                                            <Send size={16} />
+                                        </button>
                                     </div>
                                 </div>
                                 <div className="result-content glass">

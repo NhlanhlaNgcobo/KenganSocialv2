@@ -159,7 +159,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(8px);
+    backdrop-filter: none;
     transition: all var(--transition-fast);
     cursor: pointer;
     border: none;
@@ -367,7 +367,7 @@
 }
 
 .subtitle-item.active {
-    background: rgba(139, 92, 246, 0.1);
+    background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
     border-color: var(--accent-primary);
 }
 
@@ -422,7 +422,7 @@
 
 .style-card.active {
     border-color: var(--accent-primary);
-    background: rgba(139, 92, 246, 0.08);
+    background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
 }
 
 .style-preview-box {
@@ -455,7 +455,7 @@
     top: 8px;
     right: 8px;
     background: var(--accent-primary);
-    color: white;
+    color: var(--accent-contrast);
     width: 22px;
     height: 22px;
     border-radius: 50%;
@@ -628,7 +628,7 @@
     height: 56px;
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(8px);
+    backdrop-filter: none;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -638,7 +638,7 @@
 
 .preview-play-btn:hover {
     transform: scale(1.1);
-    background: rgba(139, 92, 246, 0.7);
+    background: color-mix(in srgb, var(--accent-primary) 70%, transparent);
     border-color: rgba(255, 255, 255, 0.5);
 }
 
@@ -866,7 +866,7 @@
 .pipeline-step.active {
     color: var(--accent-primary);
     border-color: var(--accent-primary);
-    background: rgba(139, 92, 246, 0.1);
+    background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
     animation: pulse 2s infinite;
 }
 
@@ -929,7 +929,7 @@
 /* ---- Tab Badge ---- */
 .tab-badge {
     background: var(--accent-primary);
-    color: white;
+    color: var(--accent-contrast);
     font-size: 0.65rem;
     font-weight: 700;
     padding: 2px 6px;
@@ -994,7 +994,7 @@
 }
 
 .moment-score {
-    background: rgba(139, 92, 246, 0.15);
+    background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
     color: var(--accent-primary);
     padding: 2px 8px;
     border-radius: 999px;
@@ -1008,7 +1008,7 @@
 }
 
 .cut-btn.btn-primary {
-    box-shadow: 0 0 15px rgba(139, 92, 246, 0.4);
+    box-shadow: none;
 }
 
 /* ---- Render Range ---- */
@@ -1077,16 +1077,16 @@
 }
 
 .music-track-card.active {
-    background: rgba(139, 92, 246, 0.1);
+    background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
     border-color: var(--accent-primary);
-    box-shadow: 0 0 15px rgba(139, 92, 246, 0.15);
+    box-shadow: none;
 }
 
 .track-icon {
     width: 40px;
     height: 40px;
     border-radius: 10px;
-    background: rgba(139, 92, 246, 0.1);
+    background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
     color: var(--accent-primary);
     display: flex;
     align-items: center;

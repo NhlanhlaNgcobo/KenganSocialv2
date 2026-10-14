@@ -1,6 +1,30 @@
 import { getStorage } from '../config/firebase.js';
 import { v4 as uuidv4 } from 'uuid';
 
+function getCandidateBucketNames() {
+    const configured = process.env.FIREBASE_STORAGE_BUCKET;
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    return [...new Set([configured, projectId ? `${projectId}.appspot.com` : null, projectId ? `${projectId}.firebasestorage.app` : null].filter(Boolean))];
+}
+
+async function resolveWritableBucket() {
+    const storage = getStorage();
+    let lastError = null;
+
+    for (const bucketName of getCandidateBucketNames()) {
+        try {
+            const bucket = storage.bucket(bucketName);
+            await bucket.getMetadata();
+            return bucket;
+        } catch (error) {
+            lastError = error;
+            console.error(`[Storage Service] Bucket check failed for ${bucketName}:`, error.message || error);
+        }
+    }
+
+    throw lastError || new Error('No valid Firebase Storage bucket available');
+}
+
 /**
  * Upload a buffer to Firebase Storage and return the public URL.
  * @param {Buffer} buffer - File buffer
@@ -9,7 +33,7 @@ import { v4 as uuidv4 } from 'uuid';
  */
 export async function uploadFile(buffer, destination, mimeType) {
     try {
-        const bucket = getStorage().bucket();
+        const bucket = await resolveWritableBucket();
         const fileExtension = mimeType.split('/')[1] || 'bin';
         const fileName = `${destination}/${uuidv4()}.${fileExtension}`;
         const file = bucket.file(fileName);
@@ -33,11 +57,13 @@ export async function uploadFile(buffer, destination, mimeType) {
  */
 export async function deleteFile(fileUrl) {
     try {
-        const bucket = getStorage().bucket();
-        // Extract path from URL
-        const path = fileUrl.split(`${bucket.name}/`)[1];
-        if (path) {
-            await bucket.file(path).delete();
+        for (const bucketName of getCandidateBucketNames()) {
+            const bucket = getStorage().bucket(bucketName);
+            const path = fileUrl.split(`${bucket.name}/`)[1];
+            if (path) {
+                await bucket.file(path).delete();
+                return;
+            }
         }
     } catch (error) {
         console.error('[Storage Service] Delete error:', error);

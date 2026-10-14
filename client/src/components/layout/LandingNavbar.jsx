@@ -1,28 +1,43 @@
-import { Link } from 'react-router-dom';
-import { ChevronDown } from 'lucide-react';
+import { Link, NavLink } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import './LandingNavbar.css';
+import { KenganLogo } from '../brand/KenganLogo';
+
+const LINKS = [
+    { to: '/pricing', label: 'Pricing' },
+    { to: '/help', label: 'Help' },
+    { to: '/about', label: 'About' },
+];
 
 export default function LandingNavbar() {
-    return (
-        <nav className="landing-nav glass">
-            <div className="landing-nav__container">
-                <div className="landing-nav__logo">
-                    <div className="landing-nav__logo-icon">K</div>
-                    <span>KenganSocial</span>
-                </div>
+    const { user } = useAuth();
 
-                <div className="landing-nav__links">
-                    <Link to="/" className="landing-nav__link">Home</Link>
-                    <Link to="/about" className="landing-nav__link">About</Link>
-                    <Link to="/help" className="landing-nav__link">Help Center</Link>
-                    <Link to="/pricing" className="landing-nav__link">Pricing</Link>
-                    <Link to="/privacy" className="landing-nav__link">Privacy</Link>
-                </div>
+    return (
+        <header className="landing-nav">
+            <div className="landing-nav__container">
+                <Link to="/" className="landing-nav__logo" aria-label="KenganSocial home">
+                    <KenganLogo size={26} />
+                </Link>
+
+                <nav className="landing-nav__links" aria-label="Main">
+                    {LINKS.map((l) => (
+                        <NavLink key={l.to} to={l.to} className={({ isActive }) => `landing-nav__link ${isActive ? 'is-active' : ''}`}>
+                            {l.label}
+                        </NavLink>
+                    ))}
+                </nav>
 
                 <div className="landing-nav__actions">
-                    <Link to="/login" className="btn btn-primary">Get Started</Link>
+                    {user ? (
+                        <Link to="/dashboard" className="btn btn-primary btn-sm">Dashboard</Link>
+                    ) : (
+                        <>
+                            <Link to="/login" className="btn btn-ghost btn-sm">Log in</Link>
+                            <Link to="/register" className="btn btn-primary btn-sm">Start free</Link>
+                        </>
+                    )}
                 </div>
             </div>
-        </nav>
+        </header>
     );
 }

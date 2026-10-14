@@ -9,7 +9,14 @@ import { requireAuth } from '../middleware/auth.middleware.js';
 import multer from 'multer';
 import os from 'os';
 
-const upload = multer({ dest: os.tmpdir() });
+const upload = multer({
+    dest: os.tmpdir(),
+    limits: { fileSize: 2 * 1024 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        const ok = /^(video|image|audio)\//.test(file.mimetype || '');
+        cb(ok ? null : new Error('Only video, image and audio files can be uploaded'), ok);
+    },
+});
 const router = express.Router();
 
 // All manual edit routes require authentication

@@ -1,70 +1,69 @@
 .landing-nav {
     position: fixed;
-    top: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: calc(100% - 48px);
-    max-width: 1200px;
-    height: 64px;
-    border-radius: var(--radius-full);
+    inset: 0 0 auto 0;
+    height: 60px;
     z-index: 1000;
-    display: flex;
-    align-items: center;
-    padding: 0 24px;
+    background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+    border-bottom: 1px solid var(--border-primary);
 }
 
 .landing-nav__container {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.landing-nav__logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-weight: 700;
-    font-size: 1.1rem;
-}
-
-.landing-nav__logo-icon {
-    width: 32px;
-    height: 32px;
-    background: var(--gradient-brand);
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 0.9rem;
-}
-
-.landing-nav__links {
+    max-width: 1120px;
+    height: 100%;
+    margin: 0 auto;
+    padding: 0 24px;
     display: flex;
     align-items: center;
     gap: 32px;
 }
 
-.landing-nav__link {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    font-weight: 500;
-    transition: color var(--transition-fast);
+.landing-nav__logo {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 9px;
+    font-weight: 600;
+    font-size: 0.98rem;
+    letter-spacing: -0.01em;
 }
 
-.landing-nav__link:hover {
+.landing-nav__logo-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    background: var(--accent-primary);
+    color: var(--accent-contrast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.landing-nav__links {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.landing-nav__link {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    transition: color var(--transition-fast);
+}
+
+.landing-nav__link:hover,
+.landing-nav__link.is-active {
     color: var(--text-primary);
 }
 
-.landing-nav__link--dropdown {
-    cursor: pointer;
+.landing-nav__actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-@media (max-width: 968px) {
+@media (max-width: 720px) {
     .landing-nav__links {
         display: none;
     }

@@ -58,7 +58,13 @@ export default function HelpCenterPage() {
                         </div>
                         <h3 style={{ fontSize: '1.4rem', marginBottom: '16px' }}>Contact Support</h3>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>Encountered a bug or scheduling error? Open a direct ticket with engineering.</p>
-                        <button className="btn btn-primary" style={{ marginTop: '24px', width: '100%' }}>Email Team</button>
+                        <a
+                            className="btn btn-primary"
+                            style={{ marginTop: '24px', width: '100%', textDecoration: 'none' }}
+                            href="mailto:info@kengansocial.com?subject=KenganSocial%20support%20request"
+                        >
+                            Email Team
+                        </a>
                     </div>
                 </div>
             </main>

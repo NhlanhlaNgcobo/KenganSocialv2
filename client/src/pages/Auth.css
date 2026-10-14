@@ -72,7 +72,7 @@
     border: 1px solid var(--border-primary);
     border-radius: var(--radius-xl);
     padding: 40px;
-    backdrop-filter: blur(20px);
+    backdrop-filter: none;
     position: relative;
     z-index: 1;
 }
@@ -92,7 +92,7 @@
     justify-content: center;
     font-weight: 800;
     font-size: 1.4rem;
-    color: #fff;
+    color: var(--accent-contrast);
     margin: 0 auto 16px;
     box-shadow: var(--shadow-glow);
 }
@@ -186,4 +186,45 @@
     to {
         transform: rotate(360deg);
     }
+}
+
+/* Consents & Checkboxes */
+.auth-consents {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 4px 0 8px;
+}
+
+.checkbox-field {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    user-select: none;
+    line-height: 1.4;
+}
+
+.checkbox-field input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    cursor: pointer;
+    accent-color: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.checkbox-field span a {
+    color: var(--accent-primary);
+    font-weight: 500;
+}
+
+.checkbox-field span a:hover {
+    text-decoration: underline;
+}
+/* Decorative glow orbs retired in the redesign. */
+.auth-page__orb {
+    display: none;
 }

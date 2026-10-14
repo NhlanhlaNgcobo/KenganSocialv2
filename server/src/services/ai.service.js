@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
+import { GEMINI_MODEL } from '../config/ai-models.js';
 
 // -------------------------------------------------------
 // Provider Initialization
@@ -11,7 +12,7 @@ let openaiClient = null;
 function getGemini() {
     if (!geminiModel && process.env.GEMINI_API_KEY) {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        geminiModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        geminiModel = genAI.getGenerativeModel({ model: GEMINI_MODEL });
     }
     return geminiModel;
 }

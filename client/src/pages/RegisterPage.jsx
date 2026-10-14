@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import { db } from '../lib/firebase';
 import './Auth.css';
 
 export default function RegisterPage() {
@@ -10,6 +12,8 @@ export default function RegisterPage() {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [termsAccepted, setTermsAccepted] = useState(false);
+    const [marketingConsent, setMarketingConsent] = useState(false);
     const { register, loginWithGoogle } = useAuth();
     const navigate = useNavigate();
 
@@ -25,9 +29,29 @@ export default function RegisterPage() {
             return setError('Password must be at least 6 characters');
         }
 
+        if (!termsAccepted) {
+            return setError('You must accept the terms and conditions to continue');
+        }
+
         setLoading(true);
         try {
-            await register(email, password, displayName);
+            const user = await register(email, password, displayName);
+
+            // Save consents to Firestore subcollection (may fail if client rules are strict)
+            try {
+                await setDoc(doc(db, 'users', user.uid, 'consents', 'initial'), {
+                    termsAccepted: true,
+                    privacyAccepted: true,
+                    ageConfirmed: true,
+                    marketingConsent: marketingConsent,
+                    acceptedAt: serverTimestamp(),
+                    termsVersion: '1.0',
+                    ipAddress: null // optionally capture server-side
+                });
+            } catch (err) {
+                console.warn('Failed to save granular consents (Firestore rules):', err);
+            }
+
             navigate('/dashboard');
         } catch (err) {
             setError(err.message || 'Failed to create account');
@@ -116,6 +140,29 @@ export default function RegisterPage() {
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             required
                         />
+                    </div>
+
+                    <div className="auth-consents">
+                        <label className="checkbox-field">
+                            <input
+                                type="checkbox"
+                                checked={termsAccepted}
+                                onChange={(e) => setTermsAccepted(e.target.checked)}
+                            />
+                            <span>
+                                I agree to the <Link to="/legal" onClick={e => e.stopPropagation()}>Terms of Service</Link>,{' '}
+                                <Link to="/privacy" onClick={e => e.stopPropagation()}>Privacy Policy</Link>, and confirm I am 18+ years old.
+                            </span>
+                        </label>
+
+                        <label className="checkbox-field">
+                            <input
+                                type="checkbox"
+                                checked={marketingConsent}
+                                onChange={(e) => setMarketingConsent(e.target.checked)}
+                            />
+                            <span>I'd like to receive product updates and tips via email.</span>
+                        </label>
                     </div>
 
                     <button className="btn btn-primary btn-lg" type="submit" disabled={loading}>

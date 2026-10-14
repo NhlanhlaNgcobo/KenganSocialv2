@@ -1,5 +1,21 @@
 import { getFirestore } from '../config/firebase.js';
-import * as youtubeUtil from '../utils/youtube.js';
+
+function mapConnection(doc) {
+    const data = doc.data();
+    const { accessToken, refreshToken, ...safe } = data;
+    return {
+        id: doc.id,
+        platform: safe.platform || doc.id,
+        username: safe.accountName || safe.username || '',
+        photoURL: safe.accountAvatar || safe.photoURL || null,
+        followers: safe.followersCount ?? safe.followers ?? 0,
+        groupName: safe.groupName || null,
+        status: safe.status || 'active',
+        connectedAt: safe.connectedAt || safe.createdAt || null,
+        updatedAt: safe.updatedAt || null,
+        ...safe,
+    };
+}
 
 /**
  * Get all connected social accounts for a workspace.
@@ -15,10 +31,7 @@ export async function getConnections(req, res) {
             .orderBy('updatedAt', 'desc')
             .get();
 
-        const connections = [];
-        snapshot.forEach(doc => {
-            connections.push(doc.data());
-        });
+        const connections = snapshot.docs.map(mapConnection);
 
         res.json({ connections });
     } catch (error) {
@@ -28,61 +41,13 @@ export async function getConnections(req, res) {
 }
 
 /**
- * Mocking the addition of a connection (In a real app, this would be an OAuth callback).
+ * Manual creation is no longer supported for OAuth platforms.
  */
 export async function addConnection(req, res) {
-    try {
-        const db = getFirestore();
-        const { workspaceId } = req.params;
-        const { platform, accountId, username, photoURL, accessToken, refreshToken, expiresAt, groupName } = req.body;
-
-        if (!platform || !accountId) {
-            return res.status(400).json({ error: 'Platform and Account ID are required' });
-        }
-
-        const now = new Date().toISOString();
-        let connectionData = {
-            id: `${platform}_${accountId}`,
-            platform,
-            accountId,
-            username: username || 'User',
-            photoURL: photoURL || null,
-            accessToken,
-            refreshToken: refreshToken || null,
-            expiresAt: expiresAt || null,
-            status: 'active',
-            groupName: groupName || null,
-            createdAt: now,
-            updatedAt: now,
-        };
-
-        // YouTube specific simulation
-        if (platform === 'youtube' && !accessToken) {
-            const mockYoutube = await youtubeUtil.verifyYouTubeTokens('mock_code');
-            connectionData = {
-                ...connectionData,
-                id: `youtube_${mockYoutube.profile.id}`,
-                accountId: mockYoutube.profile.id,
-                username: mockYoutube.profile.title,
-                photoURL: mockYoutube.profile.thumbnails.default.url,
-                accessToken: mockYoutube.accessToken,
-                refreshToken: mockYoutube.refreshToken,
-                expiresAt: new Date(Date.now() + mockYoutube.expiresIn * 1000).toISOString(),
-            };
-        }
-
-        const connectionRef = db.collection('workspaces')
-            .doc(workspaceId)
-            .collection('connections')
-            .doc(connectionData.id);
-
-        await connectionRef.set(connectionData);
-
-        res.status(201).json({ connection: connectionData });
-    } catch (error) {
-        console.error('[Connection Controller] Add connection error:', error);
-        res.status(500).json({ error: 'Failed to add social connection' });
-    }
+    return res.status(405).json({
+        error: 'MANUAL_CONNECTION_CREATION_DISABLED',
+        message: 'Use the OAuth connection flow at /api/connections/:platform/auth-url.',
+    });
 }
 
 /**
@@ -113,7 +78,14 @@ export async function updateConnection(req, res) {
     try {
         const db = getFirestore();
         const { workspaceId, connectionId } = req.params;
-        const updates = req.body;
+        const updates = {
+            ...req.body,
+        };
+
+        delete updates.accessToken;
+        delete updates.refreshToken;
+        delete updates.platform;
+        delete updates.accountId;
 
         updates.updatedAt = new Date().toISOString();
 
@@ -123,7 +95,13 @@ export async function updateConnection(req, res) {
             .doc(connectionId)
             .update(updates);
 
-        res.json({ message: 'Connection updated successfully' });
+        const updatedDoc = await db.collection('workspaces')
+            .doc(workspaceId)
+            .collection('connections')
+            .doc(connectionId)
+            .get();
+
+        res.json({ connection: mapConnection(updatedDoc) });
     } catch (error) {
         console.error('[Connection Controller] Update connection error:', error);
         res.status(500).json({ error: 'Failed to update social connection' });

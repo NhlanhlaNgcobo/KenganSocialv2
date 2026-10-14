@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+python-multipart
+aiohttp
+aiofiles
+firebase-admin
+google-cloud-videointelligence
+faster-whisper
+# faster-whisper passes av.open(metadata_errors=...), which PyAV 19 removed.
+av<19
+scenedetect[opencv]
+opencv-python-headless
+numpy
+# HiGHS linear-programming solver for L1 camera-path stabilization
+scipy
+pydantic
+python-dotenv==1.0.1

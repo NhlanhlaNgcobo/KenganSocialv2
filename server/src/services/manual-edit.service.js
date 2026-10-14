@@ -10,14 +10,21 @@ if (!fs.existsSync(RENDER_DIR)) fs.mkdirSync(RENDER_DIR, { recursive: true });
 // -------------------------------------------------------
 // Upload Storage — keeps source files accessible by uploadId
 // -------------------------------------------------------
-const uploadStore = new Map(); // uploadId -> filePath
+const uploadStore = new Map(); // uploadId -> { filePath, ownerId }
 
-export function storeUpload(uploadId, filePath) {
-    uploadStore.set(uploadId, filePath);
+export function storeUpload(uploadId, filePath, ownerId = null) {
+    uploadStore.set(uploadId, { filePath, ownerId });
 }
 
-export function getUploadPath(uploadId) {
-    return uploadStore.get(uploadId) || null;
+/**
+ * Resolve an upload to its local path. When ownerId is given, uploads made by
+ * another user resolve to null so upload IDs cannot be reused across accounts.
+ */
+export function getUploadPath(uploadId, ownerId = null) {
+    const entry = uploadStore.get(uploadId);
+    if (!entry) return null;
+    if (ownerId && entry.ownerId && entry.ownerId !== ownerId) return null;
+    return entry.filePath;
 }
 
 // -------------------------------------------------------
