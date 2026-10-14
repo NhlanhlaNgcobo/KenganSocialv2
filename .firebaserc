@@ -1,5 +1,7 @@
 {
-  "projects": {},
+  "projects": {
+    "default": "kengansocialv2"
+  },
   "targets": {},
   "etags": {}
 }

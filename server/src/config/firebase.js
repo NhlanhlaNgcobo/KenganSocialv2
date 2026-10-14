@@ -11,22 +11,27 @@ initializeFirebaseAdmin();
 export function initializeFirebaseAdmin() {
     if (admin.apps.length > 0) return;
 
-    let serviceAccount;
+    let credential;
 
     if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-        serviceAccount = JSON.parse(
+        credential = admin.credential.cert(JSON.parse(
             readFileSync(process.env.FIREBASE_SERVICE_ACCOUNT_PATH, 'utf8')
-        );
-    } else {
-        serviceAccount = {
+        ));
+    } else if (process.env.FIREBASE_PRIVATE_KEY) {
+        credential = admin.credential.cert({
             projectId: process.env.FIREBASE_PROJECT_ID,
             clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-        };
+            privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        });
+    } else {
+        // No key configured: fall back to Application Default Credentials
+        // (e.g. `gcloud auth application-default login` for local dev).
+        credential = admin.credential.applicationDefault();
     }
 
     admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+        credential,
+        projectId: process.env.FIREBASE_PROJECT_ID,
         storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
     });
 
