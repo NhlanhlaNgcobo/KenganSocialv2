@@ -11,15 +11,26 @@
    --------------------- */
 :root,
 [data-theme="dark"] {
-  /* Surfaces */
-  --bg-primary: #0a0a0b;
-  --bg-secondary: #121214;
-  --bg-tertiary: #1a1a1e;
-  --bg-elevated: #1f1f24;
-  --bg-card: #131316;
-  --bg-glass: #131316;
-  --bg-hover: rgba(255, 255, 255, 0.05);
-  --bg-inset: #0f0f12;
+  /* Surfaces: frosted glass over a dark backdrop with silver and violet light */
+  --bg-primary: #07070a;
+  --bg-secondary: rgba(255, 255, 255, 0.035);
+  --bg-tertiary: rgba(255, 255, 255, 0.065);
+  --bg-elevated: rgba(30, 29, 40, 0.82);
+  --bg-card: rgba(255, 255, 255, 0.045);
+  --bg-glass: rgba(255, 255, 255, 0.045);
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-inset: rgba(0, 0, 0, 0.28);
+  /* Opaque surface for things that must not show through (menus over content, logo cut) */
+  --bg-solid: #0e0d13;
+  --glass-blur: blur(20px) saturate(160%);
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 38%);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --backdrop:
+    radial-gradient(760px 520px at 38% -6%, rgba(139, 92, 246, 0.34), transparent 62%),
+    radial-gradient(640px 520px at 96% 8%, rgba(99, 102, 241, 0.26), transparent 62%),
+    radial-gradient(520px 420px at 72% 46%, rgba(226, 226, 240, 0.08), transparent 60%),
+    radial-gradient(820px 640px at 62% 112%, rgba(168, 85, 247, 0.26), transparent 60%),
+    radial-gradient(560px 480px at 6% 82%, rgba(79, 70, 229, 0.18), transparent 60%);
 
   /* Text */
   --text-primary: #ededef;
@@ -27,19 +38,19 @@
   --text-muted: #71717a;
   --text-inverse: #0c0c0e;
 
-  /* Accent — Kengan silver on black. Gradient tokens now resolve to it. */
-  --accent-primary: #d4d4d8;
-  --accent-hover: #f4f4f5;
-  --accent-text: #e4e4e7;
+  /* Accent: one violet on silver glass. The logo keeps its silver sheen. */
+  --accent-primary: #8b5cf6;
+  --accent-hover: #9d74f8;
+  --accent-text: #c4b5fd;
   /* Text/icons drawn on top of the accent */
-  --accent-contrast: #0a0a0b;
+  --accent-contrast: #ffffff;
   --brand-sheen: linear-gradient(135deg, #f5f5f7 0%, #a8a8ae 45%, #5c5c62 100%);
   --accent-secondary: var(--accent-text);
-  --accent-soft: rgba(212, 212, 216, 0.12);
-  --accent-glow: rgba(212, 212, 216, 0.14);
-  --gradient-brand: var(--accent-primary);
-  --gradient-brand-hover: var(--accent-hover);
-  --gradient-surface: none;
+  --accent-soft: rgba(139, 92, 246, 0.16);
+  --accent-glow: rgba(139, 92, 246, 0.38);
+  --gradient-brand: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 45%, #6d28d9 100%);
+  --gradient-brand-hover: linear-gradient(135deg, #b9a2fb 0%, #9d74f8 45%, #7c3aed 100%);
+  --gradient-surface: var(--glass-sheen);
 
   /* Status */
   --success: #22c55e;
@@ -52,26 +63,24 @@
   --info-bg: rgba(59, 130, 246, 0.12);
 
   /* Borders */
-  --border-primary: rgba(255, 255, 255, 0.08);
+  --border-primary: rgba(255, 255, 255, 0.09);
   --border-secondary: rgba(255, 255, 255, 0.05);
-  --border-glass: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --border-accent: rgba(212, 212, 216, 0.45);
+  --border-glass: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-accent: rgba(167, 139, 250, 0.55);
   --border-color: var(--border-primary);
 
-  /* Decorative backgrounds are retired */
   --grid-color: transparent;
-  --hero-glow: none;
+  --hero-glow: radial-gradient(circle at center, rgba(139, 92, 246, 0.18) 0%, transparent 70%);
 
-  /* Shadows: depth only where something floats */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45);
-  --shadow-glow: 0 0 0 transparent;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 6px 24px -6px rgba(139, 92, 246, 0.6);
 
   --sidebar-width: 244px;
   --sidebar-collapsed: 68px;
-  --sidebar-bg: #0f0f12;
+  --sidebar-bg: rgba(14, 13, 20, 0.55);
   --header-height: 60px;
 
   --radius-sm: 6px;
@@ -94,40 +103,54 @@
    Tokens — Light
    --------------------- */
 [data-theme="light"] {
-  --bg-primary: #f7f7f5;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #f0f0ee;
-  --bg-elevated: #ffffff;
-  --bg-card: #ffffff;
-  --bg-glass: #ffffff;
-  --bg-hover: rgba(0, 0, 0, 0.04);
-  --bg-inset: #f2f2f0;
+  /* Pearl glass over soft silver and lavender light */
+  --bg-primary: #f3f2f7;
+  --bg-secondary: rgba(255, 255, 255, 0.55);
+  --bg-tertiary: rgba(255, 255, 255, 0.75);
+  --bg-elevated: rgba(255, 255, 255, 0.9);
+  --bg-card: rgba(255, 255, 255, 0.6);
+  --bg-glass: rgba(255, 255, 255, 0.6);
+  --bg-hover: rgba(76, 29, 149, 0.05);
+  --bg-inset: rgba(255, 255, 255, 0.55);
+  --bg-solid: #f7f6fb;
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 45%);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --backdrop:
+    radial-gradient(760px 520px at 38% -6%, rgba(167, 139, 250, 0.38), transparent 62%),
+    radial-gradient(640px 520px at 96% 8%, rgba(129, 140, 248, 0.3), transparent 62%),
+    radial-gradient(520px 420px at 72% 46%, rgba(203, 213, 225, 0.55), transparent 60%),
+    radial-gradient(820px 640px at 62% 112%, rgba(216, 180, 254, 0.42), transparent 60%),
+    radial-gradient(560px 480px at 6% 82%, rgba(165, 180, 252, 0.3), transparent 60%);
 
-  --text-primary: #18181b;
-  --text-secondary: #52525b;
-  --text-muted: #8a8a93;
+  --text-primary: #17151f;
+  --text-secondary: #4f4b5c;
+  --text-muted: #85818f;
   --text-inverse: #fafafa;
 
-  /* Accent — near-black on white */
-  --accent-primary: #18181b;
-  --accent-hover: #3f3f46;
-  --accent-text: #3f3f46;
-  --accent-contrast: #fafafa;
-  --accent-soft: rgba(24, 24, 27, 0.07);
-  --accent-glow: rgba(24, 24, 27, 0.1);
-  --border-accent: rgba(24, 24, 27, 0.4);
+  /* Accent: the same violet, a shade deeper for contrast on white */
+  --accent-primary: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-text: #6d28d9;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgba(124, 58, 237, 0.1);
+  --accent-glow: rgba(124, 58, 237, 0.25);
+  --border-accent: rgba(124, 58, 237, 0.45);
+  --gradient-brand: linear-gradient(135deg, #9f7aea 0%, #7c3aed 50%, #5b21b6 100%);
+  --gradient-brand-hover: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 50%, #4c1d95 100%);
   --brand-sheen: linear-gradient(135deg, #3a3a3e 0%, #8e8e95 50%, #1a1a1c 100%);
+  --hero-glow: radial-gradient(circle at center, rgba(124, 58, 237, 0.12) 0%, transparent 70%);
 
-  --border-primary: rgba(0, 0, 0, 0.09);
-  --border-secondary: rgba(0, 0, 0, 0.05);
-  --border-glass: rgba(0, 0, 0, 0.09);
-  --border-strong: rgba(0, 0, 0, 0.16);
+  --border-primary: rgba(23, 21, 31, 0.08);
+  --border-secondary: rgba(23, 21, 31, 0.05);
+  --border-glass: rgba(255, 255, 255, 0.85);
+  --border-strong: rgba(23, 21, 31, 0.16);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0 1px 2px rgba(30, 20, 60, 0.06);
+  --shadow-md: 0 8px 24px rgba(30, 20, 60, 0.08);
+  --shadow-lg: 0 24px 60px rgba(30, 20, 60, 0.14);
+  --shadow-glow: 0 6px 20px -6px rgba(124, 58, 237, 0.5);
 
-  --sidebar-bg: #fbfbfa;
+  --sidebar-bg: rgba(255, 255, 255, 0.5);
   color-scheme: light;
 }
 
@@ -155,6 +178,27 @@ body {
   line-height: 1.55;
   min-height: 100vh;
   font-feature-settings: 'ss01', 'cv11';
+}
+
+/* The light behind the glass: fixed, so panels keep their glow while the page scrolls. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -10%;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--backdrop);
+  animation: backdropDrift 26s ease-in-out infinite alternate;
+}
+
+@keyframes backdropDrift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(-2%, 2%, 0) scale(1.05);
+  }
 }
 
 a {
@@ -228,9 +272,10 @@ h4 {
 
 /* Gradient text is retired: keep the class, drop the effect. */
 .text-gradient {
-  background: none !important;
-  -webkit-text-fill-color: currentColor !important;
-  color: var(--accent-text) !important;
+  background: linear-gradient(120deg, var(--text-primary) 0%, var(--accent-text) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .muted {
@@ -256,9 +301,13 @@ h4 {
   font-size: 0.875rem;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-base), transform var(--transition-fast);
   white-space: nowrap;
   position: relative;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .btn:disabled {
@@ -267,18 +316,22 @@ h4 {
 }
 
 .btn-primary {
-  background: var(--accent-primary);
+  background: var(--gradient-brand);
   color: var(--accent-contrast);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: var(--shadow-glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--gradient-brand-hover);
+  box-shadow: 0 8px 30px -6px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .btn-secondary {
   background: var(--bg-tertiary);
   color: var(--text-primary);
   border-color: var(--border-primary);
+  box-shadow: var(--glass-edge);
 }
 
 .btn-secondary:hover:not(:disabled) {
@@ -377,26 +430,31 @@ input[type='radio'] {
 /* ---------------------
    Cards & surfaces
    --------------------- */
+/* Frosted glass: translucent fill, a sheen across the top, a bright top edge. */
 .card,
 .surface {
-  background: var(--bg-card);
+  background: var(--glass-sheen), var(--bg-card);
   border: 1px solid var(--border-primary);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   padding: 20px;
+  box-shadow: var(--glass-edge), var(--shadow-md);
 }
 
 .card {
-  transition: border-color var(--transition-base);
+  transition: border-color var(--transition-base), transform var(--transition-base), box-shadow var(--transition-base);
 }
 
 .card:hover {
   border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--glass-edge), var(--shadow-lg);
 }
 
 .card-glass,
 .glass {
-  background: var(--bg-card);
+  background: var(--glass-sheen), var(--bg-card);
   border: 1px solid var(--border-primary);
+  box-shadow: var(--glass-edge);
 }
 
 /* ---------------------
@@ -499,9 +557,9 @@ input[type='radio'] {
 }
 
 .segmented button.is-active {
-  background: var(--bg-elevated);
+  background: var(--accent-soft);
   color: var(--text-primary);
-  box-shadow: var(--shadow-sm);
+  box-shadow: inset 0 0 0 1px var(--border-accent), var(--shadow-sm);
 }
 
 /* Form fields */
@@ -566,7 +624,13 @@ input[type='radio'] {
 }
 
 .page-head h1 {
-  font-size: 1.6rem;
+  font-size: 1.75rem;
+  letter-spacing: -0.025em;
+  width: fit-content;
+  background: linear-gradient(110deg, var(--text-primary) 30%, var(--accent-text) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .page-head p {
@@ -622,8 +686,7 @@ input[type='radio'] {
 /* ---------------------
    Retired decorative backgrounds (classes kept, effects removed)
    --------------------- */
-.bg-grid,
-.bg-glow {
+.bg-grid {
   background: none !important;
 }
 
@@ -731,7 +794,9 @@ input[type='radio'] {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(5, 4, 12, 0.5);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -744,7 +809,12 @@ input[type='radio'] {
   max-width: 520px;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: var(--shadow-lg);
+  background: var(--glass-sheen), var(--bg-elevated);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--glass-edge), var(--shadow-lg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
 .modal-header {

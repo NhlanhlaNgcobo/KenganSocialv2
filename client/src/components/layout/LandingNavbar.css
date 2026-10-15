@@ -3,8 +3,10 @@
     inset: 0 0 auto 0;
     height: 60px;
     z-index: 1000;
-    background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+    background: color-mix(in srgb, var(--bg-primary) 55%, transparent);
     border-bottom: 1px solid var(--border-primary);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
 }
 
 .landing-nav__container {

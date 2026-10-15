@@ -231,7 +231,9 @@
     right: -450px;
     width: 450px;
     height: 100vh;
-    background: var(--bg-secondary);
+    background: var(--bg-elevated);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
     border-left: 1px solid var(--border-primary);
     box-shadow: var(--shadow-lg);
     transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);

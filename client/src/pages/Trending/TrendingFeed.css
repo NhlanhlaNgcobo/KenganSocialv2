@@ -12,7 +12,9 @@
     position: sticky;
     top: 0;
     z-index: 100;
-    background: var(--bg-secondary);
+    background: var(--bg-elevated);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
     border-bottom: 1px solid var(--border-primary);
     padding: 12px 16px;
     display: flex;

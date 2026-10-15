@@ -97,11 +97,24 @@
     cursor: pointer;
     color: var(--text-primary);
     font: inherit;
-    transition: border-color var(--transition-base);
+    transition: border-color var(--transition-base), transform var(--transition-base), box-shadow var(--transition-base);
 }
 
 .marketing-card:hover {
-    border-color: var(--border-strong);
+    border-color: var(--border-accent);
+    transform: translateY(-3px);
+    box-shadow: var(--glass-edge), 0 18px 40px -18px var(--accent-glow);
+}
+
+/* Icon in a small violet glass tile */
+.marketing-card > svg {
+    box-sizing: content-box;
+    padding: 9px;
+    margin-bottom: 6px;
+    border-radius: 10px;
+    color: var(--accent-text);
+    background: linear-gradient(135deg, var(--accent-soft), rgba(139, 92, 246, 0.04));
+    border: 1px solid rgba(167, 139, 250, 0.25);
 }
 
 .marketing-card .badge {
@@ -758,10 +771,10 @@ small.is-error {
     width: 36px;
     height: 36px;
     flex-shrink: 0;
-    border-radius: var(--radius-md);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-primary);
-    color: var(--text-secondary);
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent-soft), rgba(139, 92, 246, 0.04));
+    border: 1px solid rgba(167, 139, 250, 0.25);
+    color: var(--accent-text);
 }
 
 .marketing-setup__result {

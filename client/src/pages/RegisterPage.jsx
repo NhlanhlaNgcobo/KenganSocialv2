@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
@@ -9,8 +9,10 @@ import './Auth.css';
 const MIN_PASSWORD_LENGTH = 8;
 
 export default function RegisterPage() {
+    // The landing page can hand over the email typed into its sign-up box.
+    const location = useLocation();
     const [displayName, setDisplayName] = useState('');
-    const [email, setEmail] = useState('');
+    const [email, setEmail] = useState(typeof location.state?.email === 'string' ? location.state.email.slice(0, 254) : '');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');

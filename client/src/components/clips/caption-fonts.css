@@ -1,0 +1,23 @@
+/* Caption fonts (SIL Open Font Licence), the same files the server burns in. */
+@font-face {
+  font-family: 'Kengan Poppins';
+  src: url('/fonts/captions/Poppins-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Kengan Poppins';
+  src: url('/fonts/captions/Poppins-Black.ttf') format('truetype');
+  font-weight: 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Kengan Anton';
+  src: url('/fonts/captions/Anton-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Kengan Bebas';
+  src: url('/fonts/captions/BebasNeue-Regular.ttf') format('truetype');
+  font-display: swap;
+}

@@ -12,10 +12,10 @@
     --ke-text-3: #71717a;
     /* The editor is always dark, so its accent is fixed rather than following the app theme
        (the light theme's near-black accent would vanish on these panels). */
-    --ke-accent: #d4d4d8;
-    --ke-accent-2: #f4f4f5;
-    --ke-accent-soft: rgba(212, 212, 216, 0.12);
-    --ke-accent-contrast: #0a0a0b;
+    --ke-accent: #8b5cf6;
+    --ke-accent-2: #a78bfa;
+    --ke-accent-soft: rgba(139, 92, 246, 0.16);
+    --ke-accent-contrast: #ffffff;
     --ke-danger: #ef4444;
     --ke-ok: #10b981;
     --ke-media: #3b6fd8;
