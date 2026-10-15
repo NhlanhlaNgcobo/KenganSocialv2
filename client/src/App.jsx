@@ -7,7 +7,6 @@ import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
-import FeaturePage from './pages/FeaturePage';
 
 import {
   Link2,
@@ -45,6 +44,7 @@ import DMManager from './pages/DM/DMManager';
 import LaunchPage from './pages/Launch/LaunchPage';
 import ClipsPage from './pages/Clips/ClipsPage';
 import RepurposePage from './pages/Repurpose/RepurposePage';
+import MarketingPage from './pages/Marketing/MarketingPage';
 
 function App() {
   return (
@@ -103,6 +103,7 @@ function App() {
                 <Route path="launch" element={<LaunchPage />} />
                 <Route path="clips" element={<ClipsPage />} />
                 <Route path="repurpose" element={<RepurposePage />} />
+                <Route path="marketing" element={<MarketingPage />} />
                 {/* Video editor moved to /editor for full-screen layout */}
               </Route>
 

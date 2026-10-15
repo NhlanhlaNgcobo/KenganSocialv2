@@ -1,15 +1,15 @@
 .dm-manager-container {
     display: flex;
     height: 100vh;
-    background: var(--bg-primary, #111111);
-    color: var(--text-primary, #ffffff);
+    background: var(--bg-primary);
+    color: var(--text-primary);
     overflow: hidden;
 }
 
 .dm-sidebar {
     width: 250px;
-    background: var(--bg-secondary, #1a1a1a);
-    border-right: 1px solid var(--border-primary, #333);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-primary);
     display: flex;
     flex-direction: column;
 }
@@ -33,7 +33,7 @@
     gap: 12px;
     background: transparent;
     border: none;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
     padding: 12px 16px;
     border-radius: 8px;
     cursor: pointer;
@@ -44,8 +44,8 @@
 }
 
 .nav-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: white;
+    background: var(--bg-hover);
+    color: var(--text-primary);
 }
 
 .nav-btn.active {
@@ -53,9 +53,9 @@
     color: var(--accent-contrast);
 }
 
-.badge {
-    background: #ef4444;
-    color: white;
+.dm-count-badge {
+    background: var(--error);
+    color: #fff;
     padding: 2px 6px;
     border-radius: 12px;
     font-size: 0.7rem;
@@ -80,7 +80,7 @@
     align-items: center;
     margin-bottom: 32px;
     padding-bottom: 24px;
-    border-bottom: 1px solid var(--border-primary, #333);
+    border-bottom: 1px solid var(--border-primary);
 }
 
 .view-header h3 {
@@ -96,8 +96,8 @@
 }
 
 .queue-card {
-    background: var(--bg-secondary, #1a1a1a);
-    border: 1px solid var(--border-primary, #333);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
     border-radius: 12px;
     padding: 24px;
     display: flex;
@@ -112,8 +112,8 @@
 }
 
 .platform-tag {
-    background: #3b82f6;
-    color: white;
+    background: var(--info);
+    color: #fff;
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 0.7rem;
@@ -125,13 +125,13 @@
     font-size: 1.05rem;
     margin: 0;
     padding-left: 12px;
-    border-left: 3px solid var(--border-primary, #444);
-    color: #ddd;
+    border-left: 3px solid var(--border-primary);
+    color: var(--text-secondary);
     font-style: italic;
 }
 
 .reply-box {
-    background: var(--bg-tertiary, #222);
+    background: var(--bg-tertiary);
     border-radius: 8px;
     padding: 16px;
     position: relative;
@@ -141,7 +141,7 @@
     position: absolute;
     top: -10px;
     right: 16px;
-    background: var(--gradient-brand, linear-gradient(90deg, var(--accent-primary), #ec4899));
+    background: var(--gradient-brand);
     color: var(--accent-contrast);
     padding: 4px 10px;
     border-radius: 12px;
@@ -153,14 +153,14 @@
     margin: 0;
     font-size: 0.95rem;
     line-height: 1.5;
-    color: #fff;
+    color: var(--text-primary);
 }
 
 .edit-textarea {
     width: 100%;
-    background: #111;
-    border: 1px solid #444;
-    color: white;
+    background: var(--bg-inset);
+    border: 1px solid var(--border-strong);
+    color: var(--text-primary);
     font-family: inherit;
     font-size: 0.95rem;
     padding: 12px;
@@ -183,8 +183,8 @@
 }
 
 .auto-card {
-    background: var(--bg-secondary, #1a1a1a);
-    border: 1px solid var(--border-primary, #333);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
     border-radius: 12px;
     padding: 20px;
     display: flex;
@@ -197,7 +197,7 @@
     opacity: 0.6;
 }
 
-.card-top {
+.dm-manager-container .card-top {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -205,8 +205,8 @@
 
 .keyword-chip {
     display: inline-block;
-    background: rgba(16, 185, 129, 0.1);
-    color: #10b981;
+    background: var(--success-bg);
+    color: var(--success);
     border: 1px solid rgba(16, 185, 129, 0.3);
     padding: 4px 10px;
     border-radius: 16px;
@@ -215,15 +215,15 @@
 }
 
 .reply-preview {
-    background: var(--bg-tertiary, #222);
+    background: var(--bg-tertiary);
     padding: 12px;
     border-radius: 8px;
     font-size: 0.9rem;
-    color: #bbb;
+    color: var(--text-secondary);
 }
 
 .reply-preview small {
-    color: #888;
+    color: var(--text-muted);
     display: block;
     margin-bottom: 4px;
 }
@@ -233,23 +233,23 @@
     line-height: 1.4;
 }
 
-.card-footer {
+.dm-manager-container .card-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-top: 1px solid var(--border-primary, #333);
+    border-top: 1px solid var(--border-primary);
     padding-top: 16px;
     margin-top: auto;
     font-size: 0.85rem;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
 }
 
-.danger {
-    color: #ef4444 !important;
+.dm-manager-container .danger {
+    color: var(--error) !important;
 }
 
 /* ── BUTTONS & UI ── */
-.btn-primary {
+.dm-manager-container .btn-primary {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -262,89 +262,132 @@
     cursor: pointer;
 }
 
-.btn-outline {
+.dm-manager-container .btn-outline {
     display: flex;
     align-items: center;
     gap: 8px;
     background: transparent;
-    color: white;
-    border: 1px solid var(--border-primary, #555);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
     padding: 10px 16px;
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
 }
 
-.btn-ghost {
+.dm-manager-container .btn-ghost {
     background: transparent;
-    color: var(--text-muted, #aaa);
+    color: var(--text-muted);
     border: none;
     padding: 10px 16px;
     cursor: pointer;
     font-weight: 600;
 }
 
-.btn-ghost:hover {
-    color: white;
+.dm-manager-container .btn-ghost:hover {
+    color: var(--text-primary);
 }
 
-.btn-icon {
+.dm-manager-container .btn-icon {
     background: transparent;
     border: none;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-.empty-state {
+.dm-manager-container .empty-state {
     text-align: center;
     padding: 48px;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
     font-size: 1.1rem;
 }
 
 /* Modals */
-.modal-overlay {
+.dm-manager-container .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.6);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 2000;
 }
 
-.modal-content {
-    background: var(--bg-secondary, #1a1a1a);
-    border: 1px solid var(--border-primary, #333);
+.dm-manager-container .modal-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
     padding: 32px;
     border-radius: 12px;
     width: 450px;
 }
 
-.form-group {
+.dm-manager-container .form-group {
     margin-bottom: 20px;
 }
 
-.form-group label {
+.dm-manager-container .form-group label {
     display: block;
     font-size: 0.85rem;
     font-weight: 600;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
     margin-bottom: 8px;
 }
 
 .input-dark {
     width: 100%;
-    background: var(--bg-tertiary, #222);
-    border: 1px solid var(--border-primary, #444);
-    color: white;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    color: var(--text-primary);
     padding: 10px 12px;
     border-radius: 6px;
     font-family: inherit;
     font-size: 0.95rem;
+}
+
+.dm-manager-container .btn-primary:disabled,
+.dm-manager-container .btn-outline:disabled,
+.dm-manager-container .btn-ghost:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.dm-manager-container .modal-content {
+    max-width: calc(100vw - 32px);
+}
+
+.dm-error {
+    background: var(--error-bg);
+    color: var(--error);
+    border: 1px solid var(--error);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+}
+
+.dm-hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.dm-hint a {
+    color: var(--accent-text);
+}
+
+.dm-hint--warning {
+    color: var(--warning);
+}
+
+.dm-toggle-on {
+    color: var(--success);
+}
+
+.dm-toggle-off {
+    color: var(--text-muted);
 }
 
 /* Mobile */
@@ -356,7 +399,7 @@
     .dm-sidebar {
         width: 100%;
         border-right: none;
-        border-bottom: 1px solid var(--border-primary, #333);
+        border-bottom: 1px solid var(--border-primary);
     }
 
     .dm-nav {

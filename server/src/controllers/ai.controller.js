@@ -1,5 +1,5 @@
 import { getFirestore } from '../config/firebase.js';
-import { generateContent, generateMedia } from '../services/ai.service.js';
+import { generateContent, generateMedia, mediaGenerationAvailable, IMAGE_GENERATION_UNAVAILABLE } from '../services/ai.service.js';
 import {
     parseCaptions,
     exportToSrt,
@@ -83,9 +83,11 @@ export async function generateAI(req, res) {
 
 /**
  * POST /api/ai/generate-media
- * Generate media (image/video concept storyboard) using Dall-E 3 based on generated text prompts.
- * Deducts 2 credits per generation.
+ * Generate a real image for AI-written copy (image-gen adapter: Pollinations or OpenRouter),
+ * store it in our storage and return its URL. Costs 2 credits, deducted only after success.
  */
+const MEDIA_COST = 2;
+
 export async function generateMediaRequest(req, res) {
     try {
         const db = getFirestore();
@@ -93,7 +95,12 @@ export async function generateMediaRequest(req, res) {
         const uid = req.user.uid;
 
         if (!prompt || !workspaceId) {
-            return res.status(400).json({ error: 'Prompt and Workspace ID are required' });
+            return res.status(400).json({ error: 'MISSING_FIELDS', message: 'Write some copy first, then generate an image for it.' });
+        }
+
+        // Not configured: say so and charge nothing.
+        if (!mediaGenerationAvailable()) {
+            return res.status(503).json({ error: 'IMAGE_GENERATION_UNAVAILABLE', message: IMAGE_GENERATION_UNAVAILABLE });
         }
 
         // 1. Credit check
@@ -107,17 +114,30 @@ export async function generateMediaRequest(req, res) {
         const workspaceData = workspaceDoc.data();
         const currentCredits = workspaceData.credits !== undefined ? workspaceData.credits : 50;
 
-        if (currentCredits < 2) {
-            return res.status(402).json({ error: 'Insufficient AI credits. Media generation costs 2 credits.' });
+        if (currentCredits < MEDIA_COST) {
+            return res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: `You need ${MEDIA_COST} AI credits to generate an image.` });
         }
 
-        // 2. Generate media
-        const mediaResult = await generateMedia(prompt, type || 'image');
+        // 2. Generate and store the image. Nothing is charged if this fails.
+        let mediaResult;
+        try {
+            mediaResult = await generateMedia(String(prompt), type || 'image', { workspaceId });
+        } catch (error) {
+            console.error('[AI Controller] Image generation failed:', error.message);
+            const status = error.status === 503 ? 503 : 502;
+            return res.status(status).json({
+                error: status === 503 ? 'IMAGE_GENERATION_UNAVAILABLE' : 'IMAGE_GENERATION_FAILED',
+                message: status === 503 ? IMAGE_GENERATION_UNAVAILABLE : "The image couldn't be generated. No credits were used. Try again in a moment.",
+            });
+        }
 
-        // 3. Deduct credits
-        await workspaceRef.update({
-            credits: currentCredits - 2,
-            updatedAt: new Date().toISOString(),
+        // 3. Deduct credits (transaction, so concurrent requests can't double-spend)
+        const remainingCredits = await db.runTransaction(async (tx) => {
+            const snap = await tx.get(workspaceRef);
+            const credits = snap.data()?.credits !== undefined ? snap.data().credits : 50;
+            const next = Math.max(0, credits - MEDIA_COST);
+            tx.update(workspaceRef, { credits: next, updatedAt: new Date().toISOString() });
+            return next;
         });
 
         // 4. Log usage
@@ -126,21 +146,29 @@ export async function generateMediaRequest(req, res) {
             workspaceId,
             action: 'media_generation',
             type: mediaResult.type,
-            provider: 'dall-e-3',
-            promptSnippet: prompt.substring(0, 100),
-            creditsDeducted: 2,
+            provider: `${mediaResult.provider}:${mediaResult.model}`,
+            promptSnippet: String(prompt).substring(0, 100),
+            creditsDeducted: MEDIA_COST,
             timestamp: new Date().toISOString(),
         });
 
         res.json({
             mediaUrl: mediaResult.url,
             mediaType: mediaResult.type,
-            remainingCredits: currentCredits - 2,
+            remainingCredits,
         });
     } catch (error) {
         console.error('[AI Controller] Media generation error:', error);
-        res.status(500).json({ error: error.message || 'Media generation failed' });
+        res.status(500).json({ error: 'MEDIA_GENERATION_FAILED', message: 'Image generation failed. Try again.' });
     }
+}
+
+/**
+ * GET /api/ai/status
+ * Which optional AI features are configured on this server.
+ */
+export function getAiStatus(_req, res) {
+    res.json({ imageGeneration: mediaGenerationAvailable() });
 }
 
 // -------------------------------------------------------
@@ -209,7 +237,15 @@ export async function parseSrtFile(req, res) {
             return res.status(400).json({ error: 'SRT content is required' });
         }
 
+        if (typeof srtContent !== 'string' || srtContent.length > 2 * 1024 * 1024) {
+            return res.status(400).json({ error: 'INVALID_SRT', message: 'Upload a text .srt file under 2 MB.' });
+        }
+
+        // Always a plain Caption[] (never the { captions } wrapper @remotion/captions returns).
         const captions = parseCaptions(srtContent);
+        if (!captions.length) {
+            return res.status(400).json({ error: 'EMPTY_SRT', message: "That file doesn't contain any captions we could read." });
+        }
 
         res.json({
             captions,
@@ -217,7 +253,7 @@ export async function parseSrtFile(req, res) {
         });
     } catch (error) {
         console.error('[AI Controller] SRT parse error:', error);
-        res.status(500).json({ error: 'Failed to parse SRT file' });
+        res.status(400).json({ error: 'INVALID_SRT', message: "That file couldn't be read as SRT captions." });
     }
 }
 
@@ -237,7 +273,7 @@ export async function exportSrtFile(req, res) {
         res.json({ srt });
     } catch (error) {
         console.error('[AI Controller] SRT export error:', error);
-        res.status(500).json({ error: 'Failed to export SRT' });
+        res.status(500).json({ error: 'SRT_EXPORT_FAILED', message: "The captions couldn't be exported. Try again." });
     }
 }
 

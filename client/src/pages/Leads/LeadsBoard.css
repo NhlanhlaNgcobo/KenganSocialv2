@@ -2,8 +2,8 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
-    background: var(--bg-primary, #111111);
-    color: var(--text-primary, #ffffff);
+    background: var(--bg-primary);
+    color: var(--text-primary);
     overflow: hidden;
     position: relative;
 }
@@ -13,16 +13,16 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid var(--border-primary, #333);
-    background: var(--bg-secondary, #1a1a1a);
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
 }
 
 .search-box {
     display: flex;
     align-items: center;
     gap: 8px;
-    background: var(--bg-tertiary, #222);
-    border: 1px solid var(--border-primary, #444);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
     padding: 8px 12px;
     border-radius: 8px;
     flex: 1;
@@ -32,7 +32,7 @@
 .search-box input {
     background: transparent;
     border: none;
-    color: white;
+    color: var(--text-primary);
     width: 100%;
     font-size: 0.9rem;
     outline: none;
@@ -53,9 +53,9 @@
 
 .kanban-column {
     flex: 0 0 320px;
-    background: var(--bg-secondary, #1a1a1a);
+    background: var(--bg-secondary);
     border-radius: 12px;
-    border: 1px solid var(--border-primary, #333);
+    border: 1px solid var(--border-primary);
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -64,7 +64,7 @@
 
 .column-header {
     padding: 16px;
-    border-bottom: 1px solid var(--border-primary, #333);
+    border-bottom: 1px solid var(--border-primary);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -78,8 +78,8 @@
 }
 
 .count-badge {
-    background: var(--bg-tertiary, #333);
-    color: var(--text-muted, #aaa);
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
     padding: 4px 8px;
     border-radius: 12px;
     font-size: 0.75rem;
@@ -97,8 +97,8 @@
 
 /* Card Styles */
 .lead-card {
-    background: var(--bg-tertiary, #222);
-    border: 1px solid var(--border-primary, #444);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
     border-radius: 8px;
     padding: 16px;
     cursor: grab;
@@ -107,14 +107,14 @@
 
 .lead-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-md);
 }
 
 .lead-card:active {
     cursor: grabbing;
 }
 
-.card-top {
+.kanban-wrapper .card-top {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -124,13 +124,13 @@
 .avatar-placeholder {
     width: 36px;
     height: 36px;
-    background: var(--bg-secondary, #111);
-    border: 1px solid #444;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-strong);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #888;
+    color: var(--text-muted);
 }
 
 .card-info {
@@ -146,13 +146,13 @@
 
 .card-info span {
     font-size: 0.75rem;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
 }
 
 .more-btn {
     background: transparent;
     border: none;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
     cursor: pointer;
 }
 
@@ -184,20 +184,29 @@
 }
 
 .tier-cold {
-    color: #3b82f6;
-    background: rgba(59, 130, 246, 0.1);
+    color: var(--info);
+    background: var(--info-bg);
     border: 1px solid rgba(59, 130, 246, 0.2);
 }
 
+/* Hot/warm hues are darkened in light mode so the text stays readable on white. */
+[data-theme="light"] .tier-hot {
+    color: #a16207;
+}
+
+[data-theme="light"] .tier-warm {
+    color: #c2410c;
+}
+
 .tier-prospect {
-    color: #888;
-    background: rgba(136, 136, 136, 0.1);
-    border: 1px solid rgba(136, 136, 136, 0.2);
+    color: var(--text-muted);
+    background: var(--bg-hover);
+    border: 1px solid var(--border-primary);
 }
 
 .followers-count {
     font-size: 0.75rem;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
 }
 
 .tag-row {
@@ -222,9 +231,9 @@
     right: -450px;
     width: 450px;
     height: 100vh;
-    background: var(--bg-secondary, #1a1a1a);
-    border-left: 1px solid var(--border-primary, #333);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.5);
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-primary);
+    box-shadow: var(--shadow-lg);
     transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 200;
     overflow-y: auto;
@@ -252,7 +261,7 @@
     right: 24px;
     background: transparent;
     border: none;
-    color: white;
+    color: var(--text-primary);
     font-size: 1.5rem;
     cursor: pointer;
 }
@@ -272,7 +281,7 @@
 
 .panel-section h4 {
     font-size: 0.9rem;
-    color: var(--text-muted, #aaa);
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 16px;
@@ -284,9 +293,9 @@
 .notes-area {
     width: 100%;
     min-height: 120px;
-    background: var(--bg-tertiary, #222);
-    border: 1px solid var(--border-primary, #444);
-    color: white;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    color: var(--text-primary);
     padding: 12px;
     border-radius: 8px;
     font-family: inherit;
@@ -298,44 +307,6 @@
     flex-direction: column;
     gap: 12px;
     margin-top: auto;
-}
-
-/* Score Bars */
-.breakdown-bars {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.bar-row span {
-    font-size: 0.8rem;
-    margin-bottom: 6px;
-    display: block;
-}
-
-.bar-bg {
-    width: 100%;
-    height: 8px;
-    background: #333;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.bar-fill {
-    height: 100%;
-    border-radius: 4px;
-}
-
-.bar-fill.profile {
-    background: var(--accent-primary);
-}
-
-.bar-fill.engage {
-    background: #ec4899;
-}
-
-.bar-fill.recent {
-    background: #10b981;
 }
 
 .upgrade-lock {
@@ -385,20 +356,100 @@
     cursor: pointer;
 }
 
-.btn-outline {
+.kanban-wrapper .btn-outline {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
     background: transparent;
-    color: white;
-    border: 1px solid var(--border-primary, #555);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
     padding: 10px 16px;
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
 }
 
-.full-width {
+.kanban-wrapper .full-width {
     width: 100%;
+}
+.kanban-wrapper .btn-primary:disabled,
+.kanban-wrapper .btn-outline:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.kanban-column--lost {
+    opacity: 0.85;
+}
+
+.leads-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.leads-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 24px 0;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    border: 1px solid var(--border-primary);
+}
+
+.leads-banner span {
+    flex: 1;
+}
+
+.panel-content .leads-banner {
+    margin: 0 0 24px;
+}
+
+.leads-banner--error {
+    background: var(--error-bg);
+    color: var(--error);
+}
+
+.leads-banner--success {
+    background: var(--success-bg);
+    color: var(--success);
+}
+
+.leads-banner__close {
+    display: inline-flex;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 2px;
+}
+
+.lead-signals {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 16px;
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+.lead-signals dt {
+    color: var(--text-muted);
+}
+
+.lead-signals dd {
+    margin: 0;
+    color: var(--text-primary);
+    text-align: right;
+}
+
+.lead-hint {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
 }

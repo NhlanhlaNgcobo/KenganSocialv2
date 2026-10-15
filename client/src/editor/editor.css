@@ -10,9 +10,12 @@
     --ke-text: #f4f4f5;
     --ke-text-2: #a1a1aa;
     --ke-text-3: #71717a;
-    --ke-accent: var(--accent-primary);
-    --ke-accent-2: var(--accent-hover);
-    --ke-accent-soft: var(--accent-soft);
+    /* The editor is always dark, so its accent is fixed rather than following the app theme
+       (the light theme's near-black accent would vanish on these panels). */
+    --ke-accent: #d4d4d8;
+    --ke-accent-2: #f4f4f5;
+    --ke-accent-soft: rgba(212, 212, 216, 0.12);
+    --ke-accent-contrast: #0a0a0b;
     --ke-danger: #ef4444;
     --ke-ok: #10b981;
     --ke-media: #3b6fd8;
@@ -20,6 +23,8 @@
     --ke-audio: #7c4fb8;
     --ke-playhead: #f43f5e;
     --ke-radius: 10px;
+
+    color-scheme: dark;
 
     position: fixed;
     inset: 0;
@@ -98,11 +103,11 @@
 .ke-btn--primary {
     background: var(--ke-accent);
     border-color: var(--ke-accent);
-    color: var(--accent-contrast);
+    color: var(--ke-accent-contrast);
 }
 
 .ke-btn--primary:hover:not(:disabled) {
-    background: #c93f10;
+    background: var(--ke-accent-2);
 }
 
 .ke-btn--ghost {

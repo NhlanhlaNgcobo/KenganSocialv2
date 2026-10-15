@@ -2,7 +2,8 @@ import axios from 'axios';
 import admin from 'firebase-admin';
 import { probe } from '../ffmpeg-runner.js';
 import { CLIP_LENGTHS, findClips } from './find-clips.js';
-import { CAPTION_STYLES, RATIOS, renderClip } from './render-clip.js';
+import { capLength, PLATFORMS } from './platforms.js';
+import { CAPTION_STYLES, LAYOUTS, RATIOS, renderClip } from './render-clip.js';
 import { normalizeWords } from './transcript.js';
 
 /**
@@ -11,20 +12,27 @@ import { normalizeWords } from './transcript.js';
  * transcript → render each clip reframed with captions.
  */
 
-export { CAPTION_STYLES, CLIP_LENGTHS, RATIOS };
+export { CAPTION_STYLES, CLIP_LENGTHS, LAYOUTS, PLATFORMS, RATIOS };
 
 const PYTHON_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
 
 export function normalizeClipRequest(body = {}) {
     const count = Math.round(Number(body.count) || 5);
+    // A platform target (TikTok / Shorts / Reels) fixes the ratio and caps the length.
+    const platform = PLATFORMS[body.platform] ? body.platform : null;
+    const preset = platform ? PLATFORMS[platform] : null;
+    const length = CLIP_LENGTHS[body.length] ? body.length : preset?.length || 'short';
     return {
         sourceUploadId: typeof body.sourceUploadId === 'string' ? body.sourceUploadId : '',
         sourceName: typeof body.sourceName === 'string' ? body.sourceName.slice(0, 120) : 'Video',
         count: Math.min(10, Math.max(1, count)),
-        length: CLIP_LENGTHS[body.length] ? body.length : 'short',
-        ratio: RATIOS[body.ratio] ? body.ratio : '9:16',
+        platform,
+        length: capLength(platform, length),
+        ratio: preset ? preset.ratio : RATIOS[body.ratio] ? body.ratio : '9:16',
+        layout: LAYOUTS[body.layout] ? body.layout : 'auto',
         captionStyle: CAPTION_STYLES[body.captionStyle] ? body.captionStyle : 'bold',
         hookTitle: body.hookTitle !== false,
+        progressBar: body.progressBar === true,
         prompt: typeof body.prompt === 'string' ? body.prompt.replace(/\s+/g, ' ').trim().slice(0, 300) : '',
     };
 }
@@ -107,9 +115,11 @@ export async function createClips(request, ctx, { onStage = () => {}, onClip = (
                 clip,
                 words,
                 ratio: request.ratio,
+                layout: request.layout,
                 captionStyle: words.length ? request.captionStyle : 'none',
                 hookTitle: request.hookTitle,
-                ownerId: uid,
+                progressBar: request.progressBar,
+                platform: request.platform,
                 onProgress: (p) => onStage(`Rendering clip ${i + 1} of ${clips.length}`, Math.round(base + (p / 100) * (58 / clips.length))),
             });
             const done = { ...clip, ...result, duration: Math.round((clip.end - clip.start) * 10) / 10 };

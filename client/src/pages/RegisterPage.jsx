@@ -6,6 +6,8 @@ import { db } from '../lib/firebase';
 import { authErrorMessage } from '../lib/auth-errors';
 import './Auth.css';
 
+const MIN_PASSWORD_LENGTH = 8;
+
 export default function RegisterPage() {
     const [displayName, setDisplayName] = useState('');
     const [email, setEmail] = useState('');
@@ -22,16 +24,16 @@ export default function RegisterPage() {
         e.preventDefault();
         setError('');
 
-        if (password !== confirmPassword) {
-            return setError('Passwords do not match');
+        if (password.length < MIN_PASSWORD_LENGTH) {
+            return setError(`Use a password of at least ${MIN_PASSWORD_LENGTH} characters.`);
         }
 
-        if (password.length < 6) {
-            return setError('Password must be at least 6 characters');
+        if (password !== confirmPassword) {
+            return setError('The passwords do not match.');
         }
 
         if (!termsAccepted) {
-            return setError('You must accept the terms and conditions to continue');
+            return setError('Accept the terms and privacy policy to continue.');
         }
 
         setLoading(true);
@@ -65,8 +67,8 @@ export default function RegisterPage() {
         setError('');
         setLoading(true);
         try {
-            await loginWithGoogle();
-            navigate('/onboarding');
+            const { needsOnboarding } = await loginWithGoogle();
+            navigate(needsOnboarding ? '/onboarding' : '/dashboard');
         } catch (err) {
             setError(authErrorMessage(err, 'Google sign-in failed. Try again.'));
         } finally {
@@ -88,7 +90,7 @@ export default function RegisterPage() {
                     <p>Start managing your social media like a pro</p>
                 </div>
 
-                {error && <div className="auth-card__error">{error}</div>}
+                {error && <div className="auth-card__error" role="alert">{error}</div>}
 
                 <form className="auth-card__form" onSubmit={handleSubmit}>
                     <div className="input-group">
@@ -126,8 +128,11 @@ export default function RegisterPage() {
                             placeholder="••••••••"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            autoComplete="new-password"
+                            aria-describedby="password-hint"
                             required
                         />
+                        <small id="password-hint" className="auth-card__hint">At least {MIN_PASSWORD_LENGTH} characters.</small>
                     </div>
 
                     <div className="input-group">
@@ -139,6 +144,7 @@ export default function RegisterPage() {
                             placeholder="••••••••"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
+                            autoComplete="new-password"
                             required
                         />
                     </div>

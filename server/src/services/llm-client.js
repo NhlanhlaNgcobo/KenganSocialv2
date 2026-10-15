@@ -2,21 +2,56 @@ import { OpenAI } from 'openai';
 
 /**
  * One OpenAI-compatible chat client for the whole server.
- * OpenRouter (OPENROUTER_API_KEY) is used when configured: it speaks the same API and
- * routes to Anthropic, Google, OpenAI and other models. Otherwise the OpenAI API is used.
+ * Provider order: OpenRouter (OPENROUTER_API_KEY), then OpenAI (OPENAI_API_KEY), then Gemini
+ * (GEMINI_API_KEY, through Google's OpenAI-compatible endpoint). OpenRouter speaks the same API and
+ * routes to Anthropic, Google, OpenAI and other models.
  *
  * Call sites use CHAT_MODEL instead of a hard-coded model name so the provider can change
- * without touching them.
+ * without touching them. With no key at all, calls fail with a clear 503 instead of an
+ * authentication error from a placeholder key.
  */
 
-const useOpenRouter = Boolean(process.env.OPENROUTER_API_KEY);
+function pickProvider() {
+    if (process.env.OPENROUTER_API_KEY) {
+        return {
+            name: 'openrouter',
+            model: process.env.AI_TEXT_MODEL || 'anthropic/claude-haiku-4.5',
+            client: new OpenAI({
+                apiKey: process.env.OPENROUTER_API_KEY,
+                baseURL: 'https://openrouter.ai/api/v1',
+                defaultHeaders: { 'HTTP-Referer': process.env.CLIENT_URL || 'https://kengansocial.app', 'X-Title': 'KenganSocial' },
+            }),
+        };
+    }
+    if (process.env.OPENAI_API_KEY) {
+        return { name: 'openai', model: 'gpt-4o-mini', client: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) };
+    }
+    if (process.env.GEMINI_API_KEY) {
+        return {
+            name: 'gemini',
+            model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
+            client: new OpenAI({ apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/' }),
+        };
+    }
+    return null;
+}
 
-export const CHAT_MODEL = useOpenRouter ? process.env.AI_TEXT_MODEL || 'anthropic/claude-haiku-4.5' : 'gpt-4o-mini';
+const provider = pickProvider();
 
-export const chatClient = useOpenRouter
-    ? new OpenAI({
-          apiKey: process.env.OPENROUTER_API_KEY,
-          baseURL: 'https://openrouter.ai/api/v1',
-          defaultHeaders: { 'HTTP-Referer': process.env.CLIENT_URL || 'https://kengansocial.app', 'X-Title': 'KenganSocial' },
-      })
-    : new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-placeholder-key' });
+export const AI_PROVIDER = provider?.name || null;
+export const CHAT_MODEL = provider?.model || 'unconfigured';
+
+const notConfigured = {
+    chat: {
+        completions: {
+            create: async () => {
+                throw Object.assign(new Error('AI is not set up on the server yet. Add OPENROUTER_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY to server/.env and restart.'), {
+                    status: 503,
+                    code: 'AI_NOT_CONFIGURED',
+                });
+            },
+        },
+    },
+};
+
+export const chatClient = provider ? provider.client : notConfigured;

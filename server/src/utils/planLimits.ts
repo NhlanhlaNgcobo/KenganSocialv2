@@ -24,5 +24,13 @@ export const PLAN_LIMITS = {
 export type Plan = keyof typeof PLAN_LIMITS
 export type PlanFeature = keyof typeof PLAN_LIMITS.starter
 
+// Names shown for internal tiers that have no paid catalog entry (paid names come from billing PLAN_CATALOG).
+export const PLAN_DISPLAY_NAMES: Record<Plan, string> = {
+    starter: 'Free',
+    nano: 'Creator Starter',
+    creator: 'Creator Pro',
+    agency: 'Agency'
+}
+
 // -1 means unlimited (agency fair-use caps enforced separately via overage billing)
 // All counters reset on the 1st of each billing month at 00:00 UTC

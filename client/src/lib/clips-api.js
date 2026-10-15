@@ -43,12 +43,20 @@ export async function uploadVideo(file, onProgress = () => {}) {
 
 export const clipsApi = {
     create: (body) => apiClient('/clips', { method: 'POST', body }),
+    /** YouTube link → clips: { url, rightsConfirmed, count, length, ratio, captionStyle }. */
+    fromUrl: (body) => apiClient('/clips/from-url', { method: 'POST', body }),
     list: () => apiClient('/clips'),
     get: (id) => apiClient(`/clips/${encodeURIComponent(id)}`),
     remove: (id) => apiClient(`/clips/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     async download(downloadUrl) {
         const response = await fetch(`${API_ROOT}${downloadUrl}`, { headers: await authHeaders() });
-        if (!response.ok) throw new Error(response.status === 404 ? 'This clip has expired. Generate it again.' : `Download failed (${response.status})`);
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            if (response.status === 401) throw new Error('Your session has expired. Sign in again to download this clip.');
+            if (response.status === 403) throw new Error("You don't have access to this clip. It belongs to a workspace you're not a member of.");
+            if (response.status === 404) throw new Error(body.message || 'This clip file is no longer available. Generate it again.');
+            throw new Error(body.message || `Download failed (${response.status}). Try again.`);
+        }
         return response.blob();
     },
 };

@@ -12,8 +12,10 @@ import { FFMPEG, probe, run } from './ffmpeg-runner.js';
  * (python-service/stabilizer.py). If that service is unreachable it falls back to FFmpeg's
  * two-pass vidstab method from https://github.com/Bmoradi93/video-stabilizer (MIT).
  *
- * Auto-framing asks the Python video service for a subject-following crop path
- * and applies it frame by frame with FFmpeg's sendcmd + crop.
+ * Auto-framing asks the Python video service for a layout and applies it with FFmpeg:
+ *  - track: a subject-following crop path, applied frame by frame with sendcmd + crop
+ *  - split: two speakers (podcasts, split-screen) cropped separately and stacked top/bottom
+ *  - fit:   the whole frame centred over a blurred, zoomed copy of itself
  */
 
 const RENDER_DIR = path.join(os.tmpdir(), 'kengan-renders');
@@ -21,6 +23,7 @@ if (!fs.existsSync(RENDER_DIR)) fs.mkdirSync(RENDER_DIR, { recursive: true });
 
 const PYTHON_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
 export const AUTOFRAME_RATIOS = ['9:16', '4:5', '1:1', '16:9'];
+export const AUTOFRAME_LAYOUTS = ['auto', 'track', 'split', 'fit'];
 
 const ENCODE = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'];
 
@@ -87,9 +90,13 @@ async function stabilize(inputPath, workDir, smoothing, duration, onProgress) {
     return out;
 }
 
-async function planAutoframe(videoPath, ratio) {
+async function planAutoframe(videoPath, ratio, layout = 'auto') {
     try {
-        const { data } = await axios.post(`${PYTHON_URL}/process/autoframe`, { videoPath: path.resolve(videoPath), targetRatio: ratio }, { timeout: 15 * 60 * 1000 });
+        const { data } = await axios.post(
+            `${PYTHON_URL}/process/autoframe`,
+            { videoPath: path.resolve(videoPath), targetRatio: ratio, layout: AUTOFRAME_LAYOUTS.includes(layout) ? layout : 'auto' },
+            { timeout: 15 * 60 * 1000 }
+        );
         return data;
     } catch (error) {
         if (error.code === 'ECONNREFUSED') throw new Error('Auto-framing needs the Kengan video service, which is not running.');
@@ -150,11 +157,58 @@ async function applyCrop(inputPath, workDir, plan, duration, onProgress) {
     return out;
 }
 
+/** Output size for a target ratio: 1080 on the short side. */
+export function outputSize(ratio) {
+    const [w, h] = String(ratio).split(':').map(Number);
+    const r = w / h || 9 / 16;
+    const even = (n) => Math.round(n / 2) * 2;
+    return r <= 1 ? { width: 1080, height: even(1080 / r) } : { width: even(1080 * r), height: 1080 };
+}
+
+/** Two speakers: crop each panel, scale to half the output height, stack top/bottom. */
+async function applySplit(inputPath, workDir, plan, ratio, duration, onProgress) {
+    const { width, height } = outputSize(ratio);
+    const half = Math.round(height / 4) * 2;
+    const [a, b] = plan.panels;
+    const panel = (p, label) => `[0:v]crop=${p.w}:${p.h}:${p.x}:${p.y},scale=${width}:${half}:force_original_aspect_ratio=increase,crop=${width}:${half},setsar=1[${label}]`;
+    const out = path.join(workDir, 'split.mp4');
+    await run(
+        FFMPEG,
+        [
+            '-hide_banner', '-y', '-i', inputPath,
+            '-filter_complex', `${panel(a, 'top')};${panel(b, 'bottom')};[top][bottom]vstack=inputs=2,scale=${width}:${height}[v]`,
+            '-map', '[v]', '-map', '0:a:0?',
+            ...ENCODE, '-progress', 'pipe:1', '-nostats', 'split.mp4',
+        ],
+        { cwd: workDir, duration, onProgress }
+    );
+    return out;
+}
+
+/** Whole frame, centred over a blurred, zoomed copy (nothing cropped out). */
+async function applyFit(inputPath, workDir, ratio, duration, onProgress) {
+    const { width, height } = outputSize(ratio);
+    const out = path.join(workDir, 'fit.mp4');
+    await run(
+        FFMPEG,
+        [
+            '-hide_banner', '-y', '-i', inputPath,
+            '-filter_complex',
+            `[0:v]split[bgsrc][fgsrc];[bgsrc]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},gblur=sigma=28,eq=brightness=-0.06[bg];` +
+                `[fgsrc]scale=${width}:${height}:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]`,
+            '-map', '[v]', '-map', '0:a:0?',
+            ...ENCODE, '-progress', 'pipe:1', '-nostats', 'fit.mp4',
+        ],
+        { cwd: workDir, duration, onProgress }
+    );
+    return out;
+}
+
 /**
  * @param {object} opts
  * @param {string} opts.inputPath
  * @param {object | null} opts.stabilize  options accepted by normalizeStabilizeOptions
- * @param {{ ratio: string } | null} opts.autoframe
+ * @param {{ ratio: string, layout?: string } | null} opts.autoframe  layout: auto | track | split | fit
  * @param {(pct: number) => void} [opts.onProgress]
  * @param {string} [opts.jobId]  manual_edit_jobs id the Python service may write progress to
  */
@@ -191,19 +245,25 @@ export async function enhanceVideo({ inputPath, stabilize: stab, autoframe, onPr
 
         if (autoframe) {
             report(stabShare + 0.05 * (1 - stabShare));
-            const plan = await planAutoframe(current, autoframe.ratio);
+            const plan = await planAutoframe(current, autoframe.ratio, autoframe.layout);
             if (plan.noop) {
-                summary.autoframe = { applied: false, reason: plan.reason };
+                summary.autoframe = { applied: false, layout: 'none', reason: plan.reason };
             } else {
                 report(stabShare + 0.3 * (1 - stabShare));
-                current = await applyCrop(current, workDir, plan, duration, (f) => report(stabShare + (0.3 + f * 0.7) * (1 - stabShare)));
+                const step = (f) => report(stabShare + (0.3 + f * 0.7) * (1 - stabShare));
+                if (plan.layout === 'split' && plan.panels?.length === 2) current = await applySplit(current, workDir, plan, autoframe.ratio, duration, step);
+                else if (plan.layout === 'fit') current = await applyFit(current, workDir, autoframe.ratio, duration, step);
+                else current = await applyCrop(current, workDir, plan, duration, step);
+                const size = plan.layout === 'split' || plan.layout === 'fit' ? outputSize(autoframe.ratio) : { width: plan.cropWidth, height: plan.cropHeight };
                 summary.autoframe = {
                     applied: true,
+                    layout: plan.layout || 'track',
                     ratio: autoframe.ratio,
-                    width: plan.cropWidth,
-                    height: plan.cropHeight,
+                    width: size.width,
+                    height: size.height,
                     shots: plan.shots,
                     faceCoverage: plan.faceCoverage,
+                    twoSpeakerShare: plan.twoSpeakerShare,
                 };
             }
         }

@@ -107,6 +107,43 @@
     padding: 0;
 }
 
+/* Workspace switcher (only rendered when the user belongs to more than one workspace) */
+
+.sidebar__workspace {
+    display: flex;
+    flex-direction: column;
+    padding: 0 10px 10px;
+    flex-shrink: 0;
+}
+
+.sidebar__workspace .sidebar__group-title {
+    display: block;
+}
+
+.sidebar__workspace-select {
+    width: 100%;
+    height: 32px;
+    padding: 0 8px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.sidebar__workspace-select:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 1px;
+}
+
+.sidebar__workspace-icon {
+    align-self: center;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+
 /* Footer */
 
 .sidebar__footer {
@@ -200,6 +237,7 @@
     }
 
     .sidebar__logo-text,
+    .sidebar__workspace,
     .sidebar__group-title,
     .sidebar__link span,
     .sidebar__user-info {

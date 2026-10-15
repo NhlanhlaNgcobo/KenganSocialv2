@@ -62,7 +62,12 @@ export async function fetchArticle(rawUrl) {
     } catch {
         throw Object.assign(new Error('That does not look like a web address.'), { status: 400 });
     }
-    if (/(^|\.)(youtube\.com|youtu\.be|tiktok\.com|instagram\.com|x\.com|twitter\.com|facebook\.com)$/i.test(host)) {
+    if (/(^|\.)(youtube\.com|youtu\.be)$/i.test(host)) {
+        throw Object.assign(new Error('For a YouTube video, use the "YouTube → shorts" tab: it turns the video into short clips you can then write posts for.'), {
+            status: 400,
+        });
+    }
+    if (/(^|\.)(tiktok\.com|instagram\.com|x\.com|twitter\.com|facebook\.com)$/i.test(host)) {
         throw Object.assign(
             new Error('Social video links cannot be read directly. Upload the video to Clips and repurpose a clip, or paste the transcript as text.'),
             { status: 400 }

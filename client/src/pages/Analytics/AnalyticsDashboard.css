@@ -1,7 +1,14 @@
 .analytics-dashboard {
+    --analytics-tiktok: #25f4ee;
+    --analytics-threads: #b8b8be;
     display: flex;
     flex-direction: column;
     gap: 20px;
+}
+
+[data-theme="light"] .analytics-dashboard {
+    --analytics-tiktok: #0e9aa7;
+    --analytics-threads: #52525b;
 }
 
 .analytics-head {
@@ -238,6 +245,47 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* Accounts that couldn't be read, with the reason */
+.analytics-unavailable {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    border-color: color-mix(in srgb, var(--warning) 35%, var(--border-primary));
+}
+
+.analytics-unavailable h3 {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--warning);
+}
+
+.analytics-unavailable ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+}
+
+.analytics-unavailable li {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.analytics-retry {
+    margin-left: auto;
+}
+
 @media (max-width: 1000px) {
     .analytics-grid {
         grid-template-columns: 1fr;
@@ -257,6 +305,11 @@
 }
 
 @media (max-width: 640px) {
+    .analytics-unavailable li {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+
     .analytics-head {
         flex-direction: column;
         align-items: flex-start;

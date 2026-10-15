@@ -41,26 +41,13 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
         return { id: workspaceDoc.id, plan: workspaceData.plan || 'starter' };
     }
 
-    const membershipQuery = await db
-        .collectionGroup('members')
-        .where(admin.firestore.FieldPath.documentId(), '==', uid)
-        .limit(1)
-        .get();
-
-    if (membershipQuery.empty) {
+    // Member of someone else's workspace: workspaces keep a `members` uid array (see workspace.controller.js).
+    const memberOf = await db.collection('workspaces').where('members', 'array-contains', uid).limit(1).get();
+    if (memberOf.empty) {
         return null;
     }
 
-    const workspaceRef = membershipQuery.docs[0].ref.parent.parent;
-    if (!workspaceRef) {
-        return null;
-    }
-
-    const workspaceDoc = await workspaceRef.get();
-    if (!workspaceDoc.exists) {
-        return null;
-    }
-
+    const workspaceDoc = memberOf.docs[0];
     const workspaceData = workspaceDoc.data() as any;
     return { id: workspaceDoc.id, plan: workspaceData.plan || 'starter' };
 }
@@ -74,7 +61,13 @@ export async function withWorkspace(req: Request, res: Response, next: NextFunct
     try {
         const decoded = await admin.auth().verifyIdToken(header.split('Bearer ')[1]);
         const uid = decoded.uid;
-        const requestedWorkspaceId = (req.headers['x-workspace-id'] as string | undefined) || req.params.workspaceId;
+        const headerWorkspaceId = req.headers['x-workspace-id'] as string | undefined;
+        const urlWorkspaceId = req.params.workspaceId;
+        // A request naming two different workspaces is refused rather than silently using one.
+        if (headerWorkspaceId && urlWorkspaceId && headerWorkspaceId !== urlWorkspaceId) {
+            return res.status(403).json({ error: 'WORKSPACE_MISMATCH' });
+        }
+        const requestedWorkspaceId = urlWorkspaceId || headerWorkspaceId;
         const resolvedWorkspace = await resolveWorkspaceForUser(uid, requestedWorkspaceId);
 
         (req as any).uid = uid;

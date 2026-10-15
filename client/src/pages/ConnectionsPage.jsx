@@ -16,22 +16,55 @@ import {
     MessageSquare,
     Video,
     ExternalLink,
+    Pin,
+    AtSign,
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
 import './Connections.css';
 
 const PLATFORM_META = {
-    tiktok: { name: 'TikTok', icon: Smartphone, color: '#000000' },
+    // TikTok and X marks are monochrome, so they follow the theme's text colour.
+    tiktok: { name: 'TikTok', icon: Smartphone, color: 'var(--text-primary)' },
     instagram: { name: 'Instagram', icon: Instagram, color: '#E4405F' },
     facebook: { name: 'Facebook Page', icon: Facebook, color: '#1877F2' },
     linkedin: { name: 'LinkedIn', icon: Linkedin, color: '#0A66C2' },
-    twitter: { name: 'X (Twitter)', icon: Twitter, color: '#000000' },
+    twitter: { name: 'X (Twitter)', icon: Twitter, color: 'var(--text-primary)' },
     youtube: { name: 'YouTube', icon: Youtube, color: '#FF0000' },
+    pinterest: { name: 'Pinterest', icon: Pin, color: '#BD081C' },
+    threads: { name: 'Threads', icon: AtSign, color: 'var(--text-primary)' },
 };
 
-const ALL_PLATFORMS = ['tiktok', 'instagram', 'facebook', 'linkedin', 'twitter', 'youtube'];
-const REAL_OAUTH_PLATFORMS = new Set(['youtube', 'instagram', 'tiktok', 'linkedin']);
+const ALL_PLATFORMS = ['tiktok', 'instagram', 'youtube', 'linkedin', 'pinterest', 'threads', 'facebook', 'twitter'];
+const REAL_OAUTH_PLATFORMS = new Set(['youtube', 'instagram', 'tiktok', 'linkedin', 'pinterest', 'threads']);
+// Shown in the list but disabled until their OAuth flow exists on the server.
+const COMING_SOON_PLATFORMS = new Set(['facebook', 'twitter']);
+
+const SERVER_KEYS = {
+    youtube: 'YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET',
+    instagram: 'FACEBOOK_APP_ID and FACEBOOK_APP_SECRET',
+    tiktok: 'TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET',
+    linkedin: 'LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET',
+    pinterest: 'PINTEREST_APP_ID and PINTEREST_APP_SECRET',
+    threads: 'THREADS_APP_ID and THREADS_APP_SECRET',
+};
+
+// ?reason=<code> values the OAuth callbacks redirect back with.
+const REASON_MESSAGES = {
+    no_channel: 'That Google account has no YouTube channel. Create a channel on YouTube first, then connect again.',
+    no_instagram_business: 'No Instagram Business account was found. Your Instagram must be a Professional account linked to a Facebook Page.',
+};
+
+const FOLDERS_KEY = (workspaceId) => `kengan-client-folders-${workspaceId || 'none'}`;
+
+function loadFolders(workspaceId) {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(FOLDERS_KEY(workspaceId)) || '[]');
+        return Array.isArray(parsed) ? parsed.filter((f) => typeof f === 'string') : [];
+    } catch {
+        return [];
+    }
+}
 
 function normalizeConnection(raw) {
     return {
@@ -57,6 +90,9 @@ export default function ConnectionsPage() {
     const [connections, setConnections] = useState([]);
     const [loading, setLoading] = useState(true);
     const [connecting, setConnecting] = useState(null);
+    // Connect errors are shown next to the control that started the connection.
+    const [connectError, setConnectError] = useState(null); // { source, text }
+    const [connectSource, setConnectSource] = useState(null);
     const [customFolders, setCustomFolders] = useState([]);
     const [youtubeVideos, setYoutubeVideos] = useState([]);
     const [youtubeComments, setYoutubeComments] = useState([]);
@@ -69,9 +105,15 @@ export default function ConnectionsPage() {
         const params = new URLSearchParams(window.location.search);
         const ok = params.get('connected');
         const failed = params.get('error');
+        const reason = params.get('reason');
         const name = (id) => PLATFORM_META[id]?.name || id;
         if (ok) return { tone: 'success', text: `${name(ok)} is connected.` };
-        if (failed) return { tone: 'error', text: `${name(failed)} could not be connected. Try again, and if it keeps failing check the API log for the reason.` };
+        if (failed) {
+            return {
+                tone: 'error',
+                text: REASON_MESSAGES[reason] || `${name(failed)} could not be connected. Try again, and if it keeps failing contact support.`,
+            };
+        }
         return null;
     });
     useEffect(() => {
@@ -88,6 +130,7 @@ export default function ConnectionsPage() {
 
     useEffect(() => {
         fetchConnections();
+        setCustomFolders(loadFolders(currentWorkspace?.id));
     }, [currentWorkspace?.id]);
 
     useEffect(() => {
@@ -156,46 +199,53 @@ export default function ConnectionsPage() {
     };
 
     const handleAddFolder = () => {
-        const name = prompt('Enter Client or Agency Name:');
+        const name = (prompt('Name the client folder (e.g. the client or brand name). Move connected accounts into it with "Move to Folder".') || '').trim();
         if (name && !customFolders.includes(name)) {
-            setCustomFolders((previous) => [...previous, name]);
+            const next = [...customFolders, name];
+            setCustomFolders(next);
+            // Empty folders live in this browser; a folder with accounts in it is saved with those accounts.
+            try {
+                localStorage.setItem(FOLDERS_KEY(currentWorkspace?.id), JSON.stringify(next));
+            } catch {
+                /* storage unavailable: keep in memory only */
+            }
         }
     };
 
-    const handleConnect = async (platformId) => {
+    const handleConnect = async (platformId, source) => {
         setConnecting(platformId);
-        setYoutubeMessage('');
+        setConnectSource(source);
+        setConnectError(null);
 
         try {
             if (!currentWorkspace?.id) {
                 throw new Error('Select a workspace before connecting a platform.');
             }
 
-            if (!REAL_OAUTH_PLATFORMS.has(platformId)) {
-                throw new Error(`${PLATFORM_META[platformId]?.name || platformId} OAuth is not wired yet.`);
+            if (COMING_SOON_PLATFORMS.has(platformId) || !REAL_OAUTH_PLATFORMS.has(platformId)) {
+                throw new Error(`${PLATFORM_META[platformId]?.name || platformId} is coming soon.`);
             }
 
             const data = await apiClient(`/connections/${platformId}/auth-url`);
             window.location.assign(data.url);
         } catch (error) {
             console.error('Connection launch failed:', error);
-            const KEYS = {
-                youtube: 'YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET',
-                instagram: 'FACEBOOK_APP_ID and FACEBOOK_APP_SECRET',
-                tiktok: 'TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET',
-                linkedin: 'LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET',
-            };
             const name = PLATFORM_META[platformId]?.name || platformId;
-            setYoutubeMessage(
-                /OAUTH_NOT_CONFIGURED/.test(error.message || '')
-                    ? `${name} is not set up on the server yet. Add ${KEYS[platformId] || 'its app keys'} to server/.env (see docs/SOCIAL_SETUP.md), then restart the API.`
-                    : error.message || 'Could not start the connection. Try again.'
-            );
+            setConnectError({
+                source,
+                text: /OAUTH_NOT_CONFIGURED/.test(error.message || '')
+                    ? `${name}: not set up on the server yet. An admin needs to add ${SERVER_KEYS[platformId] || 'its app keys'} to the API environment (see docs/SOCIAL_SETUP.md).`
+                    : error.message || 'Could not start the connection. Try again.',
+            });
             setConnecting(null);
         }
     };
 
     const handleDisconnect = async (connection) => {
+        const name = PLATFORM_META[connection.platform]?.name || connection.platform;
+        if (!window.confirm(`Disconnect ${name} (@${connection.username})? Scheduled posts and automations for this account will stop working until you reconnect.`)) {
+            return;
+        }
         try {
             if (currentWorkspace?.id) {
                 if (connection.id === connection.platform) {
@@ -211,7 +261,7 @@ export default function ConnectionsPage() {
             await fetchConnections();
         } catch (error) {
             console.error('Failed to disconnect platform:', error);
-            setYoutubeMessage(error.message || 'Failed to disconnect platform.');
+            setConnectError({ source: connection.groupName || 'Ungrouped', text: error.message || 'Failed to disconnect platform.' });
         }
     };
 
@@ -368,7 +418,7 @@ export default function ConnectionsPage() {
                                             <div className="connection-card__header">
                                                 <div
                                                     className="platform-icon"
-                                                    style={{ backgroundColor: `${meta.color}15`, color: meta.color }}
+                                                    style={{ backgroundColor: `color-mix(in srgb, ${meta.color} 9%, transparent)`, color: meta.color }}
                                                 >
                                                     <Icon size={24} />
                                                 </div>
@@ -436,18 +486,29 @@ export default function ConnectionsPage() {
                                         id={`add-connection-select-${group}`}
                                         className="input mb-sm"
                                         style={{ width: '80%' }}
+                                        disabled={!!connecting}
                                         onChange={(event) => {
                                             if (event.target.value) {
-                                                handleConnect(event.target.value);
+                                                handleConnect(event.target.value, group);
                                                 event.target.value = '';
                                             }
                                         }}
                                     >
                                         <option value="">Select Platform...</option>
                                         {ALL_PLATFORMS.map((platform) => (
-                                            <option key={platform} value={platform}>{PLATFORM_META[platform].name}</option>
+                                            <option key={platform} value={platform} disabled={COMING_SOON_PLATFORMS.has(platform)}>
+                                                {PLATFORM_META[platform].name}{COMING_SOON_PLATFORMS.has(platform) ? ' (coming soon)' : ''}
+                                            </option>
                                         ))}
                                     </select>
+                                    {connecting && connectSource === group && (
+                                        <p className="connect-inline-status">
+                                            <Loader2 size={14} className="spin" /> Opening {PLATFORM_META[connecting]?.name || connecting} sign-in…
+                                        </p>
+                                    )}
+                                    {connectError?.source === group && (
+                                        <p className="connect-inline-error" role="alert">{connectError.text}</p>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -465,7 +526,7 @@ export default function ConnectionsPage() {
                                 {!youtubeConnection ? (
                                     <button
                                         className="btn btn-primary"
-                                        onClick={() => handleConnect('youtube')}
+                                        onClick={() => handleConnect('youtube', 'youtube-studio')}
                                         disabled={connecting === 'youtube'}
                                     >
                                         {connecting === 'youtube' ? <Loader2 size={16} className="spin" /> : <Youtube size={16} />}
@@ -486,6 +547,9 @@ export default function ConnectionsPage() {
                             </div>
                         </div>
 
+                        {connectError?.source === 'youtube-studio' ? (
+                            <div className="connect-inline-error" role="alert">{connectError.text}</div>
+                        ) : null}
                         {youtubeMessage ? (
                             <div className="youtube-studio__message">{youtubeMessage}</div>
                         ) : null}

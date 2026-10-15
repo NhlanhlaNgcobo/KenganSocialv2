@@ -102,26 +102,24 @@ export async function processScheduledPosts(workspaceId) {
 
 /**
  * Get scheduling analytics for a workspace.
+ * Counts the posts the calendar and publishing queue use (top-level `scheduled_posts`),
+ * not the legacy per-workspace `content` collection.
  * @param {string} workspaceId
- * @returns {Promise<object>}
+ * @returns {Promise<{ scheduled: number, published: number, failed: number, drafts: number }>}
  */
 export async function getSchedulerStats(workspaceId) {
     const db = getFirestore();
-    const contentRef = db.collection('workspaces')
-        .doc(workspaceId)
-        .collection('content');
+    const postsRef = db.collection('scheduled_posts').where('workspaceId', '==', workspaceId);
+    const count = async (status) => (await postsRef.where('status', '==', status).count().get()).data().count;
 
-    const [scheduled, published, draft, failed] = await Promise.all([
-        contentRef.where('status', '==', 'scheduled').count().get(),
-        contentRef.where('status', '==', 'published').count().get(),
-        contentRef.where('status', '==', 'draft').count().get(),
-        contentRef.where('status', '==', 'failed').count().get(),
+    // 'pending' = queued to publish; 'partial' = published to some platforms but not all.
+    const [scheduled, published, partial, failed, drafts] = await Promise.all([
+        count('pending'),
+        count('published'),
+        count('partial'),
+        count('failed'),
+        count('draft'),
     ]);
 
-    return {
-        scheduled: scheduled.data().count,
-        published: published.data().count,
-        drafts: draft.data().count,
-        failed: failed.data().count,
-    };
+    return { scheduled, published: published + partial, failed, drafts };
 }

@@ -20,7 +20,7 @@ export default function PrivacyPolicyPage() {
                     </h1>
 
                     <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', marginBottom: '48px', lineHeight: '1.6' }}>
-                        Last updated: {new Date().toLocaleDateString()}
+                        Last updated: 15 October 2026
                     </p>
 
                     <h3 style={{ fontSize: '1.4rem', marginBottom: '16px', color: 'var(--text-primary)' }}>1. Data Collection</h3>
@@ -35,7 +35,7 @@ export default function PrivacyPolicyPage() {
 
                     <h3 style={{ fontSize: '1.4rem', marginBottom: '16px', color: 'var(--text-primary)' }}>3. Storage & Analytics</h3>
                     <p style={{ color: 'var(--text-secondary)', lineHeight: '1.8', marginBottom: '32px' }}>
-                        Your drafts, uploaded media assets, and historical metrics are stored securely within Firebase. You retain full ownership of any content you upload, schedule, or publish via KenganSocial. You may permanently delete workspaces and underlying data at any time.
+                        Your drafts, uploaded media assets, and historical metrics are stored securely within Firebase. You retain full ownership of any content you upload, schedule, or publish via KenganSocial. To delete your workspace and its data, email <a href="mailto:privacy@kengansocial.com?subject=Delete%20my%20workspace" style={{ color: 'var(--accent-text)' }}>privacy@kengansocial.com</a> from the address on your account. We confirm the request and delete the data as required by POPIA. To cancel a paid plan, email <a href="mailto:billing@kengansocial.com" style={{ color: 'var(--accent-text)' }}>billing@kengansocial.com</a>.
                     </p>
 
                     <h3 style={{ fontSize: '1.4rem', marginBottom: '16px', color: 'var(--text-primary)' }}>4. Security</h3>

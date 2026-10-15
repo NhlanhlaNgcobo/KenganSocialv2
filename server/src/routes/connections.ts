@@ -36,6 +36,8 @@ const OAUTH_CONFIG = {
             // Publishing Reels and reading insights for an Instagram professional account linked to a Page.
             'instagram_basic', 'instagram_content_publish', 'instagram_manage_insights',
             'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'business_management',
+            // Inbox and DM automations: read/send Instagram DMs and subscribe the Page to message webhooks.
+            'instagram_manage_messages', 'pages_manage_metadata',
         ],
         clientId: () => env('FACEBOOK_APP_ID'),
         clientSecret: () => env('FACEBOOK_APP_SECRET'),
@@ -337,7 +339,9 @@ router.get('/youtube/callback', async (req: Request, res: Response) => {
         );
 
         const channel = channelRes.data.items?.[0];
-        if (!channel) return res.status(400).json({ error: 'NO_YOUTUBE_CHANNEL' });
+        if (!channel) {
+            return res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?error=youtube&reason=no_channel`);
+        }
 
         await saveConnection(workspaceId, 'youtube', {
             accessToken: access_token,
@@ -377,14 +381,33 @@ router.get('/instagram/callback', async (req: Request, res: Response) => {
             },
         });
 
-        const { access_token, expires_in } = tokenRes.data;
+        let { access_token, expires_in } = tokenRes.data;
+
+        // Swap the short-lived token (about an hour) for a long-lived one (about 60 days). Page tokens
+        // fetched with a long-lived user token don't expire, which DMs and scheduled posts rely on.
+        try {
+            const longRes = await axios.get(cfg.tokenUrl, {
+                params: {
+                    grant_type: 'fb_exchange_token',
+                    client_id: cfg.clientId(),
+                    client_secret: cfg.clientSecret(),
+                    fb_exchange_token: access_token,
+                },
+            });
+            if (longRes.data?.access_token) {
+                access_token = longRes.data.access_token;
+                expires_in = longRes.data.expires_in ?? 5184000;
+            }
+        } catch (err: any) {
+            console.warn('[Instagram callback] Long-lived token exchange failed:', err.response?.data?.error?.message || err.message);
+        }
 
         // Get the Instagram Business Account via /me/accounts
         const accountsRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
             params: { access_token },
         });
 
-        let igAccountId = '', igUsername = '', igFollowers = 0;
+        let igAccountId = '', igUsername = '', igFollowers = 0, pageId = '', pageToken = '';
         for (const page of accountsRes.data.data ?? []) {
             try {
                 const igRes = await axios.get(
@@ -401,9 +424,28 @@ router.get('/instagram/callback', async (req: Request, res: Response) => {
                     igAccountId = iga.id;
                     igUsername = iga.username;
                     igFollowers = iga.followers_count ?? 0;
+                    pageId = page.id;
+                    pageToken = page.access_token;
                     break;
                 }
             } catch { /* page may not have IG */ }
+        }
+
+        // Without an Instagram professional account linked to a Facebook Page there is nothing to
+        // publish to or read DMs from, so don't save an empty connection.
+        if (!igAccountId) {
+            return res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?error=instagram&reason=no_instagram_business`);
+        }
+
+        // DMs: subscribe the Page to message webhooks (best effort; needs pages_manage_metadata).
+        if (pageId && pageToken) {
+            try {
+                await axios.post(`https://graph.facebook.com/v19.0/${pageId}/subscribed_apps`, null, {
+                    params: { subscribed_fields: 'messages', access_token: pageToken },
+                });
+            } catch (err: any) {
+                console.warn('[Instagram callback] Page webhook subscription failed:', err.response?.data?.error?.message || err.message);
+            }
         }
 
         await saveConnection(workspaceId, 'instagram', {
@@ -414,7 +456,13 @@ router.get('/instagram/callback', async (req: Request, res: Response) => {
             accountName: igUsername,
             followersCount: igFollowers,
             scope: cfg.scopes,
-            meta: { instagramAccountId: igAccountId, username: igUsername },
+            meta: {
+                instagramAccountId: igAccountId,
+                username: igUsername,
+                // Used to send DMs (services/instagram-dm.ts). Page tokens from a long-lived user token don't expire.
+                pageId: pageId || null,
+                pageAccessToken: pageToken ? encrypt(pageToken) : null,
+            },
         });
 
         res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?connected=instagram`);

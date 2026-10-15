@@ -4,7 +4,7 @@ import axios from 'axios';
 import admin from 'firebase-admin';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { PLAN_LIMITS } from '../utils/planLimits';
+import { PLAN_LIMITS, PLAN_DISPLAY_NAMES, Plan, PlanFeature } from '../utils/planLimits';
 import { redis } from '../utils/redis';
 import { getMonth } from '../utils/dateUtils';
 import { calculateWorkspaceStorage } from '../utils/storage';
@@ -16,44 +16,152 @@ const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
 const PAYSTACK_PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY || '';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const PAYSTACK_CALLBACK_URL = process.env.PAYSTACK_CALLBACK_URL || `${FRONTEND_URL}/dashboard/billing`;
-const BILLING_SUPPORT_URL = process.env.PAYSTACK_BILLING_SUPPORT_URL || 'mailto:billing@kengansocial.com';
+export const BILLING_EMAIL = 'billing@kengansocial.com';
+const BILLING_SUPPORT_URL = process.env.PAYSTACK_BILLING_SUPPORT_URL || `mailto:${BILLING_EMAIL}`;
+// Annual billing charges 12 months at this fraction of the monthly price (0.85 = 15% off).
 const ANNUAL_DISCOUNT = 0.85;
+const ANNUAL_DISCOUNT_PERCENT = Math.round((1 - ANNUAL_DISCOUNT) * 100);
+const PAYMENTS_NOT_CONFIGURED = "Payments aren't set up yet. Contact us to upgrade and we'll sort it out.";
 
-const PLAN_CATALOG: Record<string, { label: string; amountZar: number; credits: number; intervalLabel: string }> = {
-    creator_starter: { label: 'Creator Starter', amountZar: 249, credits: 1000, intervalLabel: 'monthly' },
-    creator_pro: { label: 'Creator Pro', amountZar: 499, credits: 5000, intervalLabel: 'monthly' },
-    agency: { label: 'Agency', amountZar: 1999, credits: 20000, intervalLabel: 'monthly' },
-    enterprise: { label: 'Enterprise', amountZar: 4999, credits: 50000, intervalLabel: 'monthly' },
+type CatalogEntry = {
+    label: string;
+    amountZar: number;
+    /** Internal tier (key of PLAN_LIMITS) the workspace gets once this plan is paid for. */
+    tier: Plan;
+    description: string;
+    /** Sold through a conversation, not self-serve checkout. */
+    contactOnly?: boolean;
+    popular?: boolean;
+    /** Extra lines shown after the limits-derived features. Only list what the product actually does. */
+    extras?: string[];
 };
 
-const WORKSPACE_PLAN_MAP: Record<string, string> = {
-    starter: 'creator_starter',
+// Single source of truth for paid plan prices (ZAR, monthly).
+const PLAN_CATALOG: Record<string, CatalogEntry> = {
+    creator_starter: {
+        label: 'Creator Starter',
+        amountZar: 249,
+        tier: 'nano',
+        description: 'For creators posting regularly who want AI help.',
+    },
+    creator_pro: {
+        label: 'Creator Pro',
+        amountZar: 499,
+        tier: 'creator',
+        description: 'For full-time creators running several channels.',
+        popular: true,
+    },
+    agency: {
+        label: 'Agency',
+        amountZar: 1999,
+        tier: 'agency',
+        description: 'For teams and agencies managing clients.',
+        extras: ['Leads board'],
+    },
+    enterprise: {
+        label: 'Enterprise',
+        amountZar: 4999,
+        tier: 'agency',
+        description: 'For larger organisations with custom needs.',
+        contactOnly: true,
+        extras: ['Everything in Agency', 'Limits agreed with you'],
+    },
+};
+
+// Which paid plan a workspace on each internal tier is shown as (used when the workspace has no billingPlanId).
+const TIER_TO_CATALOG: Partial<Record<Plan, string>> = {
+    nano: 'creator_starter',
     creator: 'creator_pro',
     agency: 'agency',
-    enterprise: 'enterprise',
 };
 
-const PAYSTACK_PLAN_MAP: Record<string, string> = {
-    creator_starter: 'starter',
-    creator_pro: 'creator',
-    agency: 'agency',
-    enterprise: 'enterprise',
-};
+const TIER_RANK: Record<Plan, number> = { starter: 0, nano: 1, creator: 2, agency: 3 };
 
-function normalizePlanName(planName?: string) {
-    if (!planName) return 'creator_starter';
-    if (PLAN_CATALOG[planName]) return planName;
-    if (planName === 'starter' || planName === 'nano') return 'creator_starter';
-    if (planName === 'creator') return 'creator_pro';
-    return PLAN_CATALOG[planName] ? planName : 'creator_starter';
+function isPlan(value: unknown): value is Plan {
+    return typeof value === 'string' && value in PLAN_LIMITS;
 }
 
-function computeAmount(planName: string, interval: 'monthly' | 'yearly') {
-    const baseAmount = PLAN_CATALOG[planName]?.amountZar ?? PLAN_CATALOG.creator_starter.amountZar;
+/** Maps legacy/unknown workspace plan values onto a real internal tier. */
+function toTier(value: unknown): Plan {
+    if (isPlan(value)) return value;
+    if (value === 'enterprise') return 'agency';
+    return 'starter';
+}
+
+function formatCount(n: number) {
+    return n.toLocaleString('en-ZA');
+}
+
+/** Headline features derived from PLAN_LIMITS so prices and limits never drift apart. */
+function featuresForTier(tier: Plan): string[] {
+    const l = PLAN_LIMITS[tier];
+    const line = (value: number, unit: string, unlimited: string) =>
+        value === -1 ? unlimited : value > 0 ? `${formatCount(value)} ${unit}` : null;
+
+    return [
+        line(l.posts, 'scheduled posts / month', 'Unlimited scheduled posts'),
+        line(l.exports, 'video exports / month', 'Unlimited video exports'),
+        line(l.connections, 'connected accounts', 'Unlimited connected accounts'),
+        line(l.aiCalls, 'AI generations / month', 'Unlimited AI generations'),
+        line(l.renders, 'AI renders / month', 'Unlimited AI renders'),
+        line(l.clipAnalysis, 'clip analyses / month', 'Unlimited clip analyses'),
+        line(l.transcribeHrs, 'hrs transcription / month', 'Unlimited transcription'),
+        `${l.storageGB} GB storage`,
+    ].filter(Boolean) as string[];
+}
+
+function publicCatalog() {
+    const free = {
+        id: 'starter',
+        name: PLAN_DISPLAY_NAMES.starter,
+        tier: 'starter' as Plan,
+        monthlyPriceZar: 0,
+        annualMonthlyPriceZar: 0,
+        description: 'Try KenganSocial with no card needed.',
+        features: featuresForTier('starter'),
+        limits: PLAN_LIMITS.starter,
+        purchasable: false,
+        contactOnly: false,
+        popular: false,
+    };
+
+    const paid = Object.entries(PLAN_CATALOG).map(([id, p]) => ({
+        id,
+        name: p.label,
+        tier: p.tier,
+        monthlyPriceZar: p.amountZar,
+        annualMonthlyPriceZar: Math.round(p.amountZar * ANNUAL_DISCOUNT),
+        description: p.description,
+        features: [...(p.contactOnly ? [] : featuresForTier(p.tier)), ...(p.extras || [])],
+        limits: PLAN_LIMITS[p.tier],
+        purchasable: !p.contactOnly,
+        contactOnly: Boolean(p.contactOnly),
+        popular: Boolean(p.popular),
+    }));
+
+    return {
+        currency: 'ZAR',
+        annualDiscountPercent: ANNUAL_DISCOUNT_PERCENT,
+        paymentsConfigured: Boolean(PAYSTACK_SECRET_KEY),
+        supportEmail: BILLING_EMAIL,
+        supportUrl: BILLING_SUPPORT_URL,
+        plans: [free, ...paid],
+    };
+}
+
+function computeAmount(planId: string, interval: 'monthly' | 'yearly') {
+    const baseAmount = PLAN_CATALOG[planId].amountZar;
     if (interval === 'yearly') {
         return Math.round(baseAmount * 12 * ANNUAL_DISCOUNT * 100);
     }
     return Math.round(baseAmount * 100);
+}
+
+function addPeriod(from: Date, interval: 'monthly' | 'yearly') {
+    const end = new Date(from);
+    if (interval === 'yearly') end.setUTCFullYear(end.getUTCFullYear() + 1);
+    else end.setUTCMonth(end.getUTCMonth() + 1);
+    return end.toISOString();
 }
 
 async function fetchWorkspaceContact(uid: string) {
@@ -64,27 +172,154 @@ async function fetchWorkspaceContact(uid: string) {
     };
 }
 
+/** Reads this month's usage counters. Returns null when Redis is unavailable (never invented numbers). */
+async function readUsage(workspaceId: string, tier: Plan): Promise<Record<string, number> | null> {
+    if (!redis || redis.status !== 'ready') return null;
+    const month = getMonth();
+    const limits = PLAN_LIMITS[tier];
+    const usage: Record<string, number> = {};
+    try {
+        await Promise.all((Object.keys(limits) as PlanFeature[]).map(async (feature) => {
+            if (feature === 'storageGB') return;
+            // planGate counts unlimited (-1) features under agency_usage and capped ones under usage.
+            const prefix = limits[feature] === -1 ? 'agency_usage' : 'usage';
+            const val = await redis.get(`${prefix}:${workspaceId}:${feature}:${month}`);
+            usage[feature] = val ? parseFloat(val) : 0;
+        }));
+        return usage;
+    } catch (err: any) {
+        console.warn('[Billing] Usage lookup failed:', err?.message);
+        return null;
+    }
+}
+
+type PaystackTransaction = {
+    id?: number | string;
+    status?: string;
+    reference?: string;
+    amount?: number;
+    currency?: string;
+    paid_at?: string;
+    metadata?: any;
+    customer?: { customer_code?: string; email?: string };
+    subscription?: { subscription_code?: string };
+};
+
+type ActivationResult =
+    | { ok: true; alreadyProcessed: boolean; planId: string; tier: Plan; workspaceId: string; currentPeriodEnd: string }
+    | { ok: false; reason: string };
+
+/**
+ * Applies a successful Paystack charge to its workspace. Idempotent per transaction id,
+ * shared by the webhook and the return-from-checkout verification.
+ */
+async function activateFromTransaction(tx: PaystackTransaction, source: 'webhook' | 'verify'): Promise<ActivationResult> {
+    if (tx.status !== 'success') return { ok: false, reason: 'PAYMENT_NOT_SUCCESSFUL' };
+
+    const metadata = typeof tx.metadata === 'string' ? safeJson(tx.metadata) : (tx.metadata || {});
+    const workspaceId = metadata?.workspaceId;
+    const planId = metadata?.requestedPlan;
+    const interval: 'monthly' | 'yearly' = metadata?.billingInterval === 'yearly' ? 'yearly' : 'monthly';
+    const catalogEntry = PLAN_CATALOG[planId];
+
+    if (!workspaceId || !catalogEntry || catalogEntry.contactOnly) return { ok: false, reason: 'UNKNOWN_PLAN_OR_WORKSPACE' };
+    if (tx.currency && tx.currency !== 'ZAR') return { ok: false, reason: 'UNEXPECTED_CURRENCY' };
+    if (typeof tx.amount === 'number' && tx.amount < computeAmount(planId, interval)) {
+        return { ok: false, reason: 'AMOUNT_TOO_LOW' };
+    }
+
+    const txId = tx.id ? String(tx.id) : tx.reference ? `ref_${tx.reference}` : null;
+    if (!txId) return { ok: false, reason: 'MISSING_TRANSACTION_ID' };
+
+    const idempotencyRef = db.collection('processed_webhooks').doc(txId);
+    const paidAt = tx.paid_at ? new Date(tx.paid_at) : new Date();
+    const currentPeriodEnd = addPeriod(Number.isNaN(paidAt.getTime()) ? new Date() : paidAt, interval);
+
+    const claimed = await db.runTransaction(async (t) => {
+        const existing = await t.get(idempotencyRef);
+        if (existing.exists) return false;
+        t.set(idempotencyRef, {
+            provider: 'paystack',
+            source,
+            workspaceId,
+            reference: tx.reference || null,
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return true;
+    });
+
+    if (!claimed) {
+        return { ok: true, alreadyProcessed: true, planId, tier: catalogEntry.tier, workspaceId, currentPeriodEnd };
+    }
+
+    try {
+        await db.collection('workspaces').doc(workspaceId).set({
+            plan: catalogEntry.tier,
+            billingPlanId: planId,
+            billingInterval: interval,
+            paymentProvider: 'paystack',
+            paystackReference: tx.reference || null,
+            paystackCustomerCode: tx.customer?.customer_code || null,
+            paystackCustomerEmail: tx.customer?.email || null,
+            paystackSubscriptionCode: tx.subscription?.subscription_code || null,
+            paymentStatus: 'active',
+            currentPeriodEnd,
+            pendingPlan: admin.firestore.FieldValue.delete(),
+            pendingBillingInterval: admin.firestore.FieldValue.delete(),
+            pendingPaymentProvider: admin.firestore.FieldValue.delete(),
+            planActivatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+    } catch (err) {
+        // Release the claim so a retry (webhook redelivery or another verify) can apply it.
+        await idempotencyRef.delete().catch(() => undefined);
+        throw err;
+    }
+
+    return { ok: true, alreadyProcessed: false, planId, tier: catalogEntry.tier, workspaceId, currentPeriodEnd };
+}
+
+function safeJson(value: string) {
+    try {
+        return JSON.parse(value);
+    } catch {
+        return {};
+    }
+}
+
+// ─── GET /api/billing/plans (public) ─────────────────────────────────────────
+router.get('/plans', (_req: Request, res: Response) => {
+    res.json({ success: true, ...publicCatalog() });
+});
+
+// ─── POST /api/billing/create-checkout ───────────────────────────────────────
 router.post('/create-checkout', withWorkspace, async (req: Request, res: Response) => {
     const workspaceId = (req as any).workspaceId;
     const uid = (req as any).uid;
-    const requestedPlan = normalizePlanName(req.body?.planName);
+    const requestedPlan = String(req.body?.planName || '');
     const interval = req.body?.interval === 'yearly' ? 'yearly' : 'monthly';
+    const catalogEntry = PLAN_CATALOG[requestedPlan];
 
     if (!workspaceId) {
-        return res.status(400).json({ error: 'Workspace missing for billing session.' });
+        return res.status(400).json({ error: 'Create a workspace before choosing a plan.' });
+    }
+
+    if (!catalogEntry) {
+        return res.status(400).json({ error: 'That plan does not exist.' });
+    }
+
+    if (catalogEntry.contactOnly) {
+        return res.status(400).json({ error: `${catalogEntry.label} is arranged directly. Email ${BILLING_EMAIL}.` });
     }
 
     if (!PAYSTACK_SECRET_KEY) {
-        return res.status(501).json({
-            error: 'Paystack is not configured yet. Add PAYSTACK_SECRET_KEY to enable live checkout.',
-            provider: 'paystack',
-        });
+        return res.status(503).json({ error: PAYMENTS_NOT_CONFIGURED, code: 'PAYMENTS_NOT_CONFIGURED', provider: 'paystack' });
     }
 
     try {
         const contact = await fetchWorkspaceContact(uid);
         if (!contact.email) {
-            return res.status(400).json({ error: 'User email is required for Paystack checkout.' });
+            return res.status(400).json({ error: 'Your account needs an email address before you can pay.' });
         }
 
         const amount = computeAmount(requestedPlan, interval);
@@ -108,8 +343,14 @@ router.post('/create-checkout', withWorkspace, async (req: Request, res: Respons
                     Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
                     'Content-Type': 'application/json',
                 },
+                timeout: 15000,
             }
         );
+
+        const url = response.data?.data?.authorization_url;
+        if (!url) {
+            return res.status(502).json({ error: 'The payment provider did not return a checkout link. Try again.' });
+        }
 
         await db.collection('workspaces').doc(workspaceId).set({
             pendingPaymentProvider: 'paystack',
@@ -121,15 +362,77 @@ router.post('/create-checkout', withWorkspace, async (req: Request, res: Respons
         res.json({
             success: true,
             provider: 'paystack',
-            url: response.data?.data?.authorization_url,
+            url,
             reference: response.data?.data?.reference,
         });
     } catch (err: any) {
-        const errorMessage = err?.response?.data?.message || err.message || 'Failed to initialize Paystack checkout.';
-        res.status(500).json({ error: errorMessage, provider: 'paystack' });
+        console.error('[Billing] Checkout init failed:', err?.response?.data || err.message);
+        const errorMessage = err?.response?.data?.message || 'Could not start checkout. Try again in a moment.';
+        res.status(502).json({ error: errorMessage, provider: 'paystack' });
     }
 });
 
+// ─── GET /api/billing/verify/:reference ──────────────────────────────────────
+// Called when the user returns from Paystack (?reference=...). Confirms the charge with
+// Paystack and applies the plan without waiting for the webhook.
+router.get('/verify/:reference', withWorkspace, async (req: Request, res: Response) => {
+    const workspaceId = (req as any).workspaceId;
+    const reference = String(req.params.reference || '');
+
+    if (!workspaceId) return res.status(400).json({ error: 'Workspace missing.' });
+    if (!/^[A-Za-z0-9._=-]{1,100}$/.test(reference)) return res.status(400).json({ error: 'Invalid payment reference.' });
+    if (!PAYSTACK_SECRET_KEY) {
+        return res.status(503).json({ error: PAYMENTS_NOT_CONFIGURED, code: 'PAYMENTS_NOT_CONFIGURED' });
+    }
+
+    try {
+        const response = await axios.get(`${PAYSTACK_API_BASE}/transaction/verify/${encodeURIComponent(reference)}`, {
+            headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
+            timeout: 15000,
+        });
+        const tx: PaystackTransaction = response.data?.data || {};
+        const metadata = typeof tx.metadata === 'string' ? safeJson(tx.metadata) : (tx.metadata || {});
+
+        // Only the workspace that started the checkout may look at it.
+        if (metadata?.workspaceId !== workspaceId) {
+            return res.status(403).json({ error: 'This payment belongs to a different workspace.' });
+        }
+
+        if (tx.status !== 'success') {
+            const pending = tx.status === 'ongoing' || tx.status === 'pending' || tx.status === 'processing';
+            return res.json({
+                success: false,
+                status: pending ? 'pending' : 'failed',
+                message: pending
+                    ? 'Your payment is still processing. Your plan will update once it clears.'
+                    : 'The payment did not go through. You have not been charged for an upgrade.',
+            });
+        }
+
+        const result = await activateFromTransaction(tx, 'verify');
+        if (!result.ok) {
+            console.error('[Billing] Verify could not apply payment:', reference, result.reason);
+            return res.status(422).json({ error: `We received your payment but could not apply it automatically. Email ${BILLING_EMAIL} with reference ${reference}.` });
+        }
+
+        res.json({
+            success: true,
+            status: 'active',
+            plan: result.tier,
+            planName: PLAN_CATALOG[result.planId]?.label,
+            currentPeriodEnd: result.currentPeriodEnd,
+        });
+    } catch (err: any) {
+        console.error('[Billing] Verify failed:', err?.response?.data || err.message);
+        if (err?.response?.status === 404 || err?.response?.status === 400) {
+            return res.status(404).json({ error: 'We could not find that payment.' });
+        }
+        res.status(502).json({ error: 'Could not confirm the payment right now. Refresh in a minute.' });
+    }
+});
+
+// ─── POST /api/billing/portal ────────────────────────────────────────────────
+// Paystack has no hosted customer portal for one-off charges, so changes and cancellations go to billing support.
 router.post('/portal', withWorkspace, async (_req: Request, res: Response) => {
     res.json({
         success: true,
@@ -139,45 +442,55 @@ router.post('/portal', withWorkspace, async (_req: Request, res: Response) => {
     });
 });
 
+// ─── GET /api/billing/status ─────────────────────────────────────────────────
 router.get('/status', withWorkspace, async (req: Request, res: Response) => {
     const workspaceId = (req as any).workspaceId;
+    if (!workspaceId) {
+        return res.status(404).json({ error: 'No workspace found for this account.' });
+    }
 
     try {
         const wsDoc = await db.collection('workspaces').doc(workspaceId).get();
         const ws = wsDoc.data() || {};
-        const effectivePlan = WORKSPACE_PLAN_MAP[ws.plan] || normalizePlanName(ws.plan);
+        // req.plan is what the plan gates enforce (it includes the development-only override).
+        const tier = toTier((req as any).plan || ws.plan);
+        const catalogId = tier === 'starter'
+            ? null
+            : (PLAN_CATALOG[ws.billingPlanId]?.tier === tier ? ws.billingPlanId : TIER_TO_CATALOG[tier]) || null;
+        const planName = catalogId ? PLAN_CATALOG[catalogId].label : PLAN_DISPLAY_NAMES[tier];
 
-        const features = ['posts', 'exports', 'aiCalls', 'transcribeHrs', 'clipAnalysis', 'dmsDay', 'renders'];
-        const usage: Record<string, number> = {};
-
-        await Promise.all(features.map(async (feature) => {
-            const key = `usage:${workspaceId}:${feature}:${getMonth()}`;
-            try {
-                usage[feature] = parseInt(await redis.get(key) || '0', 10);
-            } catch (_error) {
-                usage[feature] = 0;
-            }
-        }));
-
-        usage.storageGB = await calculateWorkspaceStorage(workspaceId);
+        const usage = await readUsage(workspaceId, tier);
+        let storageGB: number | null = null;
+        try {
+            storageGB = await calculateWorkspaceStorage(workspaceId);
+        } catch {
+            storageGB = null;
+        }
 
         res.json({
             success: true,
             provider: 'paystack',
+            paymentsConfigured: Boolean(PAYSTACK_SECRET_KEY),
             publicKeyConfigured: Boolean(PAYSTACK_PUBLIC_KEY),
-            plan: effectivePlan,
-            internalPlan: ws.plan || 'starter',
-            credits: ws.credits ?? PLAN_CATALOG[effectivePlan]?.credits ?? 50,
-            planDetails: PLAN_CATALOG[effectivePlan] || PLAN_CATALOG.creator_starter,
-            paystackCustomerCode: ws.paystackCustomerCode || null,
-            paystackReference: ws.paystackReference || null,
-            subscriptionId: ws.paystackSubscriptionCode || ws.subscriptionId || null,
+            plan: tier,
+            planRank: TIER_RANK[tier],
+            planId: catalogId || 'starter',
+            planName,
+            limits: PLAN_LIMITS[tier],
+            usage: usage ? { ...usage, storageGB: storageGB ?? 0 } : null,
+            usageAvailable: Boolean(usage),
+            storageGB,
+            billingInterval: ws.billingInterval || null,
             currentPeriodEnd: ws.currentPeriodEnd || null,
-            paymentStatus: ws.paymentStatus || 'inactive',
-            usage,
+            paymentStatus: tier === 'starter' ? 'free' : (ws.paymentStatus || 'inactive'),
+            pendingPlan: ws.pendingPlan || null,
+            paystackCustomerCode: ws.paystackCustomerCode || null,
+            supportEmail: BILLING_EMAIL,
+            supportUrl: BILLING_SUPPORT_URL,
         });
     } catch (err: any) {
-        res.status(500).json({ error: err.message });
+        console.error('[Billing] Status failed:', err.message);
+        res.status(500).json({ error: 'Could not load billing details.' });
     }
 });
 
@@ -225,46 +538,17 @@ export async function handlePaystackWebhook(req: Request, res: Response) {
     }
 
     const event = req.body;
-    const eventId = event?.data?.id ? String(event.data.id) : `evt_${Date.now()}`;
-    const idempotencyRef = db.collection('processed_webhooks').doc(eventId);
-
-    const existingDoc = await idempotencyRef.get();
-    if (existingDoc.exists) {
-        return res.status(200).send('Webhook already processed');
-    }
 
     try {
-        await idempotencyRef.set({
-            provider: 'paystack',
-            processedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
         if (event?.event === 'charge.success') {
-            const metadata = event?.data?.metadata || {};
-            const workspaceId = metadata.workspaceId;
-            const requestedPlan = normalizePlanName(metadata.requestedPlan);
-            const internalPlan = PAYSTACK_PLAN_MAP[requestedPlan] || 'starter';
-
-            if (workspaceId) {
-                await db.collection('workspaces').doc(workspaceId).set({
-                    plan: internalPlan,
-                    paymentProvider: 'paystack',
-                    paystackReference: event?.data?.reference || null,
-                    paystackCustomerCode: event?.data?.customer?.customer_code || null,
-                    paystackCustomerEmail: event?.data?.customer?.email || null,
-                    paystackSubscriptionCode: event?.data?.subscription?.subscription_code || null,
-                    paymentStatus: 'active',
-                    currentPeriodEnd: null,
-                    credits: PLAN_CATALOG[requestedPlan]?.credits ?? 1000,
-                    planActivatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                }, { merge: true });
+            const result = await activateFromTransaction(event?.data || {}, 'webhook');
+            if (!result.ok) {
+                console.error('[Paystack Webhook] Charge not applied:', event?.data?.reference, result.reason);
             }
         }
 
         return res.json({ received: true });
     } catch (err) {
-        await idempotencyRef.delete();
         console.error('[Paystack Webhook Error]', err);
         return res.status(500).send('Webhook processing failed');
     }

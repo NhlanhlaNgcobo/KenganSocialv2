@@ -26,7 +26,9 @@ import { v4 as uuidv4 } from 'uuid';
  * @returns {import('@remotion/captions').Caption[]}
  */
 export function parseCaptions(srtContent) {
-    return parseSrt({ input: srtContent });
+    // parseSrt returns { captions }; callers want the plain array.
+    const { captions } = parseSrt({ input: String(srtContent) });
+    return Array.isArray(captions) ? captions : [];
 }
 
 /**
@@ -35,7 +37,19 @@ export function parseCaptions(srtContent) {
  * @returns {string}
  */
 export function exportToSrt(captions) {
-    return serializeSrt({ captions });
+    // serializeSrt takes { lines: Caption[][] }: one SRT entry per line. Each caption is its own entry.
+    const lines = captions
+        .filter((c) => c && typeof c.text === 'string' && Number.isFinite(Number(c.startMs)) && Number.isFinite(Number(c.endMs)))
+        .map((c) => [
+            {
+                text: c.text,
+                startMs: Number(c.startMs),
+                endMs: Number(c.endMs),
+                timestampMs: c.timestampMs ?? null,
+                confidence: c.confidence ?? null,
+            },
+        ]);
+    return serializeSrt({ lines });
 }
 
 /**

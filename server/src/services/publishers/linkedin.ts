@@ -3,12 +3,49 @@ import axios from 'axios';
 interface LinkedInPublishConfig {
     accessToken: string;
     authorId: string; // e.g., urn:li:person:12345 or urn:li:organization:67890
-    videoUrl: string;
+    videoUrl?: string; // omitted or empty → text-only post
     text?: string;
 }
 
+/** Connections store the bare member id; the UGC API needs a URN. */
+function toAuthorUrn(authorId: string): string {
+    return authorId.startsWith('urn:li:') ? authorId : `urn:li:person:${authorId}`;
+}
+
+const UGC_HEADERS = (accessToken: string) => ({
+    Authorization: `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+    'X-Restli-Protocol-Version': '2.0.0',
+});
+
+/** Text-only share through the same UGC Posts API the video path uses (shareMediaCategory NONE). */
+async function publishTextToLinkedIn(accessToken: string, author: string, text: string): Promise<string> {
+    if (!text.trim()) throw new Error('LinkedIn post has no text and no video');
+    const postRes = await axios.post(
+        'https://api.linkedin.com/v2/ugcPosts',
+        {
+            author,
+            lifecycleState: 'PUBLISHED',
+            specificContent: {
+                'com.linkedin.ugc.ShareContent': {
+                    shareCommentary: { text },
+                    shareMediaCategory: 'NONE',
+                },
+            },
+            visibility: {
+                'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+            },
+        },
+        { headers: UGC_HEADERS(accessToken) }
+    );
+    return postRes.data?.id || postRes.headers?.['x-restli-id'];
+}
+
 export async function publishToLinkedIn(config: LinkedInPublishConfig): Promise<string> {
-    const { accessToken, authorId, videoUrl, text = '' } = config;
+    const { accessToken, videoUrl, text = '' } = config;
+    const authorId = toAuthorUrn(config.authorId);
+
+    if (!videoUrl) return publishTextToLinkedIn(accessToken, authorId, text);
 
     // Download video size
     const videoHead = await axios.head(videoUrl);
@@ -80,14 +117,8 @@ export async function publishToLinkedIn(config: LinkedInPublishConfig): Promise<
                 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
             },
         },
-        {
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-                'X-Restli-Protocol-Version': '2.0.0',
-            },
-        }
+        { headers: UGC_HEADERS(accessToken) }
     );
 
-    return postRes.data.id;
+    return postRes.data?.id || postRes.headers?.['x-restli-id'];
 }

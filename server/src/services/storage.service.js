@@ -14,6 +14,18 @@ export function getStorageDriver() {
     return (process.env.STORAGE_DRIVER || 'firebase').toLowerCase();
 }
 
+const EXTENSIONS = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/svg+xml': 'svg',
+    'video/quicktime': 'mov',
+    'video/mp4': 'mp4',
+    'audio/mpeg': 'mp3',
+    'application/pdf': 'pdf',
+};
+
 export const LOCAL_UPLOAD_DIR = path.resolve(process.env.LOCAL_UPLOAD_DIR || path.join(process.cwd(), 'uploads'));
 
 // ---------------------
@@ -112,7 +124,7 @@ async function sumLocalBytes(dir) {
  */
 export async function uploadFile(buffer, destination, mimeType) {
     try {
-        const fileExtension = mimeType.split('/')[1] || 'bin';
+        const fileExtension = EXTENSIONS[mimeType] || (mimeType.split('/')[1] || 'bin').replace(/[^a-z0-9]/gi, '');
         const fileName = `${destination}/${uuidv4()}.${fileExtension}`;
         const driver = getStorageDriver();
 

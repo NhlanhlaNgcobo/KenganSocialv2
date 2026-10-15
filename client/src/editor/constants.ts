@@ -77,6 +77,9 @@ export const CAPTION_STYLES: Record<string, Partial<TextElement>> = {
     minimal: { fontSize: 56, fontWeight: 'normal', color: '#ffffff', backgroundColor: 'rgba(0,0,0,0.55)', fontFamily: 'Inter' },
     karaoke: { fontSize: 72, fontWeight: 'bold', color: '#facc15', backgroundColor: 'transparent', fontFamily: 'Arial' },
     neon: { fontSize: 72, fontWeight: 'bold', color: '#22d3ee', backgroundColor: 'rgba(0,0,0,0.35)', fontFamily: 'Arial' },
+    impact: { fontSize: 88, fontWeight: 'bold', color: '#ffffff', backgroundColor: 'transparent', fontFamily: 'Impact' },
+    highlighter: { fontSize: 60, fontWeight: 'bold', color: '#ffffff', backgroundColor: 'rgba(0,0,0,0.65)', fontFamily: 'Arial' },
+    accent: { fontSize: 64, fontWeight: 'bold', color: '#ffffff', backgroundColor: '#e04a18', fontFamily: 'Arial' },
 };
 
 export const SPEED_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2];

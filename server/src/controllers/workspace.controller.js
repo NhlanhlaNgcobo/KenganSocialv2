@@ -1,24 +1,42 @@
 import admin, { getAuth, getFirestore } from '../config/firebase.js';
 
 /**
- * Get all workspaces for the authenticated user.
+ * Get every workspace the authenticated user can open: the ones they own plus the ones they
+ * were added to. Each carries `role` ('owner' or their member role).
+ *
+ * Membership is found through the `members` uid array that addMember/removeMember keep in step
+ * with the members subcollection (single-field array-contains, so no composite index needed).
  */
 export async function getWorkspaces(req, res) {
     try {
         const db = getFirestore();
         const uid = req.user.uid;
 
-        const snapshot = await db.collection('workspaces')
-            .where('ownerId', '==', uid)
-            .get();
+        const [owned, memberOf] = await Promise.all([
+            db.collection('workspaces').where('ownerId', '==', uid).get(),
+            db.collection('workspaces').where('members', 'array-contains', uid).get(),
+        ]);
 
-        const workspaces = [];
-        snapshot.forEach(doc => {
-            workspaces.push(doc.data());
+        const byId = new Map();
+        owned.forEach((doc) => byId.set(doc.id, { ...doc.data(), id: doc.id, role: 'owner' }));
+
+        const shared = memberOf.docs.filter((doc) => !byId.has(doc.id));
+        const memberRoles = await Promise.all(
+            shared.map((doc) => doc.ref.collection('members').doc(uid).get())
+        );
+        shared.forEach((doc, i) => {
+            const memberDoc = memberRoles[i];
+            // The members array is the security-rules mirror; the subcollection doc holds the role.
+            // A uid in the array without a member doc is stale, so it is not listed.
+            if (!memberDoc.exists) return;
+            byId.set(doc.id, { ...doc.data(), id: doc.id, role: memberDoc.data().role || 'viewer' });
         });
 
-        // Sort client-side to avoid needing a composite index
-        workspaces.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        const workspaces = [...byId.values()];
+        // Owned first, then newest; sorted here to avoid needing a composite index.
+        workspaces.sort((a, b) =>
+            (a.role === 'owner' ? 0 : 1) - (b.role === 'owner' ? 0 : 1)
+            || (b.createdAt || '').localeCompare(a.createdAt || ''));
 
         res.json({ workspaces });
     } catch (error) {
@@ -34,10 +52,10 @@ export async function createWorkspace(req, res) {
     try {
         const db = getFirestore();
         const uid = req.user.uid;
-        const { name } = req.body;
+        const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
 
-        if (!name) {
-            return res.status(400).json({ error: 'Workspace name is required' });
+        if (name.length < 3 || name.length > 50) {
+            return res.status(400).json({ error: 'Workspace names are 3–50 characters.' });
         }
 
         const now = new Date().toISOString();
@@ -47,7 +65,8 @@ export async function createWorkspace(req, res) {
             id: workspaceRef.id,
             name,
             ownerId: uid,
-            plan: 'free',
+            members: [uid],
+            plan: 'starter',
             createdAt: now,
             updatedAt: now,
         };
@@ -92,7 +111,7 @@ export async function getWorkspaceById(req, res) {
             return res.status(404).json({ error: 'Workspace not found' });
         }
 
-        res.json({ workspace: workspace.data() });
+        res.json({ workspace: { ...workspace.data(), id: workspace.id, role } });
     } catch (error) {
         console.error('[Workspace Controller] Get workspace error:', error);
         res.status(500).json({ error: 'Failed to fetch workspace' });

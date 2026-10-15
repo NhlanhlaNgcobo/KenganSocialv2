@@ -282,3 +282,34 @@
         transform: rotate(360deg);
     }
 }
+
+/* Inline status / errors shown next to the control that started a connection */
+.connect-inline-status,
+.connect-inline-error {
+    width: 80%;
+    margin: 10px auto 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    text-align: center;
+}
+
+.connect-inline-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--text-secondary);
+}
+
+.connect-inline-error {
+    padding: 8px 10px;
+    color: var(--error);
+    background: var(--error-bg);
+    border-radius: var(--radius-md);
+}
+
+.youtube-studio .connect-inline-error {
+    width: auto;
+    margin: 0 0 16px;
+    text-align: left;
+}

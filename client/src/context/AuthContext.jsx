@@ -1,9 +1,10 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     signInWithPopup,
+    sendPasswordResetEmail,
     signOut,
     updateProfile,
 } from 'firebase/auth';
@@ -12,12 +13,50 @@ import { apiClient } from '../lib/api';
 
 const AuthContext = createContext(null);
 
+/**
+ * True when a signed-in user still has to finish onboarding. New profiles are created with
+ * onboardingComplete: false; profiles that saved the onboarding consents (step 1) count as done
+ * even if the best-effort "finish" call failed, and so do older profiles that finished before the
+ * flag existed.
+ */
+function requiresOnboarding(profile) {
+    if (!profile) return false;
+    return profile.onboardingComplete !== true && !profile.consents;
+}
+
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [profile, setProfile] = useState(null);
     const [workspace, setWorkspace] = useState(null);
     const [plan, setPlan] = useState('starter');
     const [loading, setLoading] = useState(true);
+
+    /** Applies a session payload from /auth/me or POST /auth/profile (both return the same shape). */
+    const applySession = useCallback((data) => {
+        setProfile(data?.user || null);
+        setWorkspace(data?.workspace || null);
+        setPlan(data?.plan || 'starter');
+    }, []);
+
+    const clearSession = useCallback(() => {
+        setProfile(null);
+        setWorkspace(null);
+        setPlan('starter');
+    }, []);
+
+    /** Re-reads the profile and workspace after they change (onboarding, settings, photo). */
+    const refreshProfile = useCallback(async () => {
+        const data = await apiClient('/auth/me');
+        applySession(data);
+        return data;
+    }, [applySession]);
+
+    /** Creates the profile on first sign-in (or returns the existing one) and applies it. */
+    const ensureProfile = useCallback(async (body) => {
+        const data = await apiClient('/auth/profile', { method: 'POST', body: JSON.stringify(body) });
+        applySession(data);
+        return data;
+    }, [applySession]);
 
     useEffect(() => {
         if (!isFirebaseConfigured || !auth) {
@@ -29,35 +68,24 @@ export function AuthProvider({ children }) {
             setUser(firebaseUser);
 
             if (!firebaseUser) {
-                setProfile(null);
-                setWorkspace(null);
-                setPlan('starter');
+                clearSession();
                 setLoading(false);
                 return;
             }
 
+            // Hold route guards until the profile is known, so they never decide on a stale one.
+            setLoading(true);
             try {
-                const data = await apiClient('/auth/me');
-                setProfile(data.user);
-                setWorkspace(data.workspace || null);
-                setPlan(data.plan || data.user?.plan || 'starter');
-            } catch (_profileErr) {
+                await refreshProfile();
+            } catch {
                 try {
-                    const data = await apiClient('/auth/profile', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-                            photoURL: firebaseUser.photoURL,
-                        }),
+                    await ensureProfile({
+                        displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+                        photoURL: firebaseUser.photoURL,
                     });
-                    setProfile(data.user);
-                    setWorkspace(data.workspace || null);
-                    setPlan(data.workspace?.plan || data.user?.plan || 'starter');
                 } catch (createErr) {
-                    console.error('Failed to auto-create profile:', createErr);
-                    setProfile(null);
-                    setWorkspace(null);
-                    setPlan('starter');
+                    console.error('Failed to load or create profile:', createErr);
+                    clearSession();
                 }
             }
 
@@ -65,7 +93,7 @@ export function AuthProvider({ children }) {
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [clearSession, ensureProfile, refreshProfile]);
 
     const login = async (email, password) => {
         if (!auth) throw new Error('Firebase is not configured');
@@ -81,51 +109,39 @@ export function AuthProvider({ children }) {
             await updateProfile(result.user, { displayName });
         }
 
-        let data;
+        // The auth listener may have created the profile from the email prefix already; this
+        // call passes the real name, and the server answers with the full session either way.
         try {
-            data = await apiClient('/auth/profile', {
-                method: 'POST',
-                body: JSON.stringify({ displayName }),
-            });
-        } catch (_profileErr) {
-            data = await apiClient('/auth/profile', {
-                method: 'PUT',
-                body: JSON.stringify({ displayName }),
-            });
-        }
-
-        if (data?.user) {
-            setProfile(data.user);
-            setWorkspace(data.workspace || null);
-            setPlan(data.workspace?.plan || data.user?.plan || 'starter');
+            await ensureProfile({ displayName });
+        } catch (profileErr) {
+            console.error('Failed to save the profile name:', profileErr);
         }
 
         return result.user;
     };
 
+    /** Signs in with Google and returns { user, needsOnboarding } so callers can route. */
     const loginWithGoogle = async () => {
         if (!auth || !googleProvider) throw new Error('Firebase is not configured');
         const result = await signInWithPopup(auth, googleProvider);
 
+        let data = null;
         try {
-            const data = await apiClient('/auth/profile', {
-                method: 'POST',
-                body: JSON.stringify({
-                    displayName: result.user.displayName,
-                    photoURL: result.user.photoURL,
-                }),
+            data = await ensureProfile({
+                displayName: result.user.displayName,
+                photoURL: result.user.photoURL,
             });
-            setProfile(data.user);
-            setWorkspace(data.workspace || null);
-            setPlan(data.workspace?.plan || data.user?.plan || 'starter');
         } catch {
-            const data = await apiClient('/auth/me');
-            setProfile(data.user);
-            setWorkspace(data.workspace || null);
-            setPlan(data.plan || data.user?.plan || 'starter');
+            data = await refreshProfile().catch(() => null);
         }
 
-        return result.user;
+        return { user: result.user, needsOnboarding: requiresOnboarding(data?.user) };
+    };
+
+    /** Emails a password reset link. Firebase does not reveal whether the account exists. */
+    const resetPassword = async (email) => {
+        if (!auth) throw new Error('Firebase is not configured');
+        await sendPasswordResetEmail(auth, email);
     };
 
     const logout = async () => {
@@ -133,18 +149,7 @@ export function AuthProvider({ children }) {
             await signOut(auth);
         }
         setUser(null);
-        setProfile(null);
-        setWorkspace(null);
-        setPlan('starter');
-    };
-
-    /** Re-reads the profile and workspace after they change (e.g. at the end of onboarding). */
-    const refreshProfile = async () => {
-        const data = await apiClient('/auth/me');
-        setProfile(data.user);
-        setWorkspace(data.workspace || null);
-        setPlan(data.plan || data.user?.plan || 'starter');
-        return data;
+        clearSession();
     };
 
     const value = {
@@ -154,10 +159,12 @@ export function AuthProvider({ children }) {
         workspace,
         plan,
         loading,
+        needsOnboarding: requiresOnboarding(profile),
         isFirebaseConfigured,
         login,
         register,
         loginWithGoogle,
+        resetPassword,
         logout,
     };
 

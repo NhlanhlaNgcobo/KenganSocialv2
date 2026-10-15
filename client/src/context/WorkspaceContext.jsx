@@ -25,11 +25,18 @@ export function WorkspaceProvider({ children }) {
         try {
             setLoading(true);
             const data = await apiClient('/workspaces');
-            setWorkspaces(data.workspaces);
+            const list = data.workspaces || [];
+            setWorkspaces(list);
 
-            // Set current workspace from profile default or first available
-            const defaultWs = data.workspaces.find(ws => ws.id === profile.defaultWorkspaceId);
-            const nextWorkspace = defaultWs || data.workspaces[0] || null;
+            // Keep the workspace picked in the switcher (stored across reloads), then fall back
+            // to the profile default, the user's own workspace, or the first one available.
+            const storedId = localStorage.getItem('kengan_current_workspace_id');
+            const nextWorkspace =
+                list.find(ws => ws.id === storedId)
+                || list.find(ws => ws.id === profile.defaultWorkspaceId)
+                || list.find(ws => ws.role === 'owner')
+                || list[0]
+                || null;
             setCurrentWorkspace(nextWorkspace);
             if (nextWorkspace?.id) {
                 localStorage.setItem('kengan_current_workspace_id', nextWorkspace.id);

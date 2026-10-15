@@ -32,13 +32,64 @@ async function getUsageStats(workspaceId: string, plan: keyof typeof PLAN_LIMITS
     return stats;
 }
 
+// ─── Helpers: errors and the session payload ────────────────────────────────
+// Every error carries a sentence the app can show as-is (`error`) plus a stable `code`.
+const AUTH_ERRORS = {
+    MISSING_TOKEN: [401, 'You are signed out. Sign in again to continue.'],
+    TOKEN_EXPIRED: [401, 'Your session has expired. Sign in again to continue.'],
+    INVALID_TOKEN: [401, 'We could not confirm your sign-in. Sign in again to continue.'],
+    USER_NOT_FOUND: [404, 'We could not find your profile. Sign out and sign in again.'],
+} as const;
+
+function sendAuthError(res: Response, code: keyof typeof AUTH_ERRORS) {
+    const [status, error] = AUTH_ERRORS[code];
+    return res.status(status).json({ error, code });
+}
+
+function tokenErrorCode(err: any): keyof typeof AUTH_ERRORS {
+    return err?.code === 'auth/id-token-expired' ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN';
+}
+
+/**
+ * The signed-in session: user, owned workspace, effective plan (with the development plan
+ * override), this month's usage and the plan limits. Shared by GET /me and POST /profile so the
+ * client always receives one shape.
+ */
+async function buildSession(uid: string, user: Record<string, unknown>) {
+    const workspaceSnap = await db
+        .collection('workspaces')
+        .where('ownerId', '==', uid)
+        .limit(1)
+        .get();
+
+    if (workspaceSnap.empty) {
+        return { user, workspace: null, plan: null, usage: null, planLimits: null };
+    }
+
+    const workspaceDoc = workspaceSnap.docs[0];
+    const workspace = { ...workspaceDoc.data(), id: workspaceDoc.id };
+    const plan = applyDevPlanOverride((workspace as any).plan ?? 'starter') as keyof typeof PLAN_LIMITS;
+
+    let usage: Record<string, number>;
+    try {
+        usage = await getUsageStats(workspaceDoc.id, plan);
+    } catch {
+        console.warn('Auth session usage lookup unavailable, defaulting to zero usage.');
+        usage = Object.fromEntries(
+            Object.keys(PLAN_LIMITS[plan]).map((feature) => [feature, 0])
+        ) as Record<string, number>;
+    }
+
+    return { user, workspace, plan, usage, planLimits: PLAN_LIMITS[plan] };
+}
+
 // ─── POST /api/auth/verify ───────────────────────────────────────────────────
 // Verify Firebase JWT and return { user, workspace, plan }
 router.post('/verify', async (req: Request, res: Response) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader?.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'MISSING_TOKEN', message: 'Authorization header is required.' });
+            return sendAuthError(res, 'MISSING_TOKEN');
         }
 
         const idToken = authHeader.split('Bearer ')[1];
@@ -47,7 +98,7 @@ router.post('/verify', async (req: Request, res: Response) => {
         // Fetch user document from Firestore
         const userDoc = await db.collection('users').doc(decoded.uid).get();
         if (!userDoc.exists) {
-            return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User profile not found.' });
+            return sendAuthError(res, 'USER_NOT_FOUND');
         }
 
         const user = { uid: decoded.uid, ...userDoc.data() };
@@ -70,10 +121,7 @@ router.post('/verify', async (req: Request, res: Response) => {
         return res.status(200).json({ user, workspace, plan });
     } catch (err: any) {
         console.error('Auth verify error:', err);
-        if (err.code === 'auth/id-token-expired') {
-            return res.status(401).json({ error: 'TOKEN_EXPIRED', message: 'Firebase token has expired.' });
-        }
-        return res.status(401).json({ error: 'INVALID_TOKEN', message: 'Could not verify Firebase token.' });
+        return sendAuthError(res, tokenErrorCode(err));
     }
 });
 
@@ -83,7 +131,7 @@ router.post('/workspace/create', async (req: Request, res: Response) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader?.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'MISSING_TOKEN' });
+            return sendAuthError(res, 'MISSING_TOKEN');
         }
 
         const idToken = authHeader.split('Bearer ')[1];
@@ -91,7 +139,7 @@ router.post('/workspace/create', async (req: Request, res: Response) => {
 
         const { name } = req.body;
         if (!name || typeof name !== 'string' || name.trim().length === 0) {
-            return res.status(400).json({ error: 'INVALID_NAME', message: 'Workspace name is required.' });
+            return res.status(400).json({ error: 'Give your workspace a name.', code: 'INVALID_NAME' });
         }
 
         // Check if workspace already exists for this user
@@ -102,7 +150,7 @@ router.post('/workspace/create', async (req: Request, res: Response) => {
             .get();
 
         if (!existing.empty) {
-            return res.status(409).json({ error: 'WORKSPACE_EXISTS', message: 'User already has a workspace.' });
+            return res.status(409).json({ error: 'You already have a workspace.', code: 'WORKSPACE_EXISTS' });
         }
 
         // Create the workspace document
@@ -136,76 +184,84 @@ router.post('/workspace/create', async (req: Request, res: Response) => {
         return res.status(201).json({ workspace, plan: 'starter' });
     } catch (err) {
         console.error('Workspace create error:', err);
-        return res.status(500).json({ error: 'SERVER_ERROR', message: 'Failed to create workspace.' });
+        return res.status(500).json({ error: 'Could not create the workspace. Try again.', code: 'SERVER_ERROR' });
     }
 });
 
 // ─── POST /api/auth/profile ──────────────────────────────────────────────────
-// Create/Auto-create user profile and default workspace
+// Create the user profile and default workspace on first sign-in. Always answers with the
+// same session shape as GET /me ({ user, workspace, plan, usage, planLimits }), whether the
+// profile was just created or already existed, so callers never downgrade the plan.
 router.post('/profile', async (req: Request, res: Response) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader?.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'MISSING_TOKEN' });
+            return sendAuthError(res, 'MISSING_TOKEN');
         }
         const idToken = authHeader.split('Bearer ')[1];
         const decoded = await admin.auth().verifyIdToken(idToken);
-        const { displayName, photoURL } = req.body;
+        const { displayName, photoURL } = req.body || {};
+        const userRef = db.collection('users').doc(decoded.uid);
+        const prefix = decoded.email?.split('@')[0];
+        const name = typeof displayName === 'string' ? displayName.trim().slice(0, 100) : '';
 
-        const userDoc = await db.collection('users').doc(decoded.uid).get();
-        if (userDoc.exists) {
-            // Sign-up races: the auth listener can create the profile from the email prefix
-            // before the name from the sign-up form arrives. Take the real name, and rename the
-            // still-default workspace to match.
-            const existing: any = userDoc.data();
-            const prefix = decoded.email?.split('@')[0];
-            const name = typeof displayName === 'string' ? displayName.trim().slice(0, 100) : '';
-            if (name && existing.displayName === prefix && name !== prefix) {
-                const now = new Date().toISOString();
-                await userDoc.ref.update({ displayName: name, updatedAt: now });
-                const owned = await db.collection('workspaces').where('ownerId', '==', decoded.uid).limit(1).get();
-                const ws = owned.docs[0];
-                if (ws && ws.data().name === `${prefix}'s Workspace`) await ws.ref.update({ name: `${name}'s Workspace`, updatedAt: now });
-                existing.displayName = name;
+        let userDoc = await userRef.get();
+        if (!userDoc.exists) {
+            const now = new Date().toISOString();
+            const userData = {
+                uid: decoded.uid,
+                email: decoded.email,
+                displayName: name || prefix,
+                photoURL: typeof photoURL === 'string' && /^https:\/\//i.test(photoURL) ? photoURL.slice(0, 2048) : null,
+                plan: 'starter',
+                onboardingComplete: false,
+                createdAt: now,
+                updatedAt: now,
+            };
+            const workspaceRef = db.collection('workspaces').doc();
+            const workspaceData = {
+                id: workspaceRef.id,
+                name: `${userData.displayName}'s Workspace`,
+                ownerId: decoded.uid,
+                members: [decoded.uid],
+                plan: 'starter',
+                createdAt: now,
+                updatedAt: now,
+                onboardingComplete: false
+            };
+
+            // The auth listener and the sign-in handler can both call this at once. `create`
+            // fails if the profile already exists, and the batch makes the profile and its
+            // workspace appear together, so only one default workspace is ever made.
+            const batch = db.batch();
+            batch.create(userRef, userData);
+            batch.set(workspaceRef, workspaceData);
+            try {
+                await batch.commit();
+                return res.status(201).json(await buildSession(decoded.uid, userData));
+            } catch (createErr: any) {
+                if (createErr?.code !== 6 /* ALREADY_EXISTS */) throw createErr;
+                userDoc = await userRef.get();
             }
-            return res.status(200).json({ user: { uid: decoded.uid, ...existing } });
         }
 
-        const now = new Date().toISOString();
-        const userData = {
-            uid: decoded.uid,
-            email: decoded.email,
-            displayName: displayName || decoded.email?.split('@')[0],
-            photoURL: photoURL || null,
-            plan: 'starter',
-            createdAt: now,
-            updatedAt: now,
-        };
-
-        await db.collection('users').doc(decoded.uid).set(userData);
-
-        // Create default workspace
-        const workspaceRef = db.collection('workspaces').doc();
-        const workspaceData = {
-            id: workspaceRef.id,
-            name: `${userData.displayName}'s Workspace`,
-            ownerId: decoded.uid,
-            members: [decoded.uid],
-            plan: 'starter',
-            createdAt: now,
-            updatedAt: now,
-            onboardingComplete: false
-        };
-
-        await workspaceRef.set(workspaceData);
-
-        return res.status(201).json({
-            user: userData,
-            workspace: workspaceData
-        });
+        // Sign-up races: the auth listener can create the profile from the email prefix
+        // before the name from the sign-up form arrives. Take the real name, and rename the
+        // still-default workspace to match.
+        const existing: any = userDoc.data();
+        if (name && existing.displayName === prefix && name !== prefix) {
+            const now = new Date().toISOString();
+            await userRef.update({ displayName: name, updatedAt: now });
+            const owned = await db.collection('workspaces').where('ownerId', '==', decoded.uid).limit(1).get();
+            const ws = owned.docs[0];
+            if (ws && ws.data().name === `${prefix}'s Workspace`) await ws.ref.update({ name: `${name}'s Workspace`, updatedAt: now });
+            existing.displayName = name;
+        }
+        return res.status(200).json(await buildSession(decoded.uid, { uid: decoded.uid, ...existing }));
     } catch (err: any) {
+        if (String(err?.code || '').startsWith('auth/')) return sendAuthError(res, tokenErrorCode(err));
         console.error('Profile create error:', err);
-        return res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
+        return res.status(500).json({ error: 'Could not set up your profile. Refresh the page to try again.', code: 'SERVER_ERROR' });
     }
 });
 
@@ -215,7 +271,7 @@ router.get('/me', async (req: Request, res: Response) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader?.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'MISSING_TOKEN' });
+            return sendAuthError(res, 'MISSING_TOKEN');
         }
 
         const idToken = authHeader.split('Bearer ')[1];
@@ -223,48 +279,16 @@ router.get('/me', async (req: Request, res: Response) => {
 
         const userDoc = await db.collection('users').doc(decoded.uid).get();
         if (!userDoc.exists) {
-            return res.status(404).json({ error: 'USER_NOT_FOUND' });
+            return sendAuthError(res, 'USER_NOT_FOUND');
         }
 
-        const user = { uid: decoded.uid, ...userDoc.data() };
-
-        const workspaceSnap = await db
-            .collection('workspaces')
-            .where('ownerId', '==', decoded.uid)
-            .limit(1)
-            .get();
-
-        if (workspaceSnap.empty) {
-            return res.status(200).json({ user, workspace: null, plan: null, usage: null, planLimits: null });
-        }
-
-        const workspaceDoc = workspaceSnap.docs[0];
-        const workspace = { id: workspaceDoc.id, ...workspaceDoc.data() };
-        const plan = applyDevPlanOverride((workspace as any).plan ?? 'starter') as keyof typeof PLAN_LIMITS;
-
-        let usage: Record<string, number>;
-        try {
-            usage = await getUsageStats(workspaceDoc.id, plan);
-        } catch (usageErr) {
-            console.warn('Auth /me usage lookup unavailable, defaulting to zero usage.');
-            usage = Object.fromEntries(
-                Object.keys(PLAN_LIMITS[plan]).map((feature) => [feature, 0])
-            ) as Record<string, number>;
-        }
-
-        return res.status(200).json({
-            user,
-            workspace,
-            plan,
-            usage,
-            planLimits: PLAN_LIMITS[plan]
-        });
+        return res.status(200).json(await buildSession(decoded.uid, { uid: decoded.uid, ...userDoc.data() }));
     } catch (err: any) {
         console.error('Auth /me error:', err);
-        if (err?.code === 'auth/id-token-expired' || err?.code === 'auth/argument-error') {
-            return res.status(401).json({ error: 'INVALID_TOKEN' });
+        if (String(err?.code || '').startsWith('auth/')) {
+            return sendAuthError(res, tokenErrorCode(err));
         }
-        return res.status(500).json({ error: 'AUTH_PROFILE_UNAVAILABLE' });
+        return res.status(500).json({ error: 'We could not load your account. Refresh the page to try again.', code: 'AUTH_PROFILE_UNAVAILABLE' });
     }
 });
 
@@ -273,21 +297,25 @@ router.put('/profile', async (req: Request, res: Response) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader?.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'MISSING_TOKEN' });
+            return sendAuthError(res, 'MISSING_TOKEN');
         }
         const idToken = authHeader.split('Bearer ')[1];
         const decoded = await admin.auth().verifyIdToken(idToken);
         const { displayName, photoURL, bio } = req.body;
 
         const updates: any = { updatedAt: new Date().toISOString() };
-        if (displayName !== undefined) updates.displayName = String(displayName).slice(0, 100);
+        if (displayName !== undefined) {
+            const name = String(displayName).trim().slice(0, 100);
+            if (!name) return res.status(400).json({ error: 'Add your name.', code: 'INVALID_NAME' });
+            updates.displayName = name;
+        }
         if (photoURL !== undefined) {
             // Either an https link or a small inline image (the Settings page uploads a 256px JPEG).
             const value = photoURL === null ? null : String(photoURL);
             const isHttps = value !== null && /^https:\/\//i.test(value) && value.length <= 2048;
             const isSmallImage = value !== null && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value) && value.length <= 300_000;
             if (value !== null && !isHttps && !isSmallImage) {
-                return res.status(400).json({ error: 'INVALID_PHOTO', message: 'Photo must be an https URL or an image under 200KB.' });
+                return res.status(400).json({ error: 'Use a JPEG, PNG or WebP image under 200 KB, or an https link.', code: 'INVALID_PHOTO' });
             }
             updates.photoURL = value;
         }
@@ -298,7 +326,9 @@ router.put('/profile', async (req: Request, res: Response) => {
 
         return res.status(200).json({ user: { uid: decoded.uid, ...updated.data() } });
     } catch (err: any) {
-        return res.status(500).json({ error: 'UPDATE_FAILED' });
+        if (String(err?.code || '').startsWith('auth/')) return sendAuthError(res, tokenErrorCode(err));
+        console.error('Profile update error:', err?.message);
+        return res.status(500).json({ error: 'Could not save your profile. Try again.', code: 'UPDATE_FAILED' });
     }
 });
 
@@ -309,7 +339,7 @@ router.put('/profile', async (req: Request, res: Response) => {
 router.post('/onboarding', async (req: Request, res: Response) => {
     try {
         const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'MISSING_TOKEN' });
+        if (!authHeader?.startsWith('Bearer ')) return sendAuthError(res, 'MISSING_TOKEN');
         const decoded = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
         const body = req.body || {};
         const now = new Date().toISOString();

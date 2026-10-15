@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Clapperboard, Copy, Download, Globe, Loader2, PenLine, RotateCcw, Scissors } from 'lucide-react';
+import { AlertTriangle, Check, Clapperboard, Copy, Download, Globe, Loader2, PenLine, RotateCcw, Scissors } from 'lucide-react';
 import { apiClient } from '../../lib/api';
 import MusicPicker from '../../components/music/MusicPicker';
 import { useEditorStore } from '../../stores/editorStore';
@@ -88,14 +88,12 @@ export default function LaunchPage() {
                     const blob = await authorizedBlob(status.downloadUrl);
                     blobRef.current = blob;
                     setVideoUrl(URL.createObjectURL(blob));
-                } else if (status.status === 'failed') {
-                    setError(status.error || 'The launch video could not be made.');
-                } else {
+                } else if (status.status !== 'failed') {
                     poll(jobId);
                 }
+                // A failed job is shown in the result panel (status.error), with Try again.
             } catch (err) {
-                setError(err.message);
-                setJob(null);
+                setJob({ status: 'failed', error: err.message || 'We lost track of the video while it was being made.' });
             }
         }, 2000);
     };
@@ -143,7 +141,12 @@ export default function LaunchPage() {
     };
 
     const copyShare = async () => {
-        await navigator.clipboard.writeText(job?.shareCopy || '');
+        try {
+            await navigator.clipboard.writeText(job?.shareCopy || '');
+        } catch {
+            setError("Couldn't copy to the clipboard. Select the caption and copy it manually.");
+            return;
+        }
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
@@ -267,6 +270,17 @@ export default function LaunchPage() {
                             </ol>
                             <div className="progress"><div style={{ width: `${job?.progress || 0}%` }} /></div>
                             <small className="muted">{job?.progress || 0}%</small>
+                        </div>
+                    ) : null}
+
+                    {job?.status === 'failed' ? (
+                        <div className="launch-empty launch-failed" role="alert">
+                            <AlertTriangle size={28} />
+                            <h3>The video couldn't be made</h3>
+                            <p>{job.error || 'Something went wrong while making the launch video.'}</p>
+                            <button className="btn btn-primary btn-sm" onClick={() => start()} disabled={!canSubmit}>
+                                <RotateCcw size={14} /> Try again
+                            </button>
                         </div>
                     ) : null}
 

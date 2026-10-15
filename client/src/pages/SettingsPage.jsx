@@ -12,12 +12,19 @@ import {
     Trash2,
     Loader2,
     Check,
+    Copy,
     AlertCircle,
-    ExternalLink
+    ExternalLink,
+    Palette,
+    Sun,
+    Moon,
+    Monitor
 } from 'lucide-react';
 import { apiClient } from '../lib/api';
 import { auth } from '../lib/firebase';
 import { useWorkspace } from '../context/WorkspaceContext';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import './Settings.css';
 
 /** Resizes an image file to a square JPEG data URL small enough to store on the profile. */
@@ -46,22 +53,25 @@ function Banner({ msg }) {
     if (!msg?.text) return null;
     const isError = msg.type === 'error';
     return (
-        <div
-            className="alert-banner mb-md"
-            style={{
-                display: 'flex', gap: '8px', padding: '12px', borderRadius: '8px', alignItems: 'center',
-                background: isError ? 'var(--error-bg, #ffebee)' : 'var(--success-bg, #e8f5e9)',
-                color: isError ? 'var(--error, #d32f2f)' : 'var(--success, #2e7d32)',
-            }}
-        >
+        <div className={isError ? 'error-banner' : 'success-banner'} role={isError ? 'alert' : 'status'}>
             {isError ? <AlertCircle size={16} /> : <Check size={16} />}
             <span>{msg.text}</span>
         </div>
     );
 }
 
+const THEME_OPTIONS = [
+    { id: 'light', name: 'Light', description: 'Bright surfaces with dark text.', icon: Sun },
+    { id: 'dark', name: 'Dark', description: 'Dark surfaces, easier on the eyes at night.', icon: Moon },
+    { id: 'system', name: 'System', description: 'Match your device setting automatically.', icon: Monitor },
+];
+
+const MIN_PASSWORD_LENGTH = 8;
+const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', editor: 'Editor', viewer: 'Viewer' };
+
 const TABS = [
     { id: 'profile', name: 'Profile', icon: User },
+    { id: 'appearance', name: 'Appearance', icon: Palette },
     { id: 'workspace', name: 'Workspace', icon: Settings2 },
     { id: 'team', name: 'Team', icon: Users },
     { id: 'security', name: 'Security', icon: Shield },
@@ -69,6 +79,7 @@ const TABS = [
 
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState('profile');
+    const { preference, setPreference, theme } = useTheme();
 
     // Profile State
     const [loadingProfile, setLoadingProfile] = useState(true);
@@ -78,14 +89,27 @@ export default function SettingsPage() {
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const photoInputRef = useRef(null);
 
+    const { refreshProfile, workspace: ownWorkspace, plan: ownPlan } = useAuth();
+
+    // Workspace state
+    const { currentWorkspace, fetchWorkspaces } = useWorkspace();
+    const [workspaceName, setWorkspaceName] = useState('');
+    const [savingWorkspace, setSavingWorkspace] = useState(false);
+    const [workspaceMsg, setWorkspaceMsg] = useState({ type: '', text: '' });
+    const [copiedId, setCopiedId] = useState(false);
+    const workspaceRole = currentWorkspace?.role || null;
+    const canRenameWorkspace = workspaceRole === 'owner' || workspaceRole === 'admin';
+    // The session plan includes the development plan override, so prefer it for the user's own workspace.
+    const workspacePlan = currentWorkspace?.id && currentWorkspace.id === ownWorkspace?.id ? ownPlan : (currentWorkspace?.plan || 'starter');
+
     // Team state
-    const { currentWorkspace } = useWorkspace();
     const [members, setMembers] = useState([]);
     const [yourRole, setYourRole] = useState(null);
     const [loadingTeam, setLoadingTeam] = useState(false);
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('editor');
     const [inviting, setInviting] = useState(false);
+    const [removingId, setRemovingId] = useState(null);
     const [teamMsg, setTeamMsg] = useState({ type: '', text: '' });
 
     // Security state
@@ -104,6 +128,47 @@ export default function SettingsPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, currentWorkspace?.id]);
 
+    useEffect(() => {
+        setWorkspaceName(currentWorkspace?.name || '');
+        setWorkspaceMsg({ type: '', text: '' });
+    }, [currentWorkspace?.id, currentWorkspace?.name]);
+
+    const trimmedWorkspaceName = workspaceName.trim();
+    const workspaceNameValid = trimmedWorkspaceName.length >= 3 && trimmedWorkspaceName.length <= 50;
+    const workspaceNameChanged = trimmedWorkspaceName !== (currentWorkspace?.name || '');
+
+    const handleRenameWorkspace = async (e) => {
+        e.preventDefault();
+        setWorkspaceMsg({ type: '', text: '' });
+        if (!workspaceNameValid) {
+            return setWorkspaceMsg({ type: 'error', text: 'Workspace names are 3–50 characters.' });
+        }
+        setSavingWorkspace(true);
+        try {
+            await apiClient(`/workspaces/${currentWorkspace.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ name: trimmedWorkspaceName }),
+            });
+            // Refresh the switcher list and the signed-in session so every view shows the new name.
+            await Promise.allSettled([fetchWorkspaces(), refreshProfile()]);
+            setWorkspaceMsg({ type: 'success', text: 'Workspace renamed.' });
+        } catch (error) {
+            setWorkspaceMsg({ type: 'error', text: error.message || 'Could not rename the workspace. Try again.' });
+        } finally {
+            setSavingWorkspace(false);
+        }
+    };
+
+    const handleCopyWorkspaceId = async () => {
+        try {
+            await navigator.clipboard.writeText(currentWorkspace.id);
+            setCopiedId(true);
+            setTimeout(() => setCopiedId(false), 2000);
+        } catch {
+            setWorkspaceMsg({ type: 'error', text: 'Could not copy automatically. Select the ID and copy it instead.' });
+        }
+    };
+
     const handlePhotoSelected = async (e) => {
         const file = e.target.files?.[0];
         e.target.value = '';
@@ -115,8 +180,10 @@ export default function SettingsPage() {
             await apiClient('/auth/profile', { method: 'PUT', body: JSON.stringify({ photoURL }) });
             setProfileData((p) => ({ ...p, photoURL }));
             setProfileMsg({ type: 'success', text: 'Photo updated.' });
+            // Update the sidebar avatar and anything else reading the signed-in profile.
+            refreshProfile().catch(() => {});
         } catch (error) {
-            setProfileMsg({ type: 'error', text: error.message || 'Could not update photo' });
+            setProfileMsg({ type: 'error', text: error.message || 'Could not update the photo. Try again.' });
         } finally {
             setUploadingPhoto(false);
         }
@@ -129,7 +196,7 @@ export default function SettingsPage() {
             setMembers(data.members || []);
             setYourRole(data.yourRole || null);
         } catch (error) {
-            setTeamMsg({ type: 'error', text: error.message || 'Failed to load team' });
+            setTeamMsg({ type: 'error', text: error.message || 'Could not load the team. Try again.' });
         } finally {
             setLoadingTeam(false);
         }
@@ -148,7 +215,7 @@ export default function SettingsPage() {
             setInviteEmail('');
             setTeamMsg({ type: 'success', text: `${data.member.name} now has ${data.member.role} access.` });
         } catch (error) {
-            setTeamMsg({ type: 'error', text: error.message || 'Could not add member' });
+            setTeamMsg({ type: 'error', text: error.message || 'Could not add that member. Try again.' });
         } finally {
             setInviting(false);
         }
@@ -156,18 +223,22 @@ export default function SettingsPage() {
 
     const handleRemove = async (member) => {
         if (!window.confirm(`Remove ${member.name} from this workspace?`)) return;
+        setRemovingId(member.uid);
+        setTeamMsg({ type: '', text: '' });
         try {
             await apiClient(`/workspaces/${currentWorkspace.id}/members/${member.uid}`, { method: 'DELETE' });
             setMembers((m) => m.filter((x) => x.uid !== member.uid));
             setTeamMsg({ type: 'success', text: `${member.name} was removed.` });
         } catch (error) {
-            setTeamMsg({ type: 'error', text: error.message || 'Could not remove member' });
+            setTeamMsg({ type: 'error', text: error.message || 'Could not remove that member. Try again.' });
+        } finally {
+            setRemovingId(null);
         }
     };
 
     const handleUpdatePassword = async () => {
         setSecurityMsg({ type: '', text: '' });
-        if (passwords.next.length < 8) return setSecurityMsg({ type: 'error', text: 'Use at least 8 characters for the new password.' });
+        if (passwords.next.length < MIN_PASSWORD_LENGTH) return setSecurityMsg({ type: 'error', text: `Use a password of at least ${MIN_PASSWORD_LENGTH} characters.` });
         if (passwords.next !== passwords.confirm) return setSecurityMsg({ type: 'error', text: 'The new passwords do not match.' });
         const user = auth?.currentUser;
         if (!user?.email) return setSecurityMsg({ type: 'error', text: 'You need to be signed in to change your password.' });
@@ -185,8 +256,10 @@ export default function SettingsPage() {
                 : code.includes('too-many-requests')
                     ? 'Too many attempts. Wait a few minutes and try again.'
                     : code.includes('weak-password')
-                        ? 'That password is too weak.'
-                        : error.message || 'Could not update password';
+                        ? 'That password is too weak. Use a longer one.'
+                        : code.includes('requires-recent-login')
+                            ? 'For your security, sign out and back in, then change your password.'
+                            : 'Could not update your password. Try again.';
             setSecurityMsg({ type: 'error', text });
         } finally {
             setSavingPassword(false);
@@ -205,14 +278,18 @@ export default function SettingsPage() {
             });
         } catch (error) {
             console.error('Failed to load profile', error);
+            setProfileMsg({ type: 'error', text: error.message || 'Could not load your profile. Refresh the page to try again.' });
         } finally {
             setLoadingProfile(false);
         }
     };
 
     const handleSaveProfile = async () => {
-        setSavingProfile(true);
         setProfileMsg({ type: '', text: '' });
+        if (!profileData.fullName.trim()) {
+            return setProfileMsg({ type: 'error', text: 'Add your name.' });
+        }
+        setSavingProfile(true);
         try {
             await apiClient('/auth/profile', {
                 method: 'PUT',
@@ -221,10 +298,12 @@ export default function SettingsPage() {
                     bio: profileData.bio,
                 })
             });
-            setProfileMsg({ type: 'success', text: 'Profile updated successfully!' });
+            setProfileMsg({ type: 'success', text: 'Profile saved.' });
             setTimeout(() => setProfileMsg({ type: '', text: '' }), 3000);
+            // Update the sidebar name and anything else reading the signed-in profile.
+            refreshProfile().catch(() => {});
         } catch (error) {
-            setProfileMsg({ type: 'error', text: error.message || 'Failed to update profile' });
+            setProfileMsg({ type: 'error', text: error.message || 'Could not save your profile. Try again.' });
         } finally {
             setSavingProfile(false);
         }
@@ -269,23 +348,7 @@ export default function SettingsPage() {
                     {activeTab === 'profile' && (
                         <div className="settings-section card">
                             <h3>Profile Information</h3>
-                            {profileMsg.text && (
-                                <div
-                                    className={`alert-banner mb-md ${profileMsg.type === 'error' ? 'error-banner' : 'success-banner'}`}
-                                    style={{
-                                        display: 'flex',
-                                        gap: '8px',
-                                        padding: '12px',
-                                        borderRadius: '8px',
-                                        alignItems: 'center',
-                                        background: profileMsg.type === 'error' ? 'var(--error-bg, #ffebee)' : 'var(--success-bg, #e8f5e9)',
-                                        color: profileMsg.type === 'error' ? 'var(--error, #d32f2f)' : 'var(--success, #2e7d32)'
-                                    }}
-                                >
-                                    {profileMsg.type === 'error' ? <AlertCircle size={16} /> : <Check size={16} />}
-                                    <span>{profileMsg.text}</span>
-                                </div>
-                            )}
+                            <Banner msg={profileMsg} />
                             <div className="profile-upload">
                                 <div
                                     className="avatar-preview"
@@ -348,10 +411,111 @@ export default function SettingsPage() {
                         </div>
                     )}
 
+                    {activeTab === 'appearance' && (
+                        <div className="settings-section card">
+                            <h3>Appearance</h3>
+                            <p className="appearance-intro">
+                                Choose how KenganSocial looks. System follows your device and is currently using {theme} mode.
+                            </p>
+                            <div className="theme-options" role="radiogroup" aria-label="Theme">
+                                {THEME_OPTIONS.map((option) => (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={preference === option.id}
+                                        className={`theme-option ${preference === option.id ? 'active' : ''}`}
+                                        onClick={() => setPreference(option.id)}
+                                    >
+                                        <span className={`theme-option__preview theme-option__preview--${option.id}`} aria-hidden="true">
+                                            <span className="theme-option__preview-bar" />
+                                            <span className="theme-option__preview-line" />
+                                            <span className="theme-option__preview-line theme-option__preview-line--short" />
+                                        </span>
+                                        <span className="theme-option__label">
+                                            <option.icon size={16} />
+                                            {option.name}
+                                            {preference === option.id && <Check size={14} className="theme-option__check" />}
+                                        </span>
+                                        <span className="theme-option__desc">{option.description}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {activeTab === 'workspace' && (
                         <div className="settings-section card">
                             <h3>Workspace Settings</h3>
-                            <p style={{ color: 'var(--text-secondary)' }}>Workspace management features coming soon.</p>
+                            <Banner msg={workspaceMsg} />
+                            {!currentWorkspace ? (
+                                <p className="settings-muted">No workspace is selected. Refresh the page to load your workspaces.</p>
+                            ) : (
+                                <>
+                                    <form className="form-grid" onSubmit={handleRenameWorkspace}>
+                                        <div className="input-group full-width">
+                                            <label htmlFor="workspace-name">Workspace name</label>
+                                            <input
+                                                id="workspace-name"
+                                                type="text"
+                                                className="input"
+                                                value={workspaceName}
+                                                maxLength={50}
+                                                onChange={(e) => setWorkspaceName(e.target.value)}
+                                                disabled={!canRenameWorkspace || savingWorkspace}
+                                                aria-describedby="workspace-name-hint"
+                                            />
+                                            <small id="workspace-name-hint" className="settings-hint">
+                                                {canRenameWorkspace
+                                                    ? '3–50 characters. Everyone in the workspace sees this name.'
+                                                    : 'Only the workspace owner or an admin can rename it.'}
+                                            </small>
+                                        </div>
+                                        {canRenameWorkspace ? (
+                                            <div className="section-footer full-width">
+                                                <button
+                                                    type="submit"
+                                                    className="btn btn-primary"
+                                                    disabled={savingWorkspace || !workspaceNameChanged || !workspaceNameValid}
+                                                >
+                                                    {savingWorkspace
+                                                        ? <><Loader2 size={18} className="spin" /> Saving...</>
+                                                        : <><Save size={18} /> Save Name</>
+                                                    }
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                    </form>
+
+                                    <dl className="workspace-details">
+                                        <div>
+                                            <dt>Your role</dt>
+                                            <dd><span className="badge badge-info">{ROLE_LABELS[workspaceRole] || 'Member'}</span></dd>
+                                        </div>
+                                        <div>
+                                            <dt>Plan</dt>
+                                            <dd className="workspace-details__plan">
+                                                {workspacePlan}
+                                                {workspaceRole === 'owner' ? <Link to="/dashboard/billing">Manage plan</Link> : null}
+                                            </dd>
+                                        </div>
+                                        <div>
+                                            <dt>Workspace ID</dt>
+                                            <dd className="workspace-details__id">
+                                                <code>{currentWorkspace.id}</code>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-ghost btn-sm"
+                                                    onClick={handleCopyWorkspaceId}
+                                                    aria-label="Copy workspace ID"
+                                                >
+                                                    {copiedId ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}
+                                                </button>
+                                            </dd>
+                                        </div>
+                                    </dl>
+                                </>
+                            )}
                         </div>
                     )}
 
@@ -361,6 +525,9 @@ export default function SettingsPage() {
                                 <h3>Team Members</h3>
                             </div>
                             <Banner msg={teamMsg} />
+                            {!currentWorkspace ? (
+                                <p className="settings-muted">No workspace is selected. Refresh the page to load your workspaces.</p>
+                            ) : null}
 
                             {yourRole === 'owner' ? (
                                 <form className="flex gap-md mb-lg" onSubmit={handleInvite} style={{ flexWrap: 'wrap' }}>
@@ -385,6 +552,10 @@ export default function SettingsPage() {
                                         Teammates need a KenganSocial account first; add them by the email they signed up with.
                                     </p>
                                 </form>
+                            ) : yourRole ? (
+                                <p className="settings-muted mb-lg">
+                                    You are {yourRole === 'admin' ? 'an' : 'a'} {(ROLE_LABELS[yourRole] || 'member').toLowerCase()} in this workspace. Only the workspace owner can add or remove members.
+                                </p>
                             ) : null}
 
                             {loadingTeam ? (
@@ -401,10 +572,17 @@ export default function SettingsPage() {
                                                 <span className="member-name">{member.name}</span>
                                                 <span className="member-email">{member.email}</span>
                                             </div>
-                                            <span className="badge badge-info" style={{ textTransform: 'capitalize' }}>{member.role}</span>
+                                            <span className="badge badge-info">{ROLE_LABELS[member.role] || member.role}</span>
                                             {yourRole === 'owner' && member.role !== 'owner' ? (
-                                                <button className="btn-icon btn-ghost text-error" title={`Remove ${member.name}`} onClick={() => handleRemove(member)}>
-                                                    <Trash2 size={16} />
+                                                <button
+                                                    type="button"
+                                                    className="btn-icon btn-ghost text-error"
+                                                    title={`Remove ${member.name}`}
+                                                    aria-label={`Remove ${member.name}`}
+                                                    onClick={() => handleRemove(member)}
+                                                    disabled={removingId === member.uid}
+                                                >
+                                                    {removingId === member.uid ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
                                                 </button>
                                             ) : null}
                                         </div>
@@ -428,8 +606,9 @@ export default function SettingsPage() {
                                         </div>
                                         <div className="input-group">
                                             <label>New Password</label>
-                                            <input type="password" className="input" placeholder="••••••••" autoComplete="new-password"
+                                            <input type="password" className="input" placeholder="••••••••" autoComplete="new-password" aria-describedby="new-password-hint"
                                                 value={passwords.next} onChange={(e) => setPasswords({ ...passwords, next: e.target.value })} />
+                                            <small id="new-password-hint" className="settings-hint">At least {MIN_PASSWORD_LENGTH} characters.</small>
                                         </div>
                                         <div className="input-group">
                                             <label>Confirm New Password</label>

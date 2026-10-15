@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
+import { BILLING_EMAIL, fetchPlanCatalog, formatZar } from '../utils/planLimits';
 import './Onboarding.css';
 
 
@@ -58,49 +59,6 @@ const PLATFORMS = [
         emoji: '🧵',
         bg: '#000000',
         desc: 'Text posts & conversations',
-    },
-];
-
-const PLANS = [
-    {
-        id: 'starter',
-        name: 'Starter',
-        monthlyPrice: 0,
-        desc: 'Try KenganSocial free — no card needed.',
-        features: ['10 posts/mo', '3 exports', '2 connections', '0.5 GB storage'],
-        popular: false,
-        cta: 'Start Free',
-        type: 'free',
-    },
-    {
-        id: 'nano',
-        name: 'Nano Creator',
-        monthlyPrice: 149,
-        desc: 'Perfect for growing individual creators.',
-        features: ['30 posts/mo', '10 exports', '3 connections', '5 hrs transcription', '2 GB storage'],
-        popular: false,
-        cta: 'Subscribe',
-        type: 'paid',
-    },
-    {
-        id: 'creator',
-        name: 'Creator Pro',
-        monthlyPrice: 349,
-        desc: 'Everything you need to go full-time.',
-        features: ['100 posts/mo', '30 exports', '5 connections', '20 hrs transcription', '1,000 AI calls', '10 GB storage'],
-        popular: true,
-        cta: 'Subscribe',
-        type: 'paid',
-    },
-    {
-        id: 'agency',
-        name: 'Agency',
-        monthlyPrice: 2499,
-        desc: 'Unlimited everything for teams & agencies.',
-        features: ['Unlimited posts', 'Unlimited AI calls', 'Unlimited connections', '50 GB storage', 'Priority support'],
-        popular: false,
-        cta: 'Subscribe',
-        type: 'paid',
     },
 ];
 
@@ -287,26 +245,39 @@ function StepSetup({ onNext }) {
 
 // ─── STEP 2 — Connect Accounts ─────────────────────────────────────────────────
 function StepConnect({ onNext, onBack }) {
-    const [connected, setConnected] = useState({});
+    const [connecting, setConnecting] = useState(null);
+    const [error, setError] = useState('');
 
-    const handleConnect = (platformId) => {
-        // Redirect to OAuth flow
-        window.location.href = `/api/connections/${platformId}/auth`;
+    const handleConnect = async (platform) => {
+        setConnecting(platform.id);
+        setError('');
+        try {
+            // The server builds the OAuth link for this workspace (it needs the signed-in user's token).
+            const data = await apiClient(`/connections/${platform.id}/auth-url`);
+            if (!data?.url) throw new Error('Could not start the connection. Try again.');
+            window.location.assign(data.url);
+        } catch (err) {
+            setError(
+                /OAUTH_NOT_CONFIGURED/.test(err.message || '')
+                    ? `${platform.name} is not set up on the server yet. You can connect it later from Connections.`
+                    : err.message || 'Could not start the connection. Try again.'
+            );
+            setConnecting(null);
+        }
     };
 
     return (
         <div className="onboarding-card animate-fade-in">
             <div className="onboarding-card__header">
                 <h2>Connect your accounts</h2>
-                <p>Link your social platforms to start scheduling and publishing. You can add more later in Settings.</p>
+                <p>Link your social platforms to start scheduling and publishing. You can add more later from Connections.</p>
             </div>
+
+            {error && <div className="error-banner" role="alert" style={{ marginBottom: 20 }}>{error}</div>}
 
             <div className="platforms-grid stagger-children">
                 {PLATFORMS.map((p) => (
-                    <div
-                        key={p.id}
-                        className={`platform-card ${connected[p.id] ? 'connected' : ''}`}
-                    >
+                    <div key={p.id} className="platform-card">
                         <div
                             className="platform-card__icon"
                             style={{ background: p.bg, fontSize: '1.5rem' }}
@@ -317,17 +288,14 @@ function StepConnect({ onNext, onBack }) {
                             <div className="platform-card__name">{p.name}</div>
                             <div className="platform-card__desc">{p.desc}</div>
                         </div>
-                        {connected[p.id] ? (
-                            <span className="platform-card__btn platform-card__btn--connected">✓ Connected</span>
-                        ) : (
-                            <button
-                                id={`ob-connect-${p.id}`}
-                                className="platform-card__btn platform-card__btn--connect"
-                                onClick={() => handleConnect(p.id)}
-                            >
-                                Connect
-                            </button>
-                        )}
+                        <button
+                            id={`ob-connect-${p.id}`}
+                            className="platform-card__btn platform-card__btn--connect"
+                            onClick={() => handleConnect(p)}
+                            disabled={Boolean(connecting)}
+                        >
+                            {connecting === p.id ? 'Opening…' : 'Connect'}
+                        </button>
                     </div>
                 ))}
             </div>
@@ -336,18 +304,13 @@ function StepConnect({ onNext, onBack }) {
                 <button className="btn btn-ghost" onClick={onBack} id="ob-connect-back">
                     ← Back
                 </button>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <button className="btn btn-ghost" onClick={onNext} id="ob-connect-skip">
-                        Skip for now
-                    </button>
-                    <button
-                        id="ob-connect-next"
-                        className="btn btn-primary"
-                        onClick={onNext}
-                    >
-                        Continue →
-                    </button>
-                </div>
+                <button
+                    id="ob-connect-next"
+                    className="btn btn-primary"
+                    onClick={onNext}
+                >
+                    Continue →
+                </button>
             </div>
         </div>
     );
@@ -355,50 +318,67 @@ function StepConnect({ onNext, onBack }) {
 
 // ─── STEP 3 — Plan Selection ───────────────────────────────────────────────────
 function StepPlan({ onComplete, onBack }) {
-    const { user } = useAuth();
-    const API_ROOT = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api$/, '');
+    const [catalog, setCatalog] = useState(null);
+    const [catalogError, setCatalogError] = useState('');
+    const [reloadKey, setReloadKey] = useState(0);
     const [annual, setAnnual] = useState(false);
     const [loading, setLoading] = useState(null);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        let cancelled = false;
+        fetchPlanCatalog()
+            .then((data) => {
+                if (!cancelled) {
+                    setCatalog(data);
+                    setCatalogError('');
+                }
+            })
+            .catch((err) => {
+                if (!cancelled) setCatalogError(err.message || 'Could not load plans.');
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [reloadKey]);
+
+    const discount = catalog?.annualDiscountPercent || 0;
+    const supportEmail = catalog?.supportEmail || BILLING_EMAIL;
+    const plans = (catalog?.plans || []).filter((plan) => !plan.contactOnly);
 
     const getPrice = (plan) => {
-        if (plan.monthlyPrice === 0) return 'Free';
-        const price = annual
-            ? Math.floor(plan.monthlyPrice * 0.8)
-            : plan.monthlyPrice;
-        return `R${price.toLocaleString()}`;
+        if (plan.monthlyPriceZar === 0) return 'Free';
+        return formatZar(annual ? plan.annualMonthlyPriceZar : plan.monthlyPriceZar);
     };
 
     const getPeriod = (plan) => {
-        if (plan.monthlyPrice === 0) return '';
+        if (plan.monthlyPriceZar === 0) return '';
         return annual ? '/mo · billed annually' : '/mo';
     };
 
     const handleSelect = async (plan) => {
         setLoading(plan.id);
+        setError('');
         try {
-            if (plan.type === 'free') {
-                // Set starter plan and complete onboarding
+            if (!plan.purchasable) {
                 await onComplete('starter');
-            } else {
-                // Redirect to Paystack checkout
-                const token = await user.getIdToken();
-                const res = await fetch(`${API_ROOT}/api/billing/create-checkout`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        planName: plan.id,
-                        interval: annual ? 'yearly' : 'monthly',
-                    }),
-                });
-                const { url } = await res.json();
-                if (url) window.location.href = url;
+                return;
             }
+            // Finish onboarding first so someone who leaves checkout lands in the app, not back here.
+            // The plan itself only changes once the payment clears.
+            await apiClient('/auth/onboarding', { method: 'POST', body: { complete: true, plan: 'starter' } });
+            const data = await apiClient('/billing/create-checkout', {
+                method: 'POST',
+                body: { planName: plan.id, interval: annual ? 'yearly' : 'monthly' },
+            });
+            if (!data?.url) throw new Error('Checkout could not be started. Try again.');
+            window.location.assign(data.url);
         } catch (err) {
-            console.error('Plan selection failed:', err);
-        } finally {
+            setError(
+                plan.purchasable
+                    ? `${err.message || 'Checkout could not be started.'} You can start on the free plan and upgrade later from Billing.`
+                    : err.message || 'Could not finish setup. Try again.'
+            );
             setLoading(null);
         }
     };
@@ -410,56 +390,97 @@ function StepPlan({ onComplete, onBack }) {
                 <p>Start free anytime. Upgrade when you're ready to grow.</p>
             </div>
 
-            {/* Annual toggle */}
-            <div className="billing-toggle">
-                <span className={`billing-toggle__label ${!annual ? 'active' : ''}`}>Monthly</span>
-                <label className="toggle-switch" htmlFor="ob-annual-toggle">
-                    <input
-                        id="ob-annual-toggle"
-                        type="checkbox"
-                        checked={annual}
-                        onChange={(e) => setAnnual(e.target.checked)}
-                    />
-                    <div className="toggle-switch__track" />
-                    <div className="toggle-switch__thumb" />
-                </label>
-                <span className={`billing-toggle__label ${annual ? 'active' : ''}`}>
-                    Annual
-                </span>
-                {annual && <span className="discount-badge">Save 20%</span>}
-            </div>
+            {discount > 0 && (
+                <div className="billing-toggle">
+                    <span className={`billing-toggle__label ${!annual ? 'active' : ''}`}>Monthly</span>
+                    <label className="toggle-switch" htmlFor="ob-annual-toggle">
+                        <input
+                            id="ob-annual-toggle"
+                            type="checkbox"
+                            checked={annual}
+                            onChange={(e) => setAnnual(e.target.checked)}
+                        />
+                        <div className="toggle-switch__track" />
+                        <div className="toggle-switch__thumb" />
+                    </label>
+                    <span className={`billing-toggle__label ${annual ? 'active' : ''}`}>
+                        Annual
+                    </span>
+                    <span className="discount-badge">Save {discount}%</span>
+                </div>
+            )}
 
-            <div className="plans-grid stagger-children">
-                {PLANS.map((plan) => (
-                    <div
-                        key={plan.id}
-                        className={`plan-card ${plan.popular ? 'popular' : ''}`}
-                    >
-                        {plan.popular && (
-                            <div className="plan-card__popular-badge">⭐ Most Popular</div>
-                        )}
-                        <div className="plan-card__name">{plan.name}</div>
-                        <div className="plan-card__price">
-                            {getPrice(plan)}
-                            <span>{getPeriod(plan)}</span>
-                        </div>
-                        <div className="plan-card__desc">{plan.desc}</div>
-                        <ul className="plan-card__features">
-                            {plan.features.map((f) => (
-                                <li key={f}>{f}</li>
-                            ))}
-                        </ul>
-                        <button
-                            id={`ob-plan-${plan.id}`}
-                            className={`plan-card__btn ${plan.type === 'free' ? 'plan-card__btn--free' : 'plan-card__btn--paid'}`}
-                            onClick={() => handleSelect(plan)}
-                            disabled={loading === plan.id}
+            {error && <div className="error-banner" role="alert" style={{ marginBottom: 20 }}>{error}</div>}
+
+            {!catalog ? (
+                <div className="onboarding-plans-status">
+                    {catalogError ? (
+                        <>
+                            <span>{catalogError}</span>
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                    setCatalogError('');
+                                    setReloadKey((k) => k + 1);
+                                }}
+                            >
+                                Retry
+                            </button>
+                            <button
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => handleSelect({ id: 'starter', purchasable: false })}
+                                disabled={Boolean(loading)}
+                            >
+                                Start free
+                            </button>
+                        </>
+                    ) : (
+                        <span>Loading plans…</span>
+                    )}
+                </div>
+            ) : (
+                <div className="plans-grid stagger-children">
+                    {plans.map((plan) => (
+                        <div
+                            key={plan.id}
+                            className={`plan-card ${plan.popular ? 'popular' : ''}`}
                         >
-                            {loading === plan.id ? 'Loading…' : plan.cta}
-                        </button>
-                    </div>
-                ))}
-            </div>
+                            {plan.popular && (
+                                <div className="plan-card__popular-badge">⭐ Most Popular</div>
+                            )}
+                            <div className="plan-card__name">{plan.name}</div>
+                            <div className="plan-card__price">
+                                {getPrice(plan)}
+                                <span>{getPeriod(plan)}</span>
+                            </div>
+                            <div className="plan-card__desc">{plan.description}</div>
+                            <ul className="plan-card__features">
+                                {plan.features.map((f) => (
+                                    <li key={f}>{f}</li>
+                                ))}
+                            </ul>
+                            <button
+                                id={`ob-plan-${plan.id}`}
+                                className={`plan-card__btn ${plan.purchasable ? 'plan-card__btn--paid' : 'plan-card__btn--free'}`}
+                                onClick={() => handleSelect(plan)}
+                                disabled={Boolean(loading)}
+                            >
+                                {loading === plan.id
+                                    ? plan.purchasable ? 'Opening checkout…' : 'Finishing…'
+                                    : plan.purchasable ? 'Subscribe' : 'Start free'}
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {catalog && (
+                <p className="onboarding-note">
+                    Need more than Agency?{' '}
+                    <a href={`mailto:${supportEmail}?subject=${encodeURIComponent('Enterprise plan enquiry')}`}>Email {supportEmail}</a>
+                    {' '}about Enterprise.
+                </p>
+            )}
 
             <div className="onboarding-actions">
                 <button className="btn btn-ghost" onClick={onBack} id="ob-plan-back">
@@ -485,7 +506,7 @@ function WelcomeModal({ name, onClose }) {
                     <li>Connect at least one social account</li>
                     <li>Schedule your first post using the Content Studio</li>
                     <li>Explore AI tools to generate captions &amp; scripts</li>
-                    <li>Set up your brand kit in Settings</li>
+                    <li>Set up your brand kit in <Link to="/dashboard/marketing?tab=brand">Marketing → Brand</Link></li>
                 </ul>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
                     By using KenganSocial you agree to our{' '}
@@ -514,7 +535,7 @@ function WelcomeModal({ name, onClose }) {
 
 // ─── Main Onboarding Page ──────────────────────────────────────────────────────
 export default function OnboardingPage() {
-    const { user, refreshProfile } = useAuth();
+    const { refreshProfile } = useAuth();
     const { fetchWorkspaces } = useWorkspace();
     const navigate = useNavigate();
     const [step, setStep] = useState(0);
@@ -531,12 +552,8 @@ export default function OnboardingPage() {
     const handleStep3Back = () => setStep(1);
 
     const handleComplete = async (plan) => {
-        try {
-            await apiClient('/auth/onboarding', { method: 'POST', body: { complete: true, plan } });
-        } catch (err) {
-            // Finishing is best-effort: the profile and workspace were saved in step 1.
-            console.error('Failed to mark onboarding complete:', err);
-        }
+        // Errors surface in the plan step so the user can retry.
+        await apiClient('/auth/onboarding', { method: 'POST', body: { complete: true, plan } });
         setShowWelcome(true);
     };
 

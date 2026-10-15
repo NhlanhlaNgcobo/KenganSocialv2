@@ -258,3 +258,13 @@
     background: var(--bg-tertiary);
     color: var(--text-muted);
 }
+/* Helper text in the create-automation form */
+.auto-help {
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+
+.auto-help a {
+    color: var(--accent-text);
+}

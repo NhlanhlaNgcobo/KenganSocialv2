@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+import tempfile
 import re
 import shutil
 import subprocess
@@ -51,7 +52,10 @@ except Exception:  # pragma: no cover - optional dependency
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("kengansocial.video")
 
-TMP = Path("/tmp")
+# Working folder for downloads/renders: the OS temp dir (C:\Users\...\Temp on Windows, /tmp on Linux),
+# overridable with VIDEO_TMP_DIR. A hard-coded "/tmp" breaks on Windows (it means C:\tmp).
+TMP = Path(os.getenv("VIDEO_TMP_DIR") or tempfile.gettempdir())
+TMP.mkdir(parents=True, exist_ok=True)
 MAX_CONCURRENT_JOBS = 3
 TRANSCRIBE_TIMEOUT_SEC = 600
 ANALYZE_TIMEOUT_SEC = 900
@@ -1285,6 +1289,7 @@ async def generate_thumbnail(req: ThumbnailRequest):
 class AutoframeRequest(BaseModel):
     videoPath: str
     targetRatio: str = "9:16"
+    layout: str = "auto"  # auto | track | split | fit
 
 
 @app.post("/process/autoframe")
@@ -1300,7 +1305,7 @@ async def autoframe(req: AutoframeRequest):
 
     async with job_semaphore:
         try:
-            return await asyncio.to_thread(plan_crop_path, str(video_path), req.targetRatio)
+            return await asyncio.to_thread(plan_crop_path, str(video_path), req.targetRatio, req.layout)
         except ValueError as exc:
             raise HTTPException(422, detail={"error": "AUTOFRAME_FAILED", "message": str(exc)})
 
@@ -1354,6 +1359,81 @@ async def stabilize(req: StabilizeRequest):
             return await asyncio.to_thread(stabilize_video, str(input_path), str(output_path), options, report)
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(422, detail={"error": "STABILIZE_FAILED", "message": str(exc)})
+
+
+# ---------------------------------------------------------------------------
+# Video link import (YouTube) for Clips / Repurpose
+# ---------------------------------------------------------------------------
+
+YOUTUBE_URL = re.compile(
+    r"^https?://(?:www\.|m\.|music\.)?(?:youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|live/|embed/)|youtu\.be/)([A-Za-z0-9_-]{11})"
+)
+MAX_IMPORT_SECONDS = int(os.getenv("MAX_IMPORT_SECONDS", str(3 * 3600)))
+MAX_IMPORT_BYTES = 2 * 1024 ** 3
+
+
+class DownloadUrlRequest(BaseModel):
+    url: str
+    # Folder shared with the Node API (its kengan-renders temp folder), so it can use the file directly.
+    outputDir: str
+    maxHeight: int = 1080
+
+
+def _download_youtube(url: str, output_dir: Path, max_height: int) -> Dict[str, Any]:
+    import yt_dlp  # imported lazily: only this endpoint needs it
+
+    base = {"noplaylist": True, "quiet": True, "no_warnings": True, "noprogress": True}
+    with yt_dlp.YoutubeDL(base) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
+        raise ValueError("Live streams and premieres can't be imported. Try again after the stream has ended.")
+    duration = float(info.get("duration") or 0)
+    if duration and duration > MAX_IMPORT_SECONDS:
+        raise ValueError(f"The video is longer than {MAX_IMPORT_SECONDS // 3600} hours.")
+
+    stem = f"yt_{info.get('id', 'video')}_{int(time.time())}"
+    height = max(360, min(int(max_height or 1080), 2160))
+    opts = {
+        **base,
+        "format": f"bv*[height<={height}][ext=mp4]+ba[ext=m4a]/b[height<={height}][ext=mp4]/bv*[height<={height}]+ba/b[height<={height}]/b",
+        "merge_output_format": "mp4",
+        "outtmpl": str(output_dir / f"{stem}.%(ext)s"),
+        "max_filesize": MAX_IMPORT_BYTES,
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        ydl.download([url])
+    files = sorted(output_dir.glob(f"{stem}.*"), key=lambda p: p.stat().st_size, reverse=True)
+    files = [p for p in files if p.suffix.lower() in (".mp4", ".mkv", ".webm", ".mov")]
+    if not files:
+        raise ValueError("The video could not be downloaded.")
+    return {
+        "path": str(files[0]),
+        "title": info.get("title") or "YouTube video",
+        "durationSec": duration or None,
+        "videoId": info.get("id"),
+        "channel": info.get("channel") or info.get("uploader"),
+        "channelId": info.get("channel_id"),
+    }
+
+
+@app.post("/process/download-url")
+async def download_url(req: DownloadUrlRequest):
+    """Downloads a YouTube video into outputDir for the Clips pipeline. Only YouTube links are accepted."""
+    url = req.url.strip()
+    if not YOUTUBE_URL.match(url):
+        raise HTTPException(400, detail={"error": "UNSUPPORTED_URL", "message": "Paste a YouTube video link (youtube.com/watch, youtu.be or /shorts)."})
+    output_dir = Path(req.outputDir)
+    if not output_dir.is_dir():
+        raise HTTPException(400, detail={"error": "OUTPUT_DIR_MISSING", "message": "Output folder is not available to the video service."})
+    async with job_semaphore:
+        try:
+            return await asyncio.to_thread(_download_youtube, url, output_dir, req.maxHeight)
+        except ValueError as exc:
+            raise HTTPException(422, detail={"error": "IMPORT_REJECTED", "message": str(exc)})
+        except Exception as exc:  # yt-dlp DownloadError and network failures
+            message = re.sub(r"^ERROR:\s*(\[[^\]]+\]\s*)?([A-Za-z0-9_-]{11}:\s*)?", "", str(exc)).strip()
+            log.warning("YouTube import failed for %s: %s", url, message)
+            raise HTTPException(422, detail={"error": "IMPORT_FAILED", "message": message[:300] or "The video could not be downloaded."})
 
 
 @app.get("/health")

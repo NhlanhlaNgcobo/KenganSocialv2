@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Calendar, Check, Film, Link2, Repeat2, Upload } from 'lucide-react';
+import { ArrowRight, Calendar, Check, Film, Link2, Lock, Repeat2, Upload } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
 import { clipsApi } from '../lib/clips-api';
+import { PLAN_DISPLAY_NAMES, PLAN_LIMITS } from '../utils/planLimits';
 import './Dashboard.css';
 
 /**
@@ -33,8 +34,8 @@ function formatWhen(date) {
 }
 
 export default function DashboardPage() {
-    const { profile } = useAuth();
-    const { currentWorkspace } = useWorkspace();
+    const { profile, plan } = useAuth();
+    const { currentWorkspace, loading: workspaceLoading } = useWorkspace();
     const navigate = useNavigate();
     const [stats, setStats] = useState(null);
     const [connections, setConnections] = useState([]);
@@ -52,16 +53,23 @@ export default function DashboardPage() {
             const now = new Date();
             const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
             const [analytics, scheduler, connectionsRes, calendar, clips] = await Promise.allSettled([
-                apiClient(`/analytics/${currentWorkspace.id}?period=30d`),
+                apiClient('/analytics/overview?period=30d'),
                 apiClient(`/scheduler/stats/${currentWorkspace.id}`),
                 apiClient(`/workspaces/${currentWorkspace.id}/connections`),
                 apiClient(`/schedule/calendar?start=${now.toISOString()}&end=${weekAhead.toISOString()}`),
                 clipsApi.list(),
             ]);
             if (cancelled) return;
-            const overview = analytics.status === 'fulfilled' ? analytics.value.overview || {} : {};
-            const sched = scheduler.status === 'fulfilled' ? scheduler.value.stats || {} : {};
-            setStats({ totalPosts: overview.totalPosts || 0, scheduled: sched.scheduled || 0, engagementRate: overview.engagementRate || 0 });
+            const summary = analytics.status === 'fulfilled' ? analytics.value?.summary || {} : {};
+            const sched = scheduler.status === 'fulfilled' ? scheduler.value?.stats || {} : {};
+            const engagement = Number(summary?.avgEngagementRate) || 0;
+            setStats({
+                published: Number(sched.published) || 0,
+                scheduled: Number(sched.scheduled) || 0,
+                failed: Number(sched.failed) || 0,
+                reach: Number(summary?.totalReach) || 0,
+                engagementRate: Math.round(engagement * 10) / 10,
+            });
             setConnections(connectionsRes.status === 'fulfilled' ? connectionsRes.value.connections || [] : []);
             setUpcoming(
                 calendar.status === 'fulfilled'
@@ -84,15 +92,47 @@ export default function DashboardPage() {
         if (file) navigate('/dashboard/clips', { state: { file } });
     };
 
+    // Clips needs AI clip analysis, which the free and entry plans don't include (the server enforces this too).
+    const clipsLocked = (PLAN_LIMITS[plan] || PLAN_LIMITS.starter).clipAnalysis === 0;
+    const clipsPlanName = PLAN_DISPLAY_NAMES.creator;
     const activeAccounts = connections.filter((c) => c.status === 'active');
     const setupSteps = [
         { label: 'Connect a social account', detail: 'So posts publish for you.', done: activeAccounts.length > 0, action: '/dashboard/connections' },
-        { label: 'Cut your first clips', detail: 'Upload a long video in Clips.', done: (projects || []).length > 0, action: '/dashboard/clips' },
+        // Clips isn't on free plans, so it isn't a setup step there.
+        clipsLocked ? null : { label: 'Cut your first clips', detail: 'Upload a long video in Clips.', done: (projects || []).length > 0, action: '/dashboard/clips' },
         { label: 'Schedule a post', detail: 'Put something on the calendar.', done: Boolean(stats?.scheduled) || (upcoming || []).length > 0, action: '/dashboard/scheduler' },
-    ];
+    ].filter(Boolean);
     const doneCount = setupSteps.filter((s) => s.done).length;
-    const hasStats = stats && (stats.totalPosts > 0 || stats.engagementRate > 0);
+    const hasStats = stats && (stats.published > 0 || stats.scheduled > 0 || stats.engagementRate > 0);
     const firstName = (profile?.displayName || '').split(' ')[0];
+
+    if (!currentWorkspace?.id) {
+        return (
+            <div className="home">
+                <header className="page-head">
+                    <div>
+                        <h1>
+                            {greeting()}
+                            {firstName ? `, ${firstName}` : ''}
+                        </h1>
+                    </div>
+                </header>
+                {workspaceLoading ? (
+                    <p className="muted">Loading your workspace…</p>
+                ) : (
+                    <section className="surface home-panel home-empty">
+                        <h2>Set up your workspace</h2>
+                        <p className="muted">Your posts, clips and connected accounts live in a workspace. Create one to get started.</p>
+                        <div>
+                            <Link to="/onboarding" className="btn btn-primary">
+                                Create a workspace <ArrowRight size={15} />
+                            </Link>
+                        </div>
+                    </section>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="home">
@@ -118,26 +158,35 @@ export default function DashboardPage() {
                 className={`home-drop ${dragging ? 'is-dragging' : ''}`}
                 onDragOver={(e) => {
                     e.preventDefault();
-                    setDragging(true);
+                    if (!clipsLocked) setDragging(true);
                 }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={(e) => {
                     e.preventDefault();
                     setDragging(false);
-                    startClips(e.dataTransfer.files?.[0]);
+                    if (!clipsLocked) startClips(e.dataTransfer.files?.[0]);
                 }}
             >
                 <div className="home-drop__text">
                     <h2>Turn one long video into a week of posts</h2>
                     <p>Drop a podcast, interview, webinar or talk. Clips finds the strongest moments, reframes them for TikTok, Reels and Shorts, adds captions and writes the post copy.</p>
                 </div>
-                <div className="home-drop__action">
-                    <input ref={fileRef} type="file" accept="video/*" hidden onChange={(e) => startClips(e.target.files?.[0])} />
-                    <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
-                        <Upload size={16} /> Choose a video
-                    </button>
-                    <small>or drop it here</small>
-                </div>
+                {clipsLocked ? (
+                    <div className="home-drop__action">
+                        <Link to="/dashboard/billing" className="btn btn-primary">
+                            <Lock size={15} /> Upgrade to use Clips
+                        </Link>
+                        <small>{clipsPlanName} plan and up</small>
+                    </div>
+                ) : (
+                    <div className="home-drop__action">
+                        <input ref={fileRef} type="file" accept="video/*" hidden onChange={(e) => startClips(e.target.files?.[0])} />
+                        <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
+                            <Upload size={16} /> Choose a video
+                        </button>
+                        <small>or drop it here</small>
+                    </div>
+                )}
             </section>
 
             {!loading && doneCount < setupSteps.length ? (
@@ -203,6 +252,11 @@ export default function DashboardPage() {
                     {projects?.length === 0 ? (
                         <div className="home-panel__empty">
                             <p>Your clip projects show up here, ranked by their best clip.</p>
+                            {clipsLocked ? (
+                                <p className="muted">
+                                    Clips is part of the {clipsPlanName} plan and up. <Link to="/dashboard/billing" className="home-link">See plans</Link>
+                                </p>
+                            ) : null}
                         </div>
                     ) : null}
                     {projects?.length ? (
@@ -252,7 +306,7 @@ export default function DashboardPage() {
                 {hasStats ? (
                     <div className="home-stats">
                         <span>
-                            <strong>{stats.totalPosts}</strong> posts published
+                            <strong>{stats.published}</strong> posts published
                         </span>
                         <span>
                             <strong>{stats.scheduled}</strong> scheduled

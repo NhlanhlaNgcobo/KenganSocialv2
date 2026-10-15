@@ -36,6 +36,7 @@ import bragRoutes from './src/routes/brag.ts';
 import musicRoutes from './src/routes/music.ts';
 import clipsRoutes from './src/routes/clips.ts';
 import repurposeRoutes from './src/routes/repurpose.ts';
+import marketingRoutes from './src/routes/marketing.ts';
 import audiomackRoutes from './src/routes/audiomack.ts';
 import lyricsRoutes from './src/routes/lyrics.ts';
 import { startAnalyticsCron } from './src/jobs/analytics.cron.ts';
@@ -143,6 +144,7 @@ app.use('/api/brag', bragRoutes);
 app.use('/api/music', musicRoutes);
 app.use('/api/clips', clipsRoutes);
 app.use('/api/repurpose', repurposeRoutes);
+app.use('/api/marketing', marketingRoutes);
 app.use('/api/audiomack', audiomackRoutes);
 app.use('/api/lyrics', lyricsRoutes);
 

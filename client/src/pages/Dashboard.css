@@ -378,3 +378,17 @@
         grid-row: auto;
     }
 }
+
+.home-empty {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 560px;
+}
+.home-empty h2 {
+    font-size: 17px;
+    margin: 0;
+}
+.home-empty p {
+    margin: 0;
+}

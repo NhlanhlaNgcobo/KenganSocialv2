@@ -210,3 +210,13 @@ textarea.input {
     font-size: 12px;
     line-height: 1.5;
 }
+
+.launch-failed > svg {
+    color: var(--error);
+}
+
+.launch-failed p {
+    margin: 0 0 14px;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}

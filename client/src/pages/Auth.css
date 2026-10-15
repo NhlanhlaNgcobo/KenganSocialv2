@@ -117,6 +117,51 @@
     border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
+.auth-card__notice {
+    background: var(--success-bg);
+    color: var(--success);
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.auth-card__hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.auth-card__label-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.auth-card__link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--accent-secondary);
+    cursor: pointer;
+    transition: color var(--transition-fast);
+}
+
+.auth-card__link-btn:hover:not(:disabled),
+.auth-card__link-btn:focus-visible {
+    color: var(--accent-primary);
+    text-decoration: underline;
+}
+
+.auth-card__link-btn:disabled {
+    color: var(--text-muted);
+    cursor: default;
+}
+
 .auth-card__form {
     display: flex;
     flex-direction: column;

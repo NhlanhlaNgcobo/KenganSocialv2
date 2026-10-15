@@ -18,9 +18,56 @@ const PLATFORM_PROMPTS: Record<string, string> = {
     THREADS: `Highly conversational, unfiltered, and raw. Present a strong opinion or a 'hot take' related to the transcript. Max 500 characters. DO NOT use hashtags.`
 };
 
-// POST /api/ai/generate-captions (SSE stream)
+async function generateCaption(platform: string, transcript: string | undefined, niche: string | undefined, tone: string) {
+    const systemPrompt = PLATFORM_PROMPTS[platform.toUpperCase()];
+    if (!systemPrompt) return null;
+
+    const response = await openai.chat.completions.create({
+        model: CHAT_MODEL,
+        temperature: 0.7,
+        messages: [
+            { role: 'system', content: `You are an elite social media manager writing in a ${tone} tone for the niche: ${niche || 'general'}. ${systemPrompt}. Return ONLY the final caption/structure requested, no surrounding conversation.` },
+            { role: 'user', content: `Base the content off this context/transcript:
+
+${transcript?.substring(0, 3000)}` }
+        ],
+    });
+
+    const content = response.choices[0]?.message?.content || '';
+
+    // Extract trailing hashtags safely if requested
+    let hashtags: string[] = [];
+    const hashMatch = content.match(/#[a-zA-Z0-9_]+/g);
+    if (hashMatch && platform.toUpperCase() !== 'THREADS') {
+        hashtags = hashMatch;
+    }
+
+    return { platform, caption: content, hashtags };
+}
+
+// POST /api/ai/generate-captions
+// Streams one SSE event per platform by default. Send { stream: false } to get a single JSON
+// response instead: { success, captions: { [platform]: caption } }.
 router.post('/generate-captions', withWorkspace, planRateLimit(), checkLimit('aiCalls'), async (req: Request, res: Response) => {
-    const { transcript, platforms = [], niche, tone = 'casual' } = req.body;
+    const { transcript, platforms = [], niche, tone = 'casual', stream = true } = req.body;
+    const platformList: string[] = Array.isArray(platforms) ? platforms.filter((p: unknown) => typeof p === 'string') : [];
+
+    if (stream === false) {
+        if (platformList.length === 0) {
+            return res.status(400).json({ error: 'PLATFORMS_REQUIRED', message: 'Pick at least one platform.' });
+        }
+        try {
+            const results = await Promise.all(platformList.map((platform) => generateCaption(platform, transcript, niche, tone)));
+            const captions: Record<string, string> = {};
+            for (const result of results) {
+                if (result) captions[result.platform] = result.caption;
+            }
+            return res.json({ success: true, captions });
+        } catch (err: any) {
+            console.error('Captions error:', err);
+            return res.status(500).json({ error: err.message || 'CAPTION_GENERATION_FAILED' });
+        }
+    }
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -28,37 +75,22 @@ router.post('/generate-captions', withWorkspace, planRateLimit(), checkLimit('ai
     res.flushHeaders(); // Establish SSE
 
     try {
-        const promises = platforms.map(async (platform: string) => {
-            const systemPrompt = PLATFORM_PROMPTS[platform.toUpperCase()];
-            if (!systemPrompt) return null;
+        const promises = platformList.map(async (platform: string) => {
+            const payload = await generateCaption(platform, transcript, niche, tone);
+            if (payload) res.write(`data: ${JSON.stringify(payload)}
 
-            const response = await openai.chat.completions.create({
-                model: CHAT_MODEL,
-                temperature: 0.7,
-                messages: [
-                    { role: 'system', content: `You are an elite social media manager writing in a ${tone} tone for the niche: ${niche}. ${systemPrompt}. Return ONLY the final caption/structure requested, no surrounding conversation.` },
-                    { role: 'user', content: `Base the content off this context/transcript:\n\n${transcript?.substring(0, 3000)}` }
-                ],
-            });
-
-            const content = response.choices[0]?.message?.content || '';
-
-            // Extract trailing hashtags safely if requested
-            let hashtags: string[] = [];
-            const hashMatch = content.match(/#[a-zA-Z0-9_]+/g);
-            if (hashMatch && platform.toUpperCase() !== 'THREADS') {
-                hashtags = hashMatch;
-            }
-
-            const payload = { platform, caption: content, hashtags };
-            res.write(`data: ${JSON.stringify(payload)}\n\n`);
+`);
         });
 
         await Promise.allSettled(promises);
-        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        res.write(`data: ${JSON.stringify({ done: true })}
+
+`);
     } catch (err: any) {
         console.error('Captions SSE Error:', err);
-        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: err.message })}
+
+`);
     } finally {
         res.end();
     }

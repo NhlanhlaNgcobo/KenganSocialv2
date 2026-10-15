@@ -13,7 +13,7 @@ export function EditorHeader() {
     return (
         <header className="ke-header">
             <div className="ke-header__left">
-                <Link to="/dashboard/content" className="ke-icon-btn" title="Back to dashboard">
+                <Link to="/dashboard" className="ke-icon-btn" title="Back to dashboard" aria-label="Back to dashboard">
                     <ChevronLeft size={18} />
                 </Link>
                 <input className="ke-header__name" value={name} onChange={(e) => setName(e.target.value)} aria-label="Project name" />

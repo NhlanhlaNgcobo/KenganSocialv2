@@ -1,24 +1,79 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-    Upload, Video, Type, Sparkles, Save, Send, Calendar, X,
+    Upload, Video, Type, Sparkles, Calendar, X,
     Smartphone, Instagram, Facebook, Linkedin, Twitter, Youtube,
-    Loader2, Check, AlertCircle, FileText, Download, Play, Pause,
-    Palette, Monitor, Scissors, Zap, Eye, Layers, Music, Volume2, Target, ArrowRight
+    Loader2, Check, AlertCircle, FileText, Download, Play,
+    Palette, Monitor, Scissors, Zap, Eye, Layers, Target
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../context/WorkspaceContext';
-import { apiClient } from '../lib/api';
+import { apiClient, buildApiError } from '../lib/api';
 import { useEditorStore } from '../stores/editorStore';
 import './ContentStudio.css';
 
 const PLATFORMS = [
     { id: 'instagram', icon: Instagram, color: '#E4405F' },
-    { id: 'tiktok', icon: Smartphone, color: '#000000' },
+    // TikTok and X marks are monochrome, so they follow the theme's text colour.
+    { id: 'tiktok', icon: Smartphone, color: 'var(--text-primary)' },
     { id: 'facebook', icon: Facebook, color: '#1877F2' },
     { id: 'linkedin', icon: Linkedin, color: '#0A66C2' },
     { id: 'youtube', icon: Youtube, color: '#FF0000' },
-    { id: 'twitter', icon: Twitter, color: '#000000' },
+    { id: 'twitter', icon: Twitter, color: 'var(--text-primary)' },
 ];
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_ROOT = API_URL.replace(/\/api$/, '');
+// Matches the server's upload limit for /api/ai/video/analyze.
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+const RENDER_TIMEOUT_MS = 10 * 60 * 1000;
+
+async function authHeaders() {
+    const { auth } = await import('../lib/firebase');
+    const headers = {};
+    const token = await auth?.currentUser?.getIdToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const workspaceId = localStorage.getItem('kengan_current_workspace_id');
+    if (workspaceId) headers['x-workspace-id'] = workspaceId;
+    return headers;
+}
+
+/** Uploads the video for analysis with real upload progress (fetch can't report it). */
+async function uploadForAnalysis(file, fields, onProgress) {
+    const headers = await authHeaders();
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_URL}/ai/video/analyze`);
+        Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+        xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
+        xhr.upload.onload = () => onProgress(100);
+        xhr.onload = () => {
+            let body = {};
+            try {
+                body = JSON.parse(xhr.responseText);
+            } catch {
+                /* non-JSON error page */
+            }
+            if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+            else reject(buildApiError(body, xhr.status));
+        };
+        xhr.onerror = () => reject(new Error('Upload failed. Check your connection and try again.'));
+        const form = new FormData();
+        form.append('video', file, file.name);
+        Object.entries(fields).forEach(([k, v]) => v && form.append(k, v));
+        xhr.send(form);
+    });
+}
+
+/** Rendered files are behind auth, so they are fetched with the token and shown from a blob. */
+async function fetchRenderedBlob(downloadUrl) {
+    const response = await fetch(`${API_ROOT}${downloadUrl}`, { headers: await authHeaders() });
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.message || `The rendered video couldn't be loaded (${response.status}). Render it again.`);
+    }
+    return response.blob();
+}
 
 const CAPTION_STYLES = [
     { id: 'tiktok', name: 'TikTok Viral', fontFamily: "'Inter', sans-serif", fontSize: 28, fontWeight: 900, color: '#FFFFFF', highlightColor: '#8b5cf6', strokeColor: '#000000', strokeWidth: 3, position: 'bottom', bgColor: 'transparent', preview: 'Bold white, purple highlights' },
@@ -35,6 +90,7 @@ const CAPTION_STYLES = [
 
 export default function ContentStudioPage() {
     const { currentWorkspace } = useWorkspace();
+    const { profile } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const setVideo = useEditorStore(state => state.setVideo);
@@ -42,16 +98,16 @@ export default function ContentStudioPage() {
     const previewVideoRef = useRef(null);
     const fileInputRef = useRef(null);
     const mediaBlobUrl = useRef(null);
+    const renderedBlobRef = useRef(null);
+    const renderPollRef = useRef(null);
 
     // Media state
     const [media, setMedia] = useState(null);
     const [mediaType, setMediaType] = useState(null);
-    const [mediaUrl, setMediaUrl] = useState(null);
 
     // Pipeline state
     const [analysisJobId, setAnalysisJobId] = useState(null);
     const [analysis, setAnalysis] = useState(null);
-    const [videoInfo, setVideoInfo] = useState(null);
 
     // Content state
     // AI Tools can hand over generated text via router state ("Send to Studio").
@@ -76,31 +132,36 @@ export default function ContentStudioPage() {
     const [endTime, setEndTime] = useState(30000); // Ms (default 30s or video duration)
     const [duration, setDuration] = useState(0);
 
-    // Music state
-    const [selectedMusic, setSelectedMusic] = useState(null); // {id, name}
-    const [musicVolume, setMusicVolume] = useState(0.2);
-
     // UI state
     const [uploading, setUploading] = useState(false);
     const [analyzing, setAnalyzing] = useState(false);
     const [rendering, setRendering] = useState(false);
     const [renderProgress, setRenderProgress] = useState(0);
     const [aiGenerating, setAiGenerating] = useState(false);
-    const [saving, setSaving] = useState(false);
     const [publishing, setPublishing] = useState(false);
-    const [saved, setSaved] = useState(false);
     const [error, setError] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
     const [activeTab, setActiveTab] = useState('editor');
     const [connections, setConnections] = useState([]);
-    const [videoPlaying, setVideoPlaying] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [showEditChoice, setShowEditChoice] = useState(false);
     const [pendingVideoFile, setPendingVideoFile] = useState(null);
 
     useEffect(() => {
         if (currentWorkspace?.id) fetchConnections();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentWorkspace?.id]);
+
+    // Release blob URLs and stop render polling when leaving the page.
+    useEffect(() => () => {
+        clearInterval(renderPollRef.current);
+        if (mediaBlobUrl.current) URL.revokeObjectURL(mediaBlobUrl.current);
+    }, []);
+
+    // The rendered video's blob URL is revoked when it is replaced or cleared.
+    useEffect(() => () => {
+        if (renderedVideoUrl) URL.revokeObjectURL(renderedVideoUrl);
+    }, [renderedVideoUrl]);
 
     // Subtitle cycling for preview
     useEffect(() => {
@@ -123,10 +184,13 @@ export default function ContentStudioPage() {
     async function fetchConnections() {
         try {
             const data = await apiClient(`/workspaces/${currentWorkspace.id}/connections`);
-            const active = (data.connections || []).filter(c => c.status === 'active').map(c => c.id);
+            // Connection docs are keyed by platform (one per platform per workspace).
+            const active = (data.connections || []).filter(c => c.status === 'active').map(c => c.platform);
             setConnections(data.connections || []);
             setSelectedPlatforms(active);
-        } catch { }
+        } catch {
+            setConnections([]);
+        }
     }
 
     // ======================================================
@@ -137,6 +201,11 @@ export default function ContentStudioPage() {
         const isVideo = file.type.startsWith('video/');
         const isImage = file.type.startsWith('image/');
         if (!isVideo && !isImage) { setError('Upload a video or image file.'); return; }
+        if (file.size > MAX_VIDEO_BYTES) {
+            setError(`That file is ${Math.round(file.size / (1024 * 1024))} MB. The limit is 100 MB, so trim or compress it first. For long videos, use Clips.`);
+            return;
+        }
+        setError('');
 
         // Create a stable blob URL for this file
         if (mediaBlobUrl.current) URL.revokeObjectURL(mediaBlobUrl.current);
@@ -148,6 +217,7 @@ export default function ContentStudioPage() {
         setAnalysisJobId(null);
         setSubtitles([]);
         setRenderedVideoUrl(null);
+        renderedBlobRef.current = null;
 
         if (isVideo) {
             // Show edit mode choice instead of auto-analyzing
@@ -177,48 +247,24 @@ export default function ContentStudioPage() {
         setUploading(true);
         setUploadProgress(0);
 
+        setError('');
         try {
-            setAnalyzing(true);
             setSuccessMsg('Uploading video for analysis…');
-
-            const { auth } = await import('../lib/firebase');
-            const token = await auth.currentUser?.getIdToken();
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-            const formData = new FormData();
-            formData.append('video', file);
-            formData.append('context', caption || '');
-            if (referenceUrl) {
-                formData.append('referenceUrl', referenceUrl);
-            }
-
-            const progressInterval = setInterval(() => setUploadProgress(p => Math.min(p + 5, 85)), 500);
-
-            const res = await fetch(`${API_URL}/ai/video/analyze`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
+            const data = await uploadForAnalysis(file, { context: caption || '', referenceUrl }, (pct) => {
+                setUploadProgress(pct);
+                // Once the bytes are sent, the server is transcribing and analysing.
+                if (pct >= 100) setAnalyzing(true);
             });
-
-            clearInterval(progressInterval);
-            setUploadProgress(100);
-
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || 'Analysis failed');
-            }
-
-            const data = await res.json();
+            setAnalyzing(true);
             setAnalysisJobId(data.jobId);
             setAnalysis(data.analysis);
-            setVideoInfo(data.videoInfo);
 
-            if (data.analysis.transcription?.length > 0) {
+            if (data.analysis?.transcription?.length > 0) {
                 setSubtitles(data.analysis.transcription);
                 setShowCaptions(true);
             }
 
-            if (data.analysis.suggestedCaption && !caption) {
+            if (data.analysis?.suggestedCaption && !caption) {
                 setCaption(data.analysis.suggestedCaption);
             }
 
@@ -240,11 +286,12 @@ export default function ContentStudioPage() {
             setActiveTab('captions');
         } catch (err) {
             console.error('Upload/analyze error:', err);
-            setError(err.message || 'Upload failed');
+            setError(err.message || 'The upload failed. Try again.');
+            setSuccessMsg('');
         } finally {
             setUploading(false);
             setAnalyzing(false);
-            setTimeout(() => setUploadProgress(0), 1000);
+            setUploadProgress(0);
         }
     };
 
@@ -261,19 +308,19 @@ export default function ContentStudioPage() {
         setRenderProgress(0);
         setError('');
         setSuccessMsg('Rendering video…');
+        clearInterval(renderPollRef.current);
+
+        const fail = (message) => {
+            clearInterval(renderPollRef.current);
+            setRendering(false);
+            setSuccessMsg('');
+            setError(message);
+        };
 
         try {
-            const { auth } = await import('../lib/firebase');
-            const token = await auth.currentUser?.getIdToken();
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-            const res = await fetch(`${API_URL}/ai/video/edit`, {
+            const data = await apiClient('/ai/video/edit', {
                 method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
+                body: {
                     jobId: analysisJobId,
                     subtitles,
                     style: selectedStyle,
@@ -281,54 +328,48 @@ export default function ContentStudioPage() {
                         mode,
                         startMs: startTime,
                         endMs: endTime,
-                        musicId: selectedMusic?.id,
-                        musicVolume,
                         quality: renderQuality,
                     },
-                }),
+                },
             });
-
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || 'Render failed');
-            }
-
-            const data = await res.json();
             const renderId = data.renderId;
+            const startedAt = Date.now();
+            let checking = false;
+            let failures = 0;
 
-            // Poll for completion
-            const pollInterval = setInterval(async () => {
+            renderPollRef.current = setInterval(async () => {
+                if (checking) return;
+                if (Date.now() - startedAt > RENDER_TIMEOUT_MS) {
+                    fail('Rendering is taking longer than 10 minutes, so we stopped waiting. Try a shorter part of the video.');
+                    return;
+                }
+                checking = true;
                 try {
-                    const statusRes = await fetch(`${API_URL}/ai/video/status/${renderId}`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                    });
-                    const status = await statusRes.json();
-
+                    const status = await apiClient(`/ai/video/status/${encodeURIComponent(renderId)}`);
+                    failures = 0;
                     setRenderProgress(status.progress || 0);
 
                     if (status.status === 'completed') {
-                        clearInterval(pollInterval);
+                        clearInterval(renderPollRef.current);
+                        const blob = await fetchRenderedBlob(status.downloadUrl);
+                        renderedBlobRef.current = blob;
+                        setRenderedVideoUrl(URL.createObjectURL(blob));
                         setRendering(false);
-                        // Fix the URL: ensure no double /api
-                        const base = API_URL.endsWith('/api') ? API_URL.replace('/api', '') : API_URL;
-                        setRenderedVideoUrl(`${base}${status.downloadUrl}`);
                         setSuccessMsg('Video rendered. Preview it in the phone view.');
-                        setPreviewPlaying(false); // Reset preview to allow playing new output
+                        setPreviewPlaying(false);
                     } else if (status.status === 'failed') {
-                        clearInterval(pollInterval);
-                        setRendering(false);
-                        setError(`Render failed: ${status.error}`);
-                        setSuccessMsg('');
+                        fail(`The render failed: ${status.error || 'unknown error'}. Try again.`);
                     }
-                } catch { }
+                } catch (err) {
+                    failures += 1;
+                    // One dropped request is retried; repeated failures stop the render view.
+                    if (failures >= 3 || err.status === 404) fail(err.message || 'We lost track of the render. Try again.');
+                } finally {
+                    checking = false;
+                }
             }, 2000);
-
-            // Timeout after 5 minutes
-            setTimeout(() => { clearInterval(pollInterval); }, 300000);
         } catch (err) {
-            setError(err.message || 'Render failed');
-            setRendering(false);
-            setSuccessMsg('');
+            fail(err.message || 'The render could not be started. Try again.');
         }
     };
 
@@ -351,59 +392,53 @@ export default function ContentStudioPage() {
     const handleExportSrt = async () => {
         if (subtitles.length === 0) return;
         try {
-            const data = await apiClient('/ai/captions/export', { method: 'POST', body: JSON.stringify({ captions: subtitles }) });
-            const blob = new Blob([data.srt], { type: 'text/plain' });
+            const data = await apiClient('/ai/captions/export', { method: 'POST', body: { captions: subtitles } });
+            const blob = new Blob([data.srt || ''], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a'); a.href = url; a.download = 'captions.srt'; a.click();
-            URL.revokeObjectURL(url);
-        } catch { setError('Export failed'); }
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (err) { setError(err.message || "The captions couldn't be exported. Try again."); }
     };
 
     // SRT upload
     const handleSrtUpload = async (file) => {
-        if (!file?.name.endsWith('.srt')) { setError('Upload a .srt file.'); return; }
+        if (!file?.name.toLowerCase().endsWith('.srt')) { setError('Upload a .srt file.'); return; }
         try {
             const text = await file.text();
-            const data = await apiClient('/ai/captions/parse', { method: 'POST', body: JSON.stringify({ srtContent: text }) });
-            setSubtitles(data.captions || []); setShowCaptions(true);
-        } catch (err) { setError(err.message); }
+            const data = await apiClient('/ai/captions/parse', { method: 'POST', body: { srtContent: text } });
+            // Accept a plain array or the older { captions: { captions: [] } } shape.
+            const list = Array.isArray(data.captions) ? data.captions : Array.isArray(data.captions?.captions) ? data.captions.captions : [];
+            const clean = list.filter((c) => c && typeof c.text === 'string');
+            if (!clean.length) { setError("That file doesn't contain any captions we could read."); return; }
+            setSubtitles(clean); setCurrentSubtitleIndex(0); setShowCaptions(true);
+            setSuccessMsg(`Loaded ${clean.length} subtitles from ${file.name}.`);
+        } catch (err) { setError(err.message || "That file couldn't be read as SRT captions."); }
     };
 
-    // Save / Publish
-    const handleSaveDraft = async () => {
-        if (!caption) return;
-        if (!currentWorkspace?.id) { setError('Sign in first.'); return; }
-        setSaving(true);
-        try {
-            await apiClient(`/workspaces/${currentWorkspace.id}/content`, { method: 'POST', body: JSON.stringify({ type: mediaType || 'text', mediaUrl: renderedVideoUrl || mediaUrl, caption, platforms: selectedPlatforms, status: 'draft' }) });
-            setSaved(true); setTimeout(() => setSaved(false), 3000);
-        } catch (err) { setError(err.message); } finally { setSaving(false); }
-    };
-
-    const handlePublish = async () => {
-        if (!caption) return;
-        if (!currentWorkspace?.id) { setError('Sign in first.'); return; }
+    // Schedule: hand the media and caption to the calendar, the same way Clips does.
+    const handleSchedule = () => {
         setPublishing(true);
         try {
-            const data = await apiClient(`/workspaces/${currentWorkspace.id}/content`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    type: mediaType || 'text',
-                    mediaUrl: renderedVideoUrl || mediaUrl,
-                    caption,
-                    platforms: selectedPlatforms,
-                    status: 'draft'
-                })
-            });
-            navigate('/dashboard/scheduler', { state: { scheduleDraftId: data.content?.id } });
-        } catch (err) { setError(err.message); } finally { setPublishing(false); }
+            let mediaFile = null;
+            if (renderedBlobRef.current) {
+                const base = (media?.name || 'video').replace(/\.[^.]+$/, '');
+                mediaFile = new File([renderedBlobRef.current], `${base}-edited.mp4`, { type: 'video/mp4' });
+            } else if (media) {
+                mediaFile = media;
+            }
+            navigate('/dashboard/scheduler', { state: { mediaFile, caption } });
+        } finally {
+            setPublishing(false);
+        }
     };
 
     const removeMedia = () => {
         if (mediaBlobUrl.current) { URL.revokeObjectURL(mediaBlobUrl.current); mediaBlobUrl.current = null; }
-        setMedia(null); setMediaUrl(null); setMediaType(null);
+        clearInterval(renderPollRef.current);
+        setMedia(null); setMediaType(null);
         setSubtitles([]); setAnalysis(null); setAnalysisJobId(null);
-        setRenderedVideoUrl(null); setVideoPlaying(false); setPreviewPlaying(false);
+        setRenderedVideoUrl(null); renderedBlobRef.current = null; setRendering(false);
+        setPreviewPlaying(false); setShowEditChoice(false); setPendingVideoFile(null);
     };
 
     const togglePlatform = (id) => setSelectedPlatforms(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
@@ -431,6 +466,8 @@ export default function ContentStudioPage() {
     };
 
     const currentSub = subtitles[currentSubtitleIndex] || null;
+    const previewAccount = connections.find((c) => c.status === 'active' && selectedPlatforms.includes(c.platform)) || connections.find((c) => c.status === 'active');
+    const previewName = previewAccount?.username || previewAccount?.accountName || profile?.displayName || currentWorkspace?.name || 'Your account';
 
     // ======================================================
     // RENDER
@@ -443,11 +480,13 @@ export default function ContentStudioPage() {
                     <p className="page-subtitle">Upload one video, caption it and publish it to your connected accounts. For long videos, use Clips.</p>
                 </div>
                 <div className="flex gap-md header-actions">
-                    <button className="btn btn-secondary" onClick={handleSaveDraft} disabled={saving || !caption}>
-                        {saved ? <><Check size={18} /> Saved!</> : saving ? <><Loader2 size={18} className="spin" /></> : <><Save size={18} /> Save</>}
-                    </button>
-                    <button className="btn btn-primary" onClick={handlePublish} disabled={publishing || !caption}>
-                        {publishing ? <Loader2 size={18} className="spin" /> : <><Send size={18} /> Publish</>}
+                    <button
+                        className="btn btn-primary"
+                        onClick={handleSchedule}
+                        disabled={publishing || rendering || uploading || (!caption && !media)}
+                        title="Open the calendar with this video and caption to pick a time"
+                    >
+                        {publishing ? <Loader2 size={18} className="spin" /> : <><Calendar size={18} /> Schedule</>}
                     </button>
                 </div>
             </div>
@@ -466,12 +505,12 @@ export default function ContentStudioPage() {
             )}
 
             {/* Pipeline Status */}
-            {(analyzing || rendering) && (
+            {(uploading || analyzing || rendering) && (
                 <div className="pipeline-status">
                     <div className="pipeline-steps">
                         <div className={`pipeline-step ${media ? 'done' : ''}`}><Upload size={16} /> Upload</div>
                         <div className="pipeline-arrow">→</div>
-                        <div className={`pipeline-step ${analyzing ? 'active' : analysis ? 'done' : ''}`}><Zap size={16} /> AI Analyze</div>
+                        <div className={`pipeline-step ${analyzing ? 'active' : analysis ? 'done' : ''}`}><Zap size={16} /> Analyse</div>
                         <div className="pipeline-arrow">→</div>
                         <div className={`pipeline-step ${rendering ? 'active' : renderedVideoUrl ? 'done' : ''}`}><Scissors size={16} /> Render</div>
                         <div className="pipeline-arrow">→</div>
@@ -483,7 +522,7 @@ export default function ContentStudioPage() {
                             <span>{renderProgress}% rendering...</span>
                         </div>
                     )}
-                    {analyzing && <span className="pipeline-label"><Loader2 size={14} className="spin" /> Gemini is analyzing your video...</span>}
+                    {analyzing && <span className="pipeline-label"><Loader2 size={14} className="spin" /> Analysing your video…</span>}
                 </div>
             )}
 
@@ -491,7 +530,6 @@ export default function ContentStudioPage() {
             <div className="studio-tabs">
                 <button className={`studio-tab ${activeTab === 'editor' ? 'active' : ''}`} onClick={() => setActiveTab('editor')}><Layers size={18} /> Edit</button>
                 <button className={`studio-tab ${activeTab === 'captions' ? 'active' : ''}`} onClick={() => setActiveTab('captions')}><Type size={18} /> Subtitles {subtitles.length > 0 && <span className="tab-badge">{subtitles.length}</span>}</button>
-                <button className={`studio-tab ${activeTab === 'music' ? 'active' : ''}`} onClick={() => setActiveTab('music')}><Music size={18} /> Music</button>
                 <button className={`studio-tab ${activeTab === 'styles' ? 'active' : ''}`} onClick={() => setActiveTab('styles')}><Palette size={18} /> Styles</button>
             </div>
 
@@ -508,15 +546,17 @@ export default function ContentStudioPage() {
                                         <div className="media-preview">
                                             <button className="remove-media" onClick={(e) => { e.stopPropagation(); removeMedia(); }}><X size={16} /></button>
                                             {mediaType === 'video' ? (
-                                                <video ref={videoRef} src={URL.createObjectURL(media)} className="video-preview" controls />
+                                                <video ref={videoRef} src={mediaBlobUrl.current} className="video-preview" controls />
                                             ) : (
-                                                <img src={URL.createObjectURL(media)} alt="Preview" />
+                                                <img src={mediaBlobUrl.current} alt="Preview" />
                                             )}
                                             {(uploading || analyzing) && (
                                                 <div className="upload-overlay">
                                                     <Loader2 size={28} className="spin" />
-                                                    <span>{analyzing ? 'Analyzing with Gemini...' : `Uploading ${uploadProgress}%`}</span>
-                                                    <div className="upload-progress-bar"><div className="upload-progress-fill" style={{ width: `${uploadProgress}%` }} /></div>
+                                                    <span>{analyzing ? 'Analysing your video… this can take a minute.' : `Uploading ${uploadProgress}%`}</span>
+                                                    {!analyzing ? (
+                                                        <div className="upload-progress-bar"><div className="upload-progress-fill" style={{ width: `${uploadProgress}%` }} /></div>
+                                                    ) : null}
                                                 </div>
                                             )}
                                         </div>
@@ -526,7 +566,7 @@ export default function ContentStudioPage() {
                                                 onChange={(e) => { if (e.target.files?.[0]) handleMediaUpload(e.target.files[0]); }} hidden />
                                             <div className="dropzone-icon"><Video size={36} /></div>
                                             <p>Drop your video here or <span>browse</span></p>
-                                            <span className="dropzone-hint">MP4 or MOV up to 100 MB</span>
+                                            <span className="dropzone-hint">MP4 or MOV up to 100 MB, or an image</span>
                                         </div>
                                     )}
                                 </div>
@@ -544,21 +584,21 @@ export default function ContentStudioPage() {
                                                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
                                                 padding: '24px', cursor: 'pointer', textAlign: 'center', borderRadius: '12px',
                                                 transition: 'all 0.2s', border: '2px solid var(--border-color)',
-                                                background: 'rgba(255,255,255,0.03)', width: '100%'
+                                                background: 'var(--bg-inset)', width: '100%'
                                             }}
                                             onMouseEnter={e => {
-                                                e.currentTarget.style.borderColor = 'var(--accent, #a78bfa)';
+                                                e.currentTarget.style.borderColor = 'var(--accent-primary)';
                                                 e.currentTarget.style.transform = 'translateY(-4px)';
-                                                e.currentTarget.style.background = 'rgba(167,139,250,0.07)';
+                                                e.currentTarget.style.background = 'var(--accent-soft)';
                                             }}
                                             onMouseLeave={e => {
                                                 e.currentTarget.style.borderColor = 'var(--border-color)';
                                                 e.currentTarget.style.transform = 'translateY(0)';
-                                                e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                                                e.currentTarget.style.background = 'var(--bg-inset)';
                                             }}
                                         >
-                                            <div style={{ background: 'rgba(167,139,250,0.15)', padding: '12px', borderRadius: '50%', marginBottom: '4px' }}>
-                                                <Scissors size={24} style={{ color: 'var(--accent, #a78bfa)' }} />
+                                            <div style={{ background: 'var(--accent-soft)', padding: '12px', borderRadius: '50%', marginBottom: '4px' }}>
+                                                <Scissors size={24} style={{ color: 'var(--accent-primary)' }} />
                                             </div>
                                             <strong style={{ fontSize: '1.1rem' }}>Manual Editor</strong>
                                             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Full creative control — Trim, Speed, Filters, Text & More</p>
@@ -572,24 +612,24 @@ export default function ContentStudioPage() {
                                                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
                                                 padding: '24px', cursor: 'pointer', textAlign: 'center', borderRadius: '12px',
                                                 transition: 'all 0.2s', border: '2px solid var(--border-color)',
-                                                background: 'rgba(255,255,255,0.03)', width: '100%'
+                                                background: 'var(--bg-inset)', width: '100%'
                                             }}
                                             onMouseEnter={e => {
-                                                e.currentTarget.style.borderColor = 'var(--primary)';
+                                                e.currentTarget.style.borderColor = 'var(--accent-primary)';
                                                 e.currentTarget.style.transform = 'translateY(-4px)';
-                                                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                                e.currentTarget.style.background = 'var(--bg-hover)';
                                             }}
                                             onMouseLeave={e => {
                                                 e.currentTarget.style.borderColor = 'var(--border-color)';
                                                 e.currentTarget.style.transform = 'translateY(0)';
-                                                e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                                                e.currentTarget.style.background = 'var(--bg-inset)';
                                             }}
                                         >
-                                            <div style={{ background: 'var(--primary-glow)', padding: '12px', borderRadius: '50%', marginBottom: '4px' }}>
-                                                <Zap size={24} style={{ color: 'var(--primary)' }} />
+                                            <div style={{ background: 'var(--accent-soft)', padding: '12px', borderRadius: '50%', marginBottom: '4px' }}>
+                                                <Zap size={24} style={{ color: 'var(--accent-primary)' }} />
                                             </div>
                                             <strong style={{ fontSize: '1.1rem' }}>AI Auto-Edit</strong>
-                                            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Smart Automation — Gemini analyzes and crops for you</p>
+                                            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>AI transcribes, finds the best moments and crops to 9:16</p>
                                             <div className="btn btn-sm btn-primary" style={{ marginTop: '12px' }}>Auto-edit with AI <Sparkles size={14} /></div>
                                         </button>
                                     </div>
@@ -600,6 +640,9 @@ export default function ContentStudioPage() {
                             <section className="editor-section">
                                 <div className="section-title"><Smartphone size={18} /><h3>Style reference (optional)</h3></div>
                                 <div className="glass" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <p className="text-xs text-muted" style={{ margin: 0, color: 'var(--text-secondary)' }}>
+                                        Paste a TikTok whose style you like. The link is passed to the AI as a hint for the caption and cuts. It doesn't watch the reference video.
+                                    </p>
                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                         <input type="text" className="input" placeholder="Paste a TikTok link here..." value={referenceUrl}
                                             onChange={(e) => setReferenceUrl(e.target.value)} style={{ flex: 1, margin: 0, borderColor: referenceUrl && !referenceUrl.includes('tiktok.com') ? 'var(--error)' : undefined }} />
@@ -738,11 +781,8 @@ export default function ContentStudioPage() {
                                     <button
                                         className="btn btn-sm btn-ghost"
                                         onClick={() => {
-                                            if (selectedPlatforms.length === connections.filter(c => c.status === 'active').length) {
-                                                setSelectedPlatforms([]);
-                                            } else {
-                                                setSelectedPlatforms(connections.filter(c => c.status === 'active').map(c => c.id));
-                                            }
+                                            const active = connections.filter(c => c.status === 'active').map(c => c.platform);
+                                            setSelectedPlatforms(selectedPlatforms.length === active.length ? [] : active);
                                         }}
                                     >
                                         <Check size={14} /> Select all
@@ -751,7 +791,7 @@ export default function ContentStudioPage() {
 
                                 <div className="platform-connections-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {connections.length === 0 ? (
-                                        <div className="no-connections-hint"><AlertCircle size={14} /><span>No connections. <a href="/dashboard/connections">Connect now</a></span></div>
+                                        <div className="no-connections-hint"><AlertCircle size={14} /><span>No accounts connected. <Link to="/dashboard/connections">Connect now</Link></span></div>
                                     ) : (
                                         // Group by groupName or 'Ungrouped'
                                         Object.entries(connections.reduce((acc, curr) => {
@@ -773,15 +813,17 @@ export default function ContentStudioPage() {
                                                     {groupConns.map(conn => {
                                                         const pInfo = PLATFORMS.find(p => p.id === conn.platform);
                                                         const Icon = pInfo ? pInfo.icon : Target;
-                                                        const color = pInfo ? pInfo.color : '#888';
+                                                        const color = pInfo ? pInfo.color : 'var(--text-muted)';
                                                         const isActive = conn.status === 'active';
 
                                                         return (
                                                             <button
-                                                                key={conn.id}
-                                                                title={`@${conn.username} (${conn.platform})`}
-                                                                className={`platform-btn ${selectedPlatforms.includes(conn.id) ? 'active' : ''} ${!isActive ? 'disabled' : ''}`}
-                                                                onClick={() => isActive && togglePlatform(conn.id)}
+                                                                key={conn.platform}
+                                                                title={`${conn.accountName || conn.username || conn.platform} (${conn.platform})${isActive ? '' : ', reconnect needed'}`}
+                                                                aria-pressed={selectedPlatforms.includes(conn.platform)}
+                                                                className={`platform-btn ${selectedPlatforms.includes(conn.platform) ? 'active' : ''} ${!isActive ? 'disabled' : ''}`}
+                                                                onClick={() => isActive && togglePlatform(conn.platform)}
+                                                                disabled={!isActive}
                                                                 style={{ '--p-color': color }}
                                                             >
                                                                 <Icon size={20} />
@@ -803,7 +845,7 @@ export default function ContentStudioPage() {
                                 <div className="section-title"><FileText size={18} /><h3>Subtitles</h3></div>
                                 <div className="ai-subtitle-actions">
                                     {!analysis && (
-                                        <p className="section-desc">Upload a video on the Editor tab — Gemini will generate subtitles automatically.</p>
+                                        <p className="section-desc">Upload a video on the Edit tab and choose AI Auto-Edit to generate subtitles, or upload an .srt file.</p>
                                     )}
                                     <div className="srt-mini-upload">
                                         <label className="btn btn-secondary btn-sm">
@@ -836,50 +878,6 @@ export default function ContentStudioPage() {
                                     </div>
                                 </section>
                             )}
-                        </>
-                    )}
-
-                    {activeTab === 'music' && (
-                        <>
-                            <section className="editor-section">
-                                <div className="section-title"><Music size={18} /><h3>Background music</h3></div>
-                                <div className="music-grid">
-                                    {[
-                                        { id: 'Soft Corners of the Day.mp3', name: 'Soft Corners of the Day' },
-                                        { id: 'Soft Corners of the Day (1).mp3', name: 'Soft Corners of the Day (Alt 1)' },
-                                        { id: 'Soft Corners of the Day (2).mp3', name: 'Soft Corners of the Day (Alt 2)' },
-                                        { id: 'Midnight Apartment Walls.mp3', name: 'Midnight Apartment Walls' },
-                                        { id: 'Clouds in My Coffee (1).mp3', name: 'Clouds in My Coffee' }
-                                    ].map(track => (
-                                        <button key={track.id} className={`music-track-card ${selectedMusic?.id === track.id ? 'active' : ''}`}
-                                            onClick={() => setSelectedMusic(selectedMusic?.id === track.id ? null : track)}>
-                                            <div className="track-icon"><Music size={20} /></div>
-                                            <div className="track-info">
-                                                <strong>{track.name}</strong>
-                                                <span>{track.id}</span>
-                                            </div>
-                                            {selectedMusic?.id === track.id && <div className="track-check"><Check size={14} /></div>}
-                                        </button>
-                                    ))}
-                                </div>
-                                {selectedMusic && (
-                                    <div style={{ marginTop: '20px' }}>
-                                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Preview Selected Track</p>
-                                        <audio crossOrigin="anonymous" controls src={`${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}/public/sounds/${encodeURIComponent(selectedMusic.id)}`} style={{ width: '100%', height: '40px', borderRadius: '8px' }} />
-                                    </div>
-                                )}
-                            </section>
-                            <section className="editor-section">
-                                <div className="section-title"><Volume2 size={18} /><h3>Music volume</h3></div>
-                                <div className="style-controls">
-                                    <div className="control-row">
-                                        <label>Level</label>
-                                        <input type="range" min="0" max="1" step="0.05" value={musicVolume} onChange={(e) => setMusicVolume(parseFloat(e.target.value))} />
-                                        <span>{Math.round(musicVolume * 100)}%</span>
-                                    </div>
-                                    <p className="text-xs text-muted">Original audio will be balanced with this music track.</p>
-                                </div>
-                            </section>
                         </>
                     )}
 
@@ -1002,8 +1000,8 @@ export default function ContentStudioPage() {
 
                                 {previewMode === 'mobile' && (
                                     <div className="preview-caption-area">
-                                        <div className="ig-header-mini"><div className="ig-avatar" /><span>{currentWorkspace?.name || 'Nhlanhla_Ngcobo'}</span></div>
-                                        <div className="ig-caption-text"><strong>{currentWorkspace?.name || 'Nhlanhla_Ngcobo'}</strong> {caption || 'Caption preview...'}</div>
+                                        <div className="ig-header-mini"><div className="ig-avatar" /><span>{previewName}</span></div>
+                                        <div className="ig-caption-text"><strong>{previewName}</strong> {caption || 'Caption preview...'}</div>
                                     </div>
                                 )}
                             </div>
@@ -1013,8 +1011,8 @@ export default function ContentStudioPage() {
                     {/* Download rendered video */}
                     {renderedVideoUrl && (
                         <div className="rendered-actions">
-                            <a href={renderedVideoUrl} download className="btn btn-primary btn-block"><Download size={16} /> Download Rendered Video</a>
-                            <button className="btn btn-secondary btn-block" onClick={() => setRenderedVideoUrl(null)}>← Back to Source</button>
+                            <a href={renderedVideoUrl} download={`${(media?.name || 'video').replace(/\.[^.]+$/, '')}-edited.mp4`} className="btn btn-primary btn-block"><Download size={16} /> Download rendered video</a>
+                            <button className="btn btn-secondary btn-block" onClick={() => { setRenderedVideoUrl(null); renderedBlobRef.current = null; }}>← Back to source</button>
                         </div>
                     )}
                 </div>

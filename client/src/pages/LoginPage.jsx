@@ -4,21 +4,27 @@ import { useAuth } from '../context/AuthContext';
 import { authErrorMessage } from '../lib/auth-errors';
 import './Auth.css';
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const { login, loginWithGoogle } = useAuth();
+    const [notice, setNotice] = useState('');
+    const [sendingReset, setSendingReset] = useState(false);
+    const { login, loginWithGoogle, resetPassword } = useAuth();
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+        setNotice('');
         setLoading(true);
 
         try {
             await login(email, password);
+            // The route guard sends anyone who has not finished onboarding there instead.
             navigate('/dashboard');
         } catch (err) {
             setError(authErrorMessage(err, 'Could not sign in. Try again.'));
@@ -29,14 +35,35 @@ export default function LoginPage() {
 
     const handleGoogle = async () => {
         setError('');
+        setNotice('');
         setLoading(true);
         try {
-            await loginWithGoogle();
-            navigate('/dashboard');
+            const { needsOnboarding } = await loginWithGoogle();
+            navigate(needsOnboarding ? '/onboarding' : '/dashboard');
         } catch (err) {
             setError(authErrorMessage(err, 'Google sign-in failed. Try again.'));
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleForgotPassword = async () => {
+        setError('');
+        setNotice('');
+        const address = email.trim();
+        if (!EMAIL_PATTERN.test(address)) {
+            setError('Enter your email address above, then choose "Forgot password?" again.');
+            document.getElementById('email')?.focus();
+            return;
+        }
+        setSendingReset(true);
+        try {
+            await resetPassword(address);
+            setNotice(`If an account exists for ${address}, a password reset link is on its way. Check your inbox and spam folder.`);
+        } catch (err) {
+            setError(authErrorMessage(err, 'Could not send the reset email. Try again.'));
+        } finally {
+            setSendingReset(false);
         }
     };
 
@@ -54,7 +81,8 @@ export default function LoginPage() {
                     <p>Sign in to your KenganSocial account</p>
                 </div>
 
-                {error && <div className="auth-card__error">{error}</div>}
+                {error && <div className="auth-card__error" role="alert">{error}</div>}
+                {notice && <div className="auth-card__notice" role="status">{notice}</div>}
 
                 <form className="auth-card__form" onSubmit={handleSubmit}>
                     <div className="input-group">
@@ -66,12 +94,23 @@ export default function LoginPage() {
                             placeholder="you@example.com"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
+                            autoComplete="email"
                             required
                         />
                     </div>
 
                     <div className="input-group">
-                        <label htmlFor="password">Password</label>
+                        <div className="auth-card__label-row">
+                            <label htmlFor="password">Password</label>
+                            <button
+                                type="button"
+                                className="auth-card__link-btn"
+                                onClick={handleForgotPassword}
+                                disabled={sendingReset || loading}
+                            >
+                                {sendingReset ? 'Sending link...' : 'Forgot password?'}
+                            </button>
+                        </div>
                         <input
                             id="password"
                             type="password"
@@ -79,6 +118,7 @@ export default function LoginPage() {
                             placeholder="••••••••"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            autoComplete="current-password"
                             required
                         />
                     </div>

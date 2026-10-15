@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
     Sparkles,
     MessageSquare,
@@ -43,9 +43,36 @@ export default function AiToolsPage() {
     const [copied, setCopied] = useState(false);
     const [mediaLoading, setMediaLoading] = useState(false);
     const [mediaUrl, setMediaUrl] = useState('');
+    // null = unknown (still checking); false = no image provider configured on the server.
+    const [imageGeneration, setImageGeneration] = useState(null);
+    const workspaceId = currentWorkspace?.id;
+
+    useEffect(() => {
+        if (!workspaceId) return;
+        let cancelled = false;
+        apiClient(`/ai/credits/${workspaceId}`)
+            .then((data) => !cancelled && typeof data.credits === 'number' && setCredits(data.credits))
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [workspaceId]);
+
+    useEffect(() => {
+        let cancelled = false;
+        apiClient('/ai/status')
+            .then((data) => !cancelled && setImageGeneration(Boolean(data.imageGeneration)))
+            .catch(() => !cancelled && setImageGeneration(null));
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const handleGenerate = async () => {
-        if (!currentWorkspace?.id) return;
+        if (!currentWorkspace?.id) {
+            setError('Create or pick a workspace first. AI credits belong to a workspace.');
+            return;
+        }
         setLoading(true);
         setError('');
         setResult('');
@@ -67,20 +94,29 @@ export default function AiToolsPage() {
             setProvider(data.provider);
             setCredits(data.remainingCredits);
         } catch (err) {
-            setError(err.message || 'Generation failed. Check your API keys.');
+            setError(err.message || 'Generation failed. Try again in a moment.');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleCopy = () => {
-        navigator.clipboard.writeText(result);
+    const handleCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(result);
+        } catch {
+            setError("Couldn't copy to the clipboard. Select the text and copy it manually.");
+            return;
+        }
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
 
     const handleGenerateMedia = async () => {
-        if (!currentWorkspace?.id || !result) return;
+        if (!result) return;
+        if (!currentWorkspace?.id) {
+            setError('Create or pick a workspace first. AI credits belong to a workspace.');
+            return;
+        }
         setMediaLoading(true);
         setError('');
         setMediaUrl('');
@@ -96,9 +132,10 @@ export default function AiToolsPage() {
             });
 
             setMediaUrl(data.mediaUrl);
-            setCredits(data.remainingCredits);
+            if (typeof data.remainingCredits === 'number') setCredits(data.remainingCredits);
         } catch (err) {
-            setError(err.message || 'Media generation failed. Credits missing?');
+            if (err.code === 'IMAGE_GENERATION_UNAVAILABLE') setImageGeneration(false);
+            setError(err.message || "The image couldn't be generated. Try again.");
         } finally {
             setMediaLoading(false);
         }
@@ -117,6 +154,15 @@ export default function AiToolsPage() {
                     </div>
                 )}
             </div>
+
+            {!workspaceId ? (
+                <div className="error-banner">
+                    <AlertCircle size={16} />
+                    <span>
+                        You need a workspace to use the AI writer. <Link to="/onboarding">Create a workspace</Link>
+                    </span>
+                </div>
+            ) : null}
 
             <div className="ai-layout">
                 {/* Tool Selection Sidebar */}
@@ -181,7 +227,7 @@ export default function AiToolsPage() {
                                 <button
                                     className="btn btn-primary"
                                     onClick={handleGenerate}
-                                    disabled={loading || !input}
+                                    disabled={loading || !input || !workspaceId}
                                 >
                                     {loading ? (
                                         <><RefreshCw size={18} className="spin" /> Generating...</>
@@ -221,19 +267,36 @@ export default function AiToolsPage() {
                                 </div>
 
                                 <div style={{ marginTop: '16px' }}>
-                                    {!mediaUrl && !mediaLoading ? (
-                                        <button className="btn btn-secondary full-width" onClick={handleGenerateMedia}>
-                                            <ImageIcon size={18} /> Generate Visual Workflow Content (2 Credits)
-                                        </button>
-                                    ) : mediaLoading ? (
-                                        <div className="flex justify-center p-md">
-                                            <RefreshCw size={24} className="spin text-brand" />
-                                        </div>
+                                    {!mediaUrl ? (
+                                        <>
+                                            <button
+                                                className="btn btn-secondary full-width"
+                                                onClick={handleGenerateMedia}
+                                                disabled={mediaLoading || imageGeneration === false || !workspaceId}
+                                                title={imageGeneration === false ? "Image generation isn't set up on this server yet" : undefined}
+                                            >
+                                                {mediaLoading ? (
+                                                    <><RefreshCw size={18} className="spin" /> Generating image…</>
+                                                ) : (
+                                                    <><ImageIcon size={18} /> Generate an image for this post (2 credits)</>
+                                                )}
+                                            </button>
+                                            {imageGeneration === false ? (
+                                                <p className="muted" style={{ marginTop: '6px', fontSize: '12.5px' }}>
+                                                    Image generation isn't set up yet. An admin needs to add POLLINATIONS_API_KEY (free) or OPENROUTER_API_KEY to the server.
+                                                </p>
+                                            ) : null}
+                                        </>
                                     ) : (
                                         <div className="generated-media animate-slide-in mt-md">
-                                            <h4 style={{ marginBottom: '8px' }}>Visually Rendered Output:</h4>
-                                            <img src={mediaUrl} alt="AI Generated" style={{ width: '100%', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }} />
-                                            <a href={mediaUrl} target="_blank" rel="noreferrer" className="btn btn-outline btn-sm" style={{ marginTop: '8px' }}>View Full Resolution</a>
+                                            <h4 style={{ marginBottom: '8px' }}>Generated image</h4>
+                                            <img src={mediaUrl} alt="AI-generated illustration for this post" style={{ width: '100%', borderRadius: '12px', border: '1px solid var(--border-primary)' }} />
+                                            <div className="flex gap-sm" style={{ marginTop: '8px' }}>
+                                                <a href={mediaUrl} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">Open full size</a>
+                                                <button className="btn btn-ghost btn-sm" onClick={handleGenerateMedia} disabled={mediaLoading}>
+                                                    <RefreshCw size={14} className={mediaLoading ? 'spin' : undefined} /> Try another (2 credits)
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
                                 </div>

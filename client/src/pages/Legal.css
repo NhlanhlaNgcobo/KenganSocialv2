@@ -1,21 +1,49 @@
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap');
 
-/* ── TOKENS (scoped to legal UI) ── */
-.legal-root {
+/* ── TOKENS (scoped to legal UI and the terms modal) ── */
+.legal-root,
+.terms-modal-overlay {
     --legal-bg: #08080F;
     --legal-surface: #0E0E18;
     --legal-surface2: #13131F;
     --legal-border: rgba(255, 255, 255, 0.06);
     --legal-border2: rgba(255, 255, 255, 0.1);
     --legal-accent: #7C5CFC;
+    --legal-accent-hover: #9070ff;
     --legal-accent-dim: rgba(124, 92, 252, 0.15);
     --legal-text: #E2DFF5;
+    --legal-heading: #fff;
     --legal-muted: #6B6888;
     --legal-green: #22D3A5;
     --legal-amber: #F5A623;
     --legal-red: #FF4D6D;
     --legal-teal: #00D4C8;
+    --legal-nav-bg: rgba(8, 8, 15, 0.95);
+    --legal-overlay: rgba(4, 4, 10, 0.92);
+}
 
+[data-theme="light"] .legal-root,
+[data-theme="light"] .terms-modal-overlay {
+    --legal-bg: #f7f7fb;
+    --legal-surface: #ffffff;
+    --legal-surface2: #efeef6;
+    --legal-border: rgba(20, 16, 48, 0.08);
+    --legal-border2: rgba(20, 16, 48, 0.14);
+    --legal-accent: #6a47f0;
+    --legal-accent-hover: #5835e0;
+    --legal-accent-dim: rgba(106, 71, 240, 0.1);
+    --legal-text: #1d1a33;
+    --legal-heading: #0f0d1f;
+    --legal-muted: #5f5b78;
+    --legal-green: #0f9d78;
+    --legal-amber: #b7700a;
+    --legal-red: #e11d48;
+    --legal-teal: #0e8a83;
+    --legal-nav-bg: rgba(247, 247, 251, 0.95);
+    --legal-overlay: rgba(15, 13, 31, 0.55);
+}
+
+.legal-root {
     background: var(--legal-bg);
     color: var(--legal-text);
     font-family: 'DM Sans', sans-serif;
@@ -31,7 +59,7 @@
     justify-content: space-between;
     padding: 14px 32px;
     border-bottom: 1px solid var(--legal-border);
-    background: rgba(8, 8, 15, 0.95);
+    background: var(--legal-nav-bg);
     position: sticky;
     top: 0;
     z-index: 50;
@@ -50,7 +78,7 @@
 }
 
 .legal-logo-k {
-    color: #fff;
+    color: var(--legal-heading);
 }
 
 .legal-logo-s {
@@ -137,7 +165,7 @@
     font-weight: 800;
     font-size: 36px;
     line-height: 1.1;
-    color: #fff;
+    color: var(--legal-heading);
     margin-bottom: 12px;
 }
 
@@ -247,7 +275,7 @@
     font-family: 'Syne', sans-serif;
     font-weight: 700;
     font-size: 26px;
-    color: #fff;
+    color: var(--legal-heading);
     margin-bottom: 8px;
 }
 
@@ -270,7 +298,7 @@
     font-family: 'Syne', sans-serif;
     font-weight: 700;
     font-size: 15px;
-    color: #fff;
+    color: var(--legal-heading);
     margin-bottom: 14px;
     padding-bottom: 10px;
     border-bottom: 1px solid var(--legal-border);
@@ -318,7 +346,7 @@
     position: fixed;
     inset: 0;
     z-index: 1000;
-    background: rgba(4, 4, 10, 0.92);
+    background: var(--legal-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -350,8 +378,8 @@
 
 /* ── TERMS MODAL ── */
 .terms-modal {
-    background: #0E0E18;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--legal-surface);
+    border: 1px solid var(--legal-border2);
     border-radius: 16px;
     width: 100%;
     max-width: 640px;
@@ -364,7 +392,7 @@
 
 .terms-modal-header {
     padding: 24px 28px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--legal-border);
     flex-shrink: 0;
 }
 
@@ -379,7 +407,7 @@
     font-family: 'Syne', sans-serif;
     font-weight: 700;
     font-size: 20px;
-    color: #fff;
+    color: var(--legal-heading);
 }
 
 .terms-modal-logo {
@@ -393,13 +421,13 @@
 
 .terms-modal-sub {
     font-size: 12px;
-    color: #6B6888;
+    color: var(--legal-muted);
     margin-top: 6px;
 }
 
 .terms-modal-progress {
     height: 3px;
-    background: #13131F;
+    background: var(--legal-surface2);
     border-radius: 2px;
     margin-top: 16px;
     overflow: hidden;
@@ -407,7 +435,7 @@
 
 .terms-modal-progress-fill {
     height: 100%;
-    background: #7C5CFC;
+    background: var(--legal-accent);
     border-radius: 2px;
     transition: width 0.3s ease;
 }
@@ -418,7 +446,7 @@
     margin-top: 6px;
     font-family: 'DM Mono', monospace;
     font-size: 10px;
-    color: #6B6888;
+    color: var(--legal-muted);
 }
 
 .terms-modal-scroll {
@@ -437,7 +465,7 @@
 }
 
 .terms-modal-scroll::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--legal-border2);
     border-radius: 2px;
 }
 
@@ -448,7 +476,7 @@
     padding: 12px 16px;
     margin-bottom: 20px;
     font-size: 12px;
-    color: #7C5CFC;
+    color: var(--legal-accent);
     line-height: 1.6;
     display: flex;
     align-items: flex-start;
@@ -478,7 +506,7 @@
 
 .terms-accepted-banner-text {
     font-size: 12px;
-    color: #22D3A5;
+    color: var(--legal-green);
     line-height: 1.5;
 }
 
@@ -497,7 +525,7 @@
     font-family: 'Syne', sans-serif;
     font-weight: 600;
     font-size: 13px;
-    color: #7C5CFC;
+    color: var(--legal-accent);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 10px;
@@ -505,29 +533,29 @@
 
 .terms-modal-section-body {
     font-size: 12.5px;
-    color: #6B6888;
+    color: var(--legal-muted);
     line-height: 1.75;
     white-space: pre-wrap;
 }
 
 .terms-full-docs-box {
     padding: 16px;
-    background: #13131F;
+    background: var(--legal-surface2);
     border-radius: 10px;
     margin-bottom: 8px;
     font-size: 12px;
-    color: #6B6888;
+    color: var(--legal-muted);
     line-height: 1.6;
 }
 
 .terms-full-docs-box strong {
-    color: #E2DFF5;
+    color: var(--legal-text);
     display: block;
     margin-bottom: 6px;
 }
 
 .terms-full-docs-link {
-    color: #7C5CFC;
+    color: var(--legal-accent);
     cursor: pointer;
     text-decoration: underline;
     font-weight: 500;
@@ -535,9 +563,9 @@
 
 .terms-modal-footer {
     padding: 20px 28px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--legal-border);
     flex-shrink: 0;
-    background: #0E0E18;
+    background: var(--legal-surface);
 }
 
 .terms-modal-checkboxes {
@@ -559,18 +587,18 @@
     height: 18px;
     flex-shrink: 0;
     margin-top: 1px;
-    accent-color: #7C5CFC;
+    accent-color: var(--legal-accent);
     cursor: pointer;
 }
 
 .terms-modal-checkbox-text {
     font-size: 12.5px;
-    color: #6B6888;
+    color: var(--legal-muted);
     line-height: 1.6;
 }
 
 .terms-modal-checkbox-text b {
-    color: #E2DFF5;
+    color: var(--legal-text);
     font-weight: 500;
 }
 
@@ -583,9 +611,9 @@
     flex: 1;
     padding: 12px;
     border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--legal-border2);
     background: none;
-    color: #6B6888;
+    color: var(--legal-muted);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -594,7 +622,7 @@
 }
 
 .terms-btn-decline:hover {
-    color: #FF4D6D;
+    color: var(--legal-red);
     border-color: rgba(255, 77, 109, 0.3);
     background: rgba(255, 77, 109, 0.05);
 }
@@ -604,7 +632,7 @@
     padding: 12px;
     border-radius: 10px;
     border: none;
-    background: #7C5CFC;
+    background: var(--legal-accent);
     color: #fff;
     font-size: 13px;
     font-weight: 600;
@@ -620,7 +648,7 @@
 }
 
 .terms-btn-accept:not(:disabled):hover {
-    background: #9070ff;
+    background: var(--legal-accent-hover);
     transform: translateY(-1px);
 }
 
@@ -643,13 +671,13 @@
     font-family: 'Syne', sans-serif;
     font-weight: 700;
     font-size: 18px;
-    color: #fff;
+    color: var(--legal-heading);
     margin-bottom: 8px;
 }
 
 .terms-declined-sub {
     font-size: 13px;
-    color: #6B6888;
+    color: var(--legal-muted);
     margin-bottom: 24px;
     line-height: 1.6;
 }
@@ -657,9 +685,9 @@
 .terms-btn-reconsider {
     padding: 11px 24px;
     border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--legal-border2);
     background: none;
-    color: #E2DFF5;
+    color: var(--legal-text);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -668,7 +696,7 @@
 }
 
 .terms-btn-reconsider:hover {
-    background: #13131F;
+    background: var(--legal-surface2);
 }
 
 /* ── RESPONSIVE ── */

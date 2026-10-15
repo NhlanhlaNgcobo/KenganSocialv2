@@ -5,10 +5,18 @@ import { CHAT_MODEL, chatClient } from '../llm-client.js';
 
 const openai = chatClient;
 
-// Assuming valid API keys are mapped
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
 const TIKTOK_ACCESS_TOKEN = process.env.TIKTOK_ACCESS_TOKEN || '';
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY || '';
+// The old llama-3.1-sonar-* model names were retired by Perplexity; "sonar" is the current online model.
+const PERPLEXITY_MODEL = process.env.PERPLEXITY_MODEL || 'sonar';
+
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+// A manual refresh regenerates the cache at most this often, so repeated clicks can't run up LLM costs.
+const MIN_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+
+/** 'live' = built from real trend data (YouTube / TikTok / Perplexity); 'ai-ideas' = AI suggestions only. */
+export type TrendDataSource = 'live' | 'ai-ideas';
 
 export interface TrendCard {
     id: string;
@@ -17,14 +25,22 @@ export interface TrendCard {
     captionPreview: string;
     hashtags: string[];
     platform: string;
+    /** An AI estimate, not a measured metric. */
     viralityScore: number;
     difficulty: 'easy' | 'medium' | 'hard';
     source: string;
 }
 
-function buildFallbackCards(niche: string, rawData: Array<{ source: string; text: string }>): TrendCard[] {
+export interface TrendingResult {
+    cards: TrendCard[];
+    generatedAt: string | null;
+    dataSource: TrendDataSource;
+    cached: boolean;
+    refreshThrottled?: boolean;
+}
+
+function buildFallbackCards(niche: string, source: string): TrendCard[] {
     const normalizedNiche = niche.trim() || 'general';
-    const primarySource = rawData[0]?.source || 'fallback';
 
     return [
         {
@@ -36,7 +52,7 @@ function buildFallbackCards(niche: string, rawData: Array<{ source: string; text
             platform: 'tiktok',
             viralityScore: 8,
             difficulty: 'easy',
-            source: primarySource,
+            source,
         },
         {
             id: `trend_${normalizedNiche}_story`,
@@ -47,7 +63,7 @@ function buildFallbackCards(niche: string, rawData: Array<{ source: string; text
             platform: 'instagram',
             viralityScore: 7,
             difficulty: 'medium',
-            source: primarySource,
+            source,
         },
         {
             id: `trend_${normalizedNiche}_list`,
@@ -58,7 +74,7 @@ function buildFallbackCards(niche: string, rawData: Array<{ source: string; text
             platform: 'youtube',
             viralityScore: 7,
             difficulty: 'easy',
-            source: primarySource,
+            source,
         },
     ];
 }
@@ -75,31 +91,45 @@ function mapNicheToCategory(niche: string) {
     return 24; // Entertainment fallback
 }
 
-export async function fetchTrendingByNiche(niche: string, plan: string = 'starter'): Promise<TrendCard[]> {
+function cardsForPlan(cards: TrendCard[], dataSource: TrendDataSource, plan: string) {
+    // Starter gets the YouTube/TikTok-derived cards only (no Perplexity). When there is no live
+    // data at all, the cards are AI ideas for everyone, labelled as such.
+    if (plan === 'starter' && dataSource === 'live') {
+        return cards.filter((c) => c.source === 'youtube' || c.source === 'tiktok');
+    }
+    return cards;
+}
+
+export async function fetchTrendingResult(
+    niche: string,
+    plan: string = 'starter',
+    options: { refresh?: boolean } = {}
+): Promise<TrendingResult> {
     const firestoreKey = niche.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const cacheDoc = db.collection('trending_cache').doc(firestoreKey);
 
-    // 1. Check cache (2 hours TTL)
+    // 1. Check cache (2 hours TTL). A manual refresh skips it unless it was just regenerated.
     const cached = await cacheDoc.get();
     if (cached.exists) {
         const data = cached.data();
-        const ageHours = (Date.now() - data?.timestamp?.toMillis()) / (1000 * 60 * 60);
+        const generatedMs = data?.timestamp?.toMillis?.() ?? 0;
+        const ageMs = Date.now() - generatedMs;
+        const dataSource: TrendDataSource = data?.dataSource === 'live' ? 'live' : 'ai-ideas';
+        const throttled = !!options.refresh && ageMs < MIN_REFRESH_INTERVAL_MS;
 
-        // Return cache instantly if less than 2 hours old
-        if (ageHours < 2 && data?.cards?.length > 0) {
-            // Nano+ plan can access all cached cards, Starter might be filtered or just return the cached
-            // Since cost-sharing says same cache served to all, Starter gets access if nano ran it?
-            // Actually prompt says "Starter plan: YouTube data only (no Perplexity call)" when fetching fresh.
-            // If fetching from cache, filter by 'source' if needed or just return all? We'll filter source for Starter.
-            if (plan === 'starter') {
-                return data.cards.filter((c: TrendCard) => c.source === 'youtube' || c.source === 'tiktok');
-            }
-            return data.cards;
+        if ((!options.refresh || throttled) && ageMs < CACHE_TTL_MS && data?.cards?.length > 0) {
+            return {
+                cards: cardsForPlan(data.cards, dataSource, plan),
+                generatedAt: generatedMs ? new Date(generatedMs).toISOString() : null,
+                dataSource,
+                cached: true,
+                ...(throttled ? { refreshThrottled: true } : {}),
+            };
         }
     }
 
     // 2. Fetch Fresh Data (Parallel Sources)
-    const rawData = [];
+    const rawData: Array<{ source: string; text: string }> = [];
 
     // Source A: YouTube Most Popular
     if (YOUTUBE_API_KEY) {
@@ -115,7 +145,7 @@ export async function fetchTrendingByNiche(niche: string, plan: string = 'starte
         }
     }
 
-    // Source B: TikTok Hashtag Research API (Mock if no token for now standard API approach)
+    // Source B: TikTok Research API hashtag suggestions
     if (TIKTOK_ACCESS_TOKEN) {
         try {
             const tkRes = await axios.get(`https://open.tiktokapis.com/v2/research/adv/hashtag/suggest?keyword=${encodeURIComponent(niche)}&country_code=ZA`, {
@@ -130,11 +160,11 @@ export async function fetchTrendingByNiche(niche: string, plan: string = 'starte
         }
     }
 
-    // Source C: Perplexity AI (Only for nano, creator, agency plans)
+    // Source C: Perplexity (online search) — only for nano, creator, agency plans
     if (plan !== 'starter' && PERPLEXITY_API_KEY) {
         try {
             const pxRes = await axios.post('https://api.perplexity.ai/chat/completions', {
-                model: 'llama-3.1-sonar-large-128k-online',
+                model: PERPLEXITY_MODEL,
                 messages: [{
                     role: 'user',
                     content: `What content is trending on social media for ${niche} creators this week in South Africa? Return 5 specific content ideas with hooks.`
@@ -142,19 +172,20 @@ export async function fetchTrendingByNiche(niche: string, plan: string = 'starte
             }, { headers: { 'Authorization': `Bearer ${PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' } });
 
             const pxData = pxRes.data.choices[0]?.message?.content || '';
-            rawData.push({ source: 'perplexity', text: pxData });
+            if (pxData) rawData.push({ source: 'perplexity', text: pxData });
         } catch (err: any) {
-            console.error('Perplexity Trend Fetch Error:', err.message);
+            console.error('Perplexity Trend Fetch Error:', err.response?.data?.error?.message || err.message);
         }
     }
 
-    // If all failed or no keys setup, provide fallback baseline to prevent crashes
+    const dataSource: TrendDataSource = rawData.length > 0 ? 'live' : 'ai-ideas';
+
+    // No live source configured or reachable: ask for ideas, and label them honestly as AI ideas.
     if (rawData.length === 0) {
-        rawData.push({ source: 'youtube', text: `Generic ${niche} content ideas and engaging tips.` });
+        rawData.push({ source: 'ai-ideas', text: `No live trend data available. Suggest evergreen ${niche} content ideas.` });
     }
 
-    // 3. Centralized GPT-4o-mini mapping
-    // We pass all raw text arrays to OpenAI to formalize strictly into [ { hook, videoIdea, ... } ]
+    // 3. Have the chat model structure the raw data into cards
     const combinedContext = rawData.map(r => `[SOURCE: ${r.source}] Data: ${r.text}`).join('\n\n');
 
     let generatedCards: TrendCard[] = [];
@@ -163,39 +194,51 @@ export async function fetchTrendingByNiche(niche: string, plan: string = 'starte
             model: CHAT_MODEL,
             response_format: { type: 'json_object' },
             messages: [
-                { role: 'system', content: `You are a social media trend analyst. Turn the raw trend data into beautifully formatted distinct video hooks. Output exactly JSON: { "cards": [ { "id": "card_XYZ123", "hook": "...", "videoIdea": "...", "captionPreview": "...", "hashtags": ["#tag1", "#tag2"], "platform": "tiktok|instagram|youtube", "viralityScore": 1-10 int, "difficulty": "easy|medium|hard", "source": "origin source" } ] }` },
+                { role: 'system', content: `You are a social media trend analyst. Turn the raw trend data into distinct video ideas with hooks. Set "source" to the [SOURCE: ...] value the idea came from. Output exactly JSON: { "cards": [ { "id": "card_XYZ123", "hook": "...", "videoIdea": "...", "captionPreview": "...", "hashtags": ["#tag1", "#tag2"], "platform": "tiktok|instagram|youtube", "viralityScore": 1-10 int, "difficulty": "easy|medium|hard", "source": "origin source" } ] }` },
                 { role: 'user', content: `Niche: ${niche}.\nRaw Trend Data:\n${combinedContext}` }
             ]
         });
 
         const parsed = JSON.parse(gptRes.choices[0]?.message?.content || '{"cards":[]}');
-        generatedCards = parsed.cards || [];
+        generatedCards = Array.isArray(parsed.cards) ? parsed.cards : [];
     } catch (err: any) {
         console.error('Trend GPT Consolidation Error:', err.message);
     }
 
     if (generatedCards.length === 0) {
-        generatedCards = buildFallbackCards(niche, rawData);
+        generatedCards = buildFallbackCards(niche, dataSource === 'live' ? rawData[0].source : 'ai-ideas');
     }
 
-    if (generatedCards.length > 0) {
-        // Enforce fallback schema types if LLM halluciantes parameters
-        generatedCards = generatedCards.map(c => ({
-            ...c,
-            id: c.id || `trend_${Math.random().toString(36).substr(2, 6)}`,
-            viralityScore: Number(c.viralityScore) || 7,
-            difficulty: ['easy', 'medium', 'hard'].includes(c.difficulty) ? c.difficulty : 'medium',
-        }));
+    const liveSources = new Set(rawData.map((r) => r.source));
+    generatedCards = generatedCards.map(c => ({
+        ...c,
+        id: c.id || `trend_${Math.random().toString(36).substr(2, 6)}`,
+        hashtags: Array.isArray(c.hashtags) ? c.hashtags : [],
+        platform: typeof c.platform === 'string' ? c.platform : 'tiktok',
+        viralityScore: Math.min(10, Math.max(1, Math.round(Number(c.viralityScore) || 5))),
+        difficulty: ['easy', 'medium', 'hard'].includes(c.difficulty) ? c.difficulty : 'medium',
+        // Never let the model claim a live source we did not actually query.
+        source: dataSource === 'ai-ideas' ? 'ai-ideas' : (liveSources.has(c.source) ? c.source : rawData[0].source),
+    }));
 
-        // 4. Save to Firestore (Cache)
-        await cacheDoc.set({
-            niche,
-            cards: generatedCards,
-            timestamp: admin.firestore.FieldValue.serverTimestamp()
-        });
-    }
+    // 4. Save to Firestore (Cache)
+    await cacheDoc.set({
+        niche,
+        cards: generatedCards,
+        dataSource,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
 
-    return plan === 'starter'
-        ? generatedCards.filter(c => c.source === 'youtube' || c.source === 'tiktok')
-        : generatedCards;
+    return {
+        cards: cardsForPlan(generatedCards, dataSource, plan),
+        generatedAt: new Date().toISOString(),
+        dataSource,
+        cached: false,
+    };
+}
+
+/** Back-compat wrapper (used by the trending cron): returns just the cards. */
+export async function fetchTrendingByNiche(niche: string, plan: string = 'starter', options: { refresh?: boolean } = {}): Promise<TrendCard[]> {
+    const result = await fetchTrendingResult(niche, plan, options);
+    return result.cards;
 }

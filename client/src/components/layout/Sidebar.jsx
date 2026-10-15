@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useWorkspace } from '../../context/WorkspaceContext';
 import {
     BarChart3,
     Calendar,
@@ -12,9 +13,11 @@ import {
     FileVideo,
     Film,
     Flame,
+    Layers,
     LayoutDashboard,
     Link2,
     LogOut,
+    Megaphone,
     MessageCircle,
     Moon,
     Repeat2,
@@ -63,6 +66,10 @@ const NAV_GROUPS = [
         ],
     },
     {
+        title: 'Grow',
+        items: [{ label: 'Marketing', icon: Megaphone, path: '/dashboard/marketing' }],
+    },
+    {
         title: 'Results',
         items: [{ label: 'Analytics', icon: BarChart3, path: '/dashboard/analytics' }],
     },
@@ -74,12 +81,52 @@ export default function Sidebar() {
     const { theme, toggleTheme } = useTheme();
     const photo = profile?.photoURL || user?.photoURL;
     const name = profile?.displayName || user?.displayName || 'Account';
+    const { workspaces, currentWorkspace, switchWorkspace } = useWorkspace();
+    const canSwitch = workspaces.length > 1 && !!currentWorkspace;
+
+    const handleSwitch = (e) => {
+        const id = e.target.value;
+        if (!id || id === currentWorkspace?.id) return;
+        switchWorkspace(id);
+        // Pages load their data for one workspace; reloading the current route is the
+        // simplest way to make every page and cache pick up the new one.
+        window.location.reload();
+    };
 
     return (
         <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
             <div className="sidebar__logo">
                 <KenganLogo size={26} showWordmark={!collapsed} />
             </div>
+
+            {canSwitch && !collapsed ? (
+                <div className="sidebar__workspace">
+                    <label htmlFor="sidebar-workspace" className="sidebar__group-title">Workspace</label>
+                    <select
+                        id="sidebar-workspace"
+                        className="sidebar__workspace-select"
+                        value={currentWorkspace.id}
+                        onChange={handleSwitch}
+                    >
+                        {workspaces.map((ws) => (
+                            <option key={ws.id} value={ws.id}>
+                                {ws.name || 'Untitled workspace'}{ws.role && ws.role !== 'owner' ? ` (${ws.role})` : ''}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            ) : null}
+            {canSwitch && collapsed ? (
+                <button
+                    type="button"
+                    className="sidebar__icon-btn sidebar__workspace-icon"
+                    onClick={() => setCollapsed(false)}
+                    title={`Workspace: ${currentWorkspace.name || 'Untitled'}. Expand to switch.`}
+                    aria-label={`Current workspace ${currentWorkspace.name || 'Untitled'}. Expand the sidebar to switch workspace.`}
+                >
+                    <Layers size={16} />
+                </button>
+            ) : null}
 
             <nav className="sidebar__nav" aria-label="App">
                 {NAV_GROUPS.map((group, gi) => (
@@ -114,7 +161,7 @@ export default function Sidebar() {
                     )}
                 </div>
                 <div className={`sidebar__footer-actions ${collapsed ? 'is-stacked' : ''}`}>
-                    <button className="sidebar__icon-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
+                    <button type="button" className="sidebar__icon-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
                         {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
                     </button>
                     <NavLink to="/dashboard/settings" className="sidebar__icon-btn" title="Settings" aria-label="Settings">
@@ -123,10 +170,17 @@ export default function Sidebar() {
                     <NavLink to="/dashboard/billing" className="sidebar__icon-btn" title="Plan and billing" aria-label="Plan and billing">
                         <CreditCard size={16} />
                     </NavLink>
-                    <button className="sidebar__icon-btn" onClick={logout} title="Log out">
+                    <button type="button" className="sidebar__icon-btn" onClick={logout} title="Log out" aria-label="Log out">
                         <LogOut size={16} />
                     </button>
-                    <button className="sidebar__icon-btn" onClick={() => setCollapsed(!collapsed)} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+                    <button
+                        type="button"
+                        className="sidebar__icon-btn"
+                        onClick={() => setCollapsed(!collapsed)}
+                        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                        aria-expanded={!collapsed}
+                    >
                         {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
                     </button>
                 </div>

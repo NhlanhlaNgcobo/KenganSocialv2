@@ -2,6 +2,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import { GEMINI_MODEL } from '../config/ai-models.js';
 import { requestOpenRouterText } from './openrouter.js';
+import { generateImage, imageGenerationAvailable } from './marketing/image-gen.js';
+import { uploadFile } from './storage.service.js';
+
+export const IMAGE_GENERATION_UNAVAILABLE = "Image generation isn't set up yet (add POLLINATIONS_API_KEY, free, or OPENROUTER_API_KEY).";
 
 const OPENROUTER_TEXT_MODEL = process.env.AI_TEXT_MODEL || process.env.AI_JSON_MODEL || 'anthropic/claude-haiku-4.5';
 
@@ -160,38 +164,33 @@ function buildPrompt(systemPrompt, userPrompt, options) {
 // Media Generation (DALL-E 3 Storyboard)
 // -------------------------------------------------------
 
+/** True when an image provider (Pollinations or OpenRouter) is configured. */
+export function mediaGenerationAvailable() {
+    return imageGenerationAvailable();
+}
+
 /**
- * Generate a media image based on a prompt.
- * @param {string} prompt - The user's input / topic
- * @param {string} type - Tool type
- * @returns {{ url: string, type: string }}
+ * Generate a real image for a piece of AI-written copy and store it in our own storage.
+ * Throws an error with `status` 503 when no image provider is configured.
+ * @param {string} prompt - The copy the image should illustrate
+ * @param {string} type - Tool type (caption, script, hook, ...)
+ * @param {{ workspaceId: string }} options
+ * @returns {Promise<{ url: string, type: 'image', provider: string, model: string }>}
  */
-export async function generateMedia(prompt, type) {
-    try {
-        // Fallback to placeholders since OpenAI image generation is currently unavailable.
-        // Let's use Gemini to extract a single keyword for the placeholder!
-        let keyword = 'marketing';
-        const gemini = getGemini();
-
-        if (gemini) {
-            try {
-                const keywordPrompt = `Extract a single, safe, URL-friendly image search keyword (one word only) from this text:\n\n${prompt.substring(0, 300)}`;
-                const result = await gemini.generateContent(keywordPrompt);
-                const extracted = result.response.text().trim().replace(/[^a-zA-Z0-9]/g, '');
-                if (extracted && extracted.length > 0) {
-                    keyword = extracted.toLowerCase();
-                }
-            } catch (err) {
-                console.warn('[AI Service] Gemini keyword extraction failed, using default keyword:', err.message);
-            }
-        }
-
-        // Generate a random but deterministic placeholder based on the keyword string
-        const imageUrl = `https://picsum.photos/seed/${keyword}/1024/1024`;
-
-        return { url: imageUrl, type: 'image' };
-    } catch (error) {
-        console.error('[AI Service] Media generation failed:', error.message);
-        throw error;
+export async function generateMedia(prompt, type, { workspaceId } = {}) {
+    if (!imageGenerationAvailable()) {
+        throw Object.assign(new Error(IMAGE_GENERATION_UNAVAILABLE), { status: 503 });
     }
+    if (!workspaceId) throw new Error('A workspace is required to store the image.');
+
+    const copy = String(prompt || '').replace(/\s+/g, ' ').trim().slice(0, 900);
+    const imagePrompt =
+        `A striking, scroll-stopping social media image (${type || 'post'}) that illustrates this post. ` +
+        `Photographic or clean illustrated style, strong single subject, no words, letters or logos in the image.
+
+Post: ${copy}`;
+
+    const image = await generateImage({ prompt: imagePrompt, tier: 'fast', aspect: '1:1' });
+    const url = await uploadFile(image.buffer, `workspaces/${workspaceId}/ai-images`, image.mime || 'image/png');
+    return { url, type: 'image', provider: image.provider, model: image.model };
 }

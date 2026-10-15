@@ -461,14 +461,14 @@
 }
 
 /* ── Plan Cards ──────────────────────────────── */
-.plans-grid {
+.onboarding-page .plans-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 14px;
     margin-bottom: 8px;
 }
 
-.plan-card {
+.onboarding-page .plan-card {
     position: relative;
     padding: 24px 20px;
     border-radius: var(--radius-lg);
@@ -481,19 +481,19 @@
     gap: 4px;
 }
 
-.plan-card:hover {
+.onboarding-page .plan-card:hover {
     border-color: var(--border-accent);
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
 }
 
-.plan-card.popular {
+.onboarding-page .plan-card.popular {
     border-color: var(--accent-primary);
     background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary) 20%, transparent), var(--shadow-md);
 }
 
-.plan-card__popular-badge {
+.onboarding-page .plan-card__popular-badge {
     position: absolute;
     top: -12px;
     left: 50%;
@@ -508,7 +508,7 @@
     letter-spacing: 0.05em;
 }
 
-.plan-card__name {
+.onboarding-page .plan-card__name {
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--text-secondary);
@@ -516,7 +516,7 @@
     letter-spacing: 0.06em;
 }
 
-.plan-card__price {
+.onboarding-page .plan-card__price {
     font-size: 1.8rem;
     font-weight: 800;
     color: var(--text-primary);
@@ -524,20 +524,20 @@
     margin: 4px 0 2px;
 }
 
-.plan-card__price span {
+.onboarding-page .plan-card__price span {
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--text-muted);
 }
 
-.plan-card__desc {
+.onboarding-page .plan-card__desc {
     font-size: 0.78rem;
     color: var(--text-muted);
     margin-bottom: 16px;
     line-height: 1.4;
 }
 
-.plan-card__features {
+.onboarding-page .plan-card__features {
     list-style: none;
     display: flex;
     flex-direction: column;
@@ -546,7 +546,7 @@
     flex: 1;
 }
 
-.plan-card__features li {
+.onboarding-page .plan-card__features li {
     font-size: 0.8rem;
     color: var(--text-secondary);
     display: flex;
@@ -554,7 +554,7 @@
     gap: 7px;
 }
 
-.plan-card__features li::before {
+.onboarding-page .plan-card__features li::before {
     content: '✓';
     color: var(--success);
     font-weight: 700;
@@ -562,7 +562,7 @@
     flex-shrink: 0;
 }
 
-.plan-card__btn {
+.onboarding-page .plan-card__btn {
     width: 100%;
     padding: 10px;
     font-size: 0.85rem;
@@ -572,29 +572,63 @@
     text-align: center;
 }
 
-.plan-card__btn--free {
+.onboarding-page .plan-card__btn--free {
     background: var(--bg-tertiary);
     color: var(--text-primary);
     border: 1px solid var(--border-primary);
 }
 
-.plan-card__btn--free:hover {
+.onboarding-page .plan-card__btn--free:hover {
     border-color: var(--border-accent);
     background: var(--bg-hover);
 }
 
-.plan-card__btn--paid {
+.onboarding-page .plan-card__btn--paid {
     background: var(--gradient-brand);
     color: var(--accent-contrast);
 }
 
-.plan-card__btn--paid:hover {
+.onboarding-page .plan-card__btn--paid:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 16px var(--accent-glow);
 }
 
-.plan-card.popular .plan-card__btn--paid {
+.onboarding-page .plan-card.popular .plan-card__btn--paid {
     box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.onboarding-page .plan-card__btn:disabled,
+.platform-card__btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.onboarding-page .plan-card {
+    cursor: default;
+}
+
+.onboarding-note {
+    margin: 12px 0 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.onboarding-note a {
+    color: var(--accent-text);
+    text-decoration: underline;
+}
+
+.onboarding-plans-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 32px 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
 }
 
 /* ── Welcome Modal ───────────────────────────── */
@@ -675,7 +709,7 @@
     }
 
     .platforms-grid,
-    .plans-grid {
+    .onboarding-page .plans-grid {
         grid-template-columns: 1fr;
     }
 

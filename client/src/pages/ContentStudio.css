@@ -276,7 +276,7 @@
 .platform-btn.active {
     border-color: var(--p-color);
     color: var(--p-color);
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--bg-hover);
 }
 
 .platform-btn.disabled {
@@ -432,6 +432,7 @@
     align-items: center;
     justify-content: center;
     border-radius: 6px;
+    /* Stays dark on purpose: previews white-on-video caption styles. */
     background: #111;
 }
 
@@ -550,6 +551,7 @@
     justify-content: center;
 }
 
+/* Phone mockup and media overlays depict a video player, so they stay dark in both themes. */
 .phone-frame {
     width: 280px;
     height: 560px;
@@ -727,10 +729,10 @@
     align-items: center;
     gap: 10px;
     padding: 12px 20px;
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: var(--success-bg);
+    border: 1px solid rgba(34, 197, 94, 0.3);
     border-radius: var(--radius-md);
-    color: #10b981;
+    color: var(--success);
     font-size: 0.85rem;
 }
 
@@ -871,9 +873,9 @@
 }
 
 .pipeline-step.done {
-    color: #10b981;
-    border-color: #10b981;
-    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+    border-color: var(--success);
+    background: var(--success-bg);
 }
 
 .pipeline-arrow {
@@ -913,7 +915,7 @@
 
 .render-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent-primary), #10b981);
+    background: linear-gradient(90deg, var(--accent-primary), var(--success));
     border-radius: 999px;
     transition: width 0.5s ease;
 }
@@ -1062,8 +1064,8 @@
     align-items: center;
     gap: 12px;
     padding: 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--bg-inset);
+    border: 1px solid var(--border-secondary);
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -1072,8 +1074,8 @@
 }
 
 .music-track-card:hover {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--bg-hover);
+    border-color: var(--border-primary);
 }
 
 .music-track-card.active {

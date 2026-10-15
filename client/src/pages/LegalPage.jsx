@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import './Legal.css';
 
 // ─── FULL DOCUMENT CONTENT ────────────────────────────────────────────────────
@@ -7,6 +7,7 @@ import './Legal.css';
 const TERMS_CONTENT = {
     title: 'Terms & Conditions',
     effectiveDate: 'March 2026',
+    lastUpdated: '15 October 2026',
     company: 'KenganSocial (Pty) Ltd',
     sections: [
         {
@@ -62,15 +63,15 @@ Multiple Accounts: Creating multiple accounts to circumvent plan limits is prohi
         {
             id: 'billing',
             heading: '4. Subscription & Payment Terms',
-            content: `Subscription Plans: KenganSocial offers four tiers — Starter (Free), Nano Creator (R149/mo), Creator Pro (R349/mo), and Agency (R2,499/mo). The Agency plan includes fair-use caps on compute-heavy resources; overages are billed at published rates.
+            content: `Subscription Plans: KenganSocial offers a free plan and paid plans (Creator Starter, Creator Pro and Agency, with Enterprise by arrangement). Current prices and the limits each plan includes are published on the Pricing page at www.kengansocial.com/pricing. The Agency plan includes fair-use caps on compute-heavy resources; overages are billed at published rates.
 
-Payment Terms: All payments are processed in South African Rand (ZAR). Subscription fees are charged monthly in advance. South African VAT at 15% applies where applicable.
+Payment Terms: All payments are processed in South African Rand (ZAR). Plan fees are paid in advance for the period you choose (monthly or annually). South African VAT at 15% applies where applicable.
 
-AI Credit System: AI Credits are consumed when using AI-powered features. Credits reset monthly on all paid plans. Unused credits do not roll over.
+AI Usage: AI-powered features count against your plan's monthly AI allowance. Allowances reset monthly and unused allowance does not roll over.
 
-Cancellation and Refunds: You may cancel your subscription at any time through account settings. Cancellation takes effect at the end of the current billing period. A 7-day cooling-off period applies to first-time paid subscriptions only. No partial refunds for unused time.
+Cancellation and Refunds: You may cancel your subscription at any time by emailing billing@kengansocial.com. Cancellation takes effect at the end of the current billing period. A 7-day cooling-off period applies to first-time paid subscriptions only. No partial refunds for unused time.
 
-Consumer Protection Act Compliance: In accordance with Section 14 of the CPA 68 of 2008, you have the right to cancel any fixed-term agreement by giving 20 business days' written notice to info@kengansocial.com.`,
+Consumer Protection Act Compliance: In accordance with Section 14 of the CPA 68 of 2008, you have the right to cancel any fixed-term agreement by giving 20 business days' written notice to billing@kengansocial.com.`,
         },
         {
             id: 'acceptable-use',
@@ -122,7 +123,7 @@ CPA Notice: Nothing in these Terms excludes or limits liability for gross neglig
         {
             id: 'termination',
             heading: '9. Termination',
-            content: `Termination by User: You may terminate your account at any time by following the cancellation process in account settings or by contacting us at info@kengansocial.com. Access will cease at the end of the current billing period.
+            content: `Termination by User: You may terminate your account at any time by emailing billing@kengansocial.com (to cancel a paid plan) or privacy@kengansocial.com (to delete your account and data). Access will cease at the end of the current billing period.
 
 Termination by KenganSocial: We may suspend or terminate your account immediately, without prior notice, if you breach any provision of these Terms, we are required to do so by law, your use poses a security risk, you fail to pay any due amounts, or we discontinue the Platform.
 
@@ -327,10 +328,10 @@ export default function LegalPage() {
         <div className="legal-root">
             {/* Sticky nav */}
             <nav className="legal-nav">
-                <a href="/" className="legal-nav-logo">
+                <Link to="/" className="legal-nav-logo">
                     <span className="legal-logo-k">Kengan</span>
                     <span className="legal-logo-s">Social</span>
-                </a>
+                </Link>
                 <div className="legal-nav-tabs">
                     <button
                         className={`legal-nav-tab ${activeDoc === 'terms' ? 'active' : ''}`}
@@ -345,7 +346,7 @@ export default function LegalPage() {
                         Privacy Policy
                     </button>
                 </div>
-                <button className="legal-nav-back" onClick={() => navigate(-1)}>
+                <button className="legal-nav-back" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}>
                     ← Back
                 </button>
             </nav>

@@ -79,6 +79,85 @@
     justify-content: flex-end;
 }
 
+.form-grid .section-footer {
+    margin-top: 0;
+}
+
+.settings-hint {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.settings-muted {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+/* Workspace details (read-only) */
+.workspace-details {
+    display: grid;
+    gap: 16px;
+    margin: 28px 0 0;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-primary);
+}
+
+.workspace-details > div {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    align-items: center;
+    gap: 12px;
+}
+
+.workspace-details dt {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.workspace-details dd {
+    margin: 0;
+    min-width: 0;
+}
+
+.workspace-details__plan {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-transform: capitalize;
+    font-weight: 500;
+}
+
+.workspace-details__plan a {
+    text-transform: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--accent-secondary);
+}
+
+.workspace-details__plan a:hover {
+    color: var(--accent-primary);
+}
+
+.workspace-details__id {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.workspace-details__id code {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm, 6px);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    user-select: all;
+    overflow-wrap: anywhere;
+}
+
 .team-list {
     display: flex;
     flex-direction: column;
@@ -107,7 +186,116 @@
     color: var(--text-muted);
 }
 
+/* Appearance */
+.appearance-intro {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: -12px 0 24px;
+}
+
+.theme-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.theme-option {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    text-align: left;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.theme-option:hover {
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
+}
+
+.theme-option:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+.theme-option.active {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+/* Previews always show the theme they represent, so their colours are fixed on purpose. */
+.theme-option__preview {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    height: 72px;
+    padding: 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-primary);
+    --preview-bg: #f7f7f5;
+    --preview-fg: #d4d4d8;
+    --preview-bar: #18181b;
+    background: var(--preview-bg);
+}
+
+.theme-option__preview--dark {
+    --preview-bg: #0a0a0b;
+    --preview-fg: #2a2a30;
+    --preview-bar: #d4d4d8;
+}
+
+.theme-option__preview--system {
+    background: linear-gradient(135deg, #f7f7f5 0 50%, #0a0a0b 50% 100%);
+    --preview-fg: #8a8a93;
+    --preview-bar: #8a8a93;
+}
+
+.theme-option__preview-bar {
+    width: 40%;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--preview-bar);
+}
+
+.theme-option__preview-line {
+    width: 85%;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--preview-fg);
+}
+
+.theme-option__preview-line--short {
+    width: 60%;
+}
+
+.theme-option__label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.theme-option__check {
+    margin-left: auto;
+    color: var(--accent-primary);
+}
+
+.theme-option__desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
 @media (max-width: 850px) {
+    .theme-options {
+        grid-template-columns: 1fr;
+    }
+
     .settings-layout {
         grid-template-columns: 1fr;
     }
@@ -120,5 +308,10 @@
 
     .form-grid {
         grid-template-columns: 1fr;
+    }
+
+    .workspace-details > div {
+        grid-template-columns: 1fr;
+        gap: 4px;
     }
 }

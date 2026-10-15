@@ -68,7 +68,7 @@ export function parseHtml(html, baseUrl) {
     };
 }
 
-async function hostIsPublic(host, cache) {
+export async function hostIsPublic(host, cache) {
     if (cache.has(host)) return cache.get(host);
     let ok = false;
     if (host === 'localhost') ok = false;

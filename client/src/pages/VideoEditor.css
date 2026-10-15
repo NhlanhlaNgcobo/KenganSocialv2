@@ -28,6 +28,7 @@
     height: 100vh;
     background: var(--cc-bg);
     color: var(--cc-text);
+    color-scheme: dark;
     font-family: 'Inter', -apple-system, sans-serif;
     font-size: 13px;
     overflow: hidden;

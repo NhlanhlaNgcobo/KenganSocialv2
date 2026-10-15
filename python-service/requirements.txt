@@ -8,10 +8,14 @@ google-cloud-videointelligence
 faster-whisper
 # faster-whisper passes av.open(metadata_errors=...), which PyAV 19 removed.
 av<19
-scenedetect[opencv]
+# scenedetect without its [opencv] extra: that pulls in opencv-python, which conflicts with
+# opencv-python-headless below and breaks cv2 (e.g. no CascadeClassifier).
+scenedetect
 opencv-python-headless
 numpy
 # HiGHS linear-programming solver for L1 camera-path stabilization
 scipy
 pydantic
 python-dotenv==1.0.1
+# YouTube link import for Clips; keep current (YouTube changes often): pip install -U yt-dlp
+yt-dlp

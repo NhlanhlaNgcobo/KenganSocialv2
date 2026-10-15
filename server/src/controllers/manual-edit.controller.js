@@ -184,6 +184,18 @@ export async function getManualEditStatus(req, res) {
     }
 }
 
+/** True if `uid` ran the job or belongs to (owns or is a member of) the job's workspace. */
+async function canAccessJob(db, job, uid) {
+    if (!job || !uid) return false;
+    if (job.userId === uid) return true;
+    if (!job.workspaceId) return false;
+    const workspaceRef = db.collection('workspaces').doc(String(job.workspaceId));
+    const member = await workspaceRef.collection('members').doc(uid).get();
+    if (member.exists) return true;
+    const workspace = await workspaceRef.get();
+    return workspace.exists && workspace.data().ownerId === uid;
+}
+
 // -------------------------------------------------------
 // GET /api/video/manual-edit/download/:filename
 // Serve the processed video file
@@ -194,16 +206,30 @@ export async function serveManualEditFile(req, res) {
         const filename = path.basename(req.params.filename || '');
         const filePath = path.join(RENDER_DIR, filename);
 
-        // Only the user who ran the job may download its output.
+        // The user who ran the job, or any member of the job's workspace, may download its output
+        // (clips are shared with the whole workspace).
         const db = getFirestore();
-        const owned = await db.collection('manual_edit_jobs')
-            .where('userId', '==', req.user.uid)
+        const jobs = await db.collection('manual_edit_jobs')
             .where('outputFilename', '==', filename)
-            .limit(1)
+            .limit(5)
             .get();
 
-        if (owned.empty || !fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'File not found or expired' });
+        if (jobs.empty) {
+            return res.status(404).json({ error: 'FILE_NOT_FOUND', message: 'This file no longer exists. Generate it again.' });
+        }
+
+        let allowed = false;
+        for (const doc of jobs.docs) {
+            if (await canAccessJob(db, doc.data(), req.user.uid)) {
+                allowed = true;
+                break;
+            }
+        }
+        if (!allowed) {
+            return res.status(403).json({ error: 'FORBIDDEN', message: "You don't have access to this file." });
+        }
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'FILE_EXPIRED', message: 'This file has expired. Generate it again.' });
         }
 
         res.setHeader('Content-Type', 'video/mp4');

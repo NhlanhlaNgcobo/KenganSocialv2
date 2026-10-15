@@ -20,6 +20,20 @@ async function safeRemoveQueuedJob(postId: string) {
     }
 }
 
+function toIso(value: any): string | null {
+    if (!value) return null;
+    if (typeof value.toDate === 'function') return value.toDate().toISOString();
+    if (typeof value._seconds === 'number') return new Date(value._seconds * 1000).toISOString();
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function parseDate(value: unknown): Date | null {
+    if (typeof value !== 'string' && typeof value !== 'number') return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
 async function safeSchedulePost(data: any, delay: number) {
     try {
         await schedulePostJob(data, delay);
@@ -38,30 +52,39 @@ router.post('/create', withWorkspace, planRateLimit(), checkLimit('posts'), asyn
     try {
         const workspaceId = (req as any).workspaceId;
         const { platforms, mediaUrl, caption, scheduledAt, platformOptions } = req.body;
+        // Drafts are saved on the calendar but never queued for publishing.
+        const isDraft = req.body.status === 'draft';
+
+        const when = parseDate(scheduledAt);
+        if (!when) {
+            return res.status(400).json({ error: 'INVALID_SCHEDULED_AT', message: 'Pick a valid publish date and time.' });
+        }
+        if (!Array.isArray(platforms) || platforms.length === 0 || !platforms.every((p) => typeof p === 'string')) {
+            return res.status(400).json({ error: 'PLATFORMS_REQUIRED', message: 'Pick at least one platform.' });
+        }
 
         const postId = `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-        const scheduleTime = new Date(scheduledAt).getTime();
-        const delay = Math.max(0, scheduleTime - Date.now());
+        const delay = Math.max(0, when.getTime() - Date.now());
 
         const data = {
             postId,
             workspaceId,
-            status: 'pending',
+            status: isDraft ? 'draft' : 'pending',
             platforms,
-            mediaUrl,
-            caption,
+            mediaUrl: typeof mediaUrl === 'string' ? mediaUrl : '',
+            caption: typeof caption === 'string' ? caption : '',
             platformOptions: platformOptions || {},
-            scheduledAt: new Date(scheduledAt),
+            scheduledAt: when,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
         await db.collection('scheduled_posts').doc(postId).set(data);
-        const queueResult = await safeSchedulePost(data, delay);
+        const queueResult = isDraft ? { queued: false } : await safeSchedulePost(data, delay);
 
         res.json({
             success: true,
             postId,
-            message: 'Post successfully scheduled',
+            message: isDraft ? 'Draft saved' : 'Post successfully scheduled',
             ...queueResult,
         });
     } catch (error: any) {
@@ -75,7 +98,7 @@ router.patch('/:id', withWorkspace, async (req: Request, res: Response) => {
     try {
         const workspaceId = (req as any).workspaceId;
         const id = req.params.id as string;
-        const { scheduledAt, caption, platforms, platformOptions, mediaUrl } = req.body;
+        const { scheduledAt, caption, platforms, platformOptions, mediaUrl, status } = req.body;
 
         const docRef = db.collection('scheduled_posts').doc(id);
         const postSnap = await docRef.get();
@@ -84,27 +107,38 @@ router.patch('/:id', withWorkspace, async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Post not found' });
         }
 
+        const existing = postSnap.data() || {};
         const updates: any = {};
-        if (caption) updates.caption = caption;
-        if (platforms) updates.platforms = platforms;
+        if (typeof caption === 'string') updates.caption = caption;
+        if (Array.isArray(platforms) && platforms.length > 0) updates.platforms = platforms;
         if (platformOptions) updates.platformOptions = platformOptions;
-        if (mediaUrl) updates.mediaUrl = mediaUrl;
+        if (typeof mediaUrl === 'string' && mediaUrl) updates.mediaUrl = mediaUrl;
+        // Only draft <-> scheduled transitions are allowed from the client.
+        if (status === 'draft' || status === 'pending') updates.status = status;
 
-        let delay = null;
-        if (scheduledAt) {
-            const scheduleTime = new Date(scheduledAt).getTime();
-            delay = Math.max(0, scheduleTime - Date.now());
-            updates.scheduledAt = new Date(scheduledAt);
+        if (scheduledAt !== undefined) {
+            const when = parseDate(scheduledAt);
+            if (!when) {
+                return res.status(400).json({ error: 'INVALID_SCHEDULED_AT', message: 'Pick a valid publish date and time.' });
+            }
+            updates.scheduledAt = when;
         }
 
         await docRef.update(updates);
 
-        if (delay !== null) {
+        const next: any = { ...existing, ...updates };
+        let queueResult: Record<string, unknown> = {};
+        if (next.status === 'draft') {
+            // Drafts never sit in the publish queue.
             await safeRemoveQueuedJob(id);
-            await safeSchedulePost({ ...postSnap.data(), ...updates, postId: id as string } as any, delay);
+        } else if (next.status === 'pending' && Object.keys(updates).length > 0) {
+            // The queued job carries a snapshot of the post, so re-queue on any change.
+            const when = parseDate(toIso(next.scheduledAt) || '') || new Date();
+            await safeRemoveQueuedJob(id);
+            queueResult = await safeSchedulePost({ ...next, postId: id as string }, Math.max(0, when.getTime() - Date.now()));
         }
 
-        res.json({ success: true, postId: id, message: 'Post updated' });
+        res.json({ success: true, postId: id, message: 'Post updated', ...queueResult });
     } catch (error: any) {
         console.error('[Schedule] Update failed:', error);
         res.status(500).json({ error: 'SCHEDULE_UPDATE_FAILED', message: error.message });
@@ -154,8 +188,12 @@ router.get('/calendar', withWorkspace, async (req: Request, res: Response) => {
             .get();
 
         const posts = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter((post: any) => post.workspaceId === workspaceId);
+            .map(doc => {
+                const data = doc.data();
+                // Firestore Timestamps serialise as {_seconds,...}; send ISO strings the client can parse.
+                return { id: doc.id, ...data, scheduledAt: toIso(data.scheduledAt), createdAt: toIso(data.createdAt) };
+            })
+            .filter((post: any) => post.workspaceId === workspaceId && post.status !== 'cancelled');
         res.json({ success: true, posts });
     } catch (error: any) {
         console.error('[Schedule] Calendar failed:', error);
@@ -176,10 +214,11 @@ router.post('/publish-now/:id', withWorkspace, async (req: Request, res: Respons
             return res.status(404).json({ error: 'Post not found' });
         }
 
-        await docRef.update({ scheduledAt: new Date(), status: 'pending' });
+        const now = new Date();
+        await docRef.update({ scheduledAt: now, status: 'pending' });
 
         await safeRemoveQueuedJob(id as string);
-        const queueResult = await safeSchedulePost({ ...postSnap.data(), postId: id } as any, 0);
+        const queueResult = await safeSchedulePost({ ...postSnap.data(), scheduledAt: now, status: 'pending', postId: id } as any, 0);
 
         res.json({
             success: true,

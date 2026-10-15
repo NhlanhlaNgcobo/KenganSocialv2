@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CalendarPlus, Check, Copy, Download, Film, Loader2, Play, Scissors, Trash2, Upload, Wand2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, CalendarPlus, Check, Copy, Download, Film, Loader2, Lock, Play, RotateCcw, Scissors, Trash2, Upload, Wand2 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import ShortsSettings from '../../components/clips/ShortsSettings';
+import { DEFAULT_SHORTS_OPTIONS, LAYOUTS, SHORT_PLATFORMS, shortsRequest } from '../../components/clips/shorts-options';
 import { clipsApi, formatTime, uploadVideo } from '../../lib/clips-api';
 import { useEditorStore } from '../../stores/editorStore';
+import { PLAN_DISPLAY_NAMES, PLAN_LIMITS } from '../../utils/planLimits';
 import './Clips.css';
 
 /**
@@ -10,22 +14,10 @@ import './Clips.css';
  * each with a score, title, hook and post caption (in the spirit of OpusClip).
  */
 
-const COUNTS = [3, 5, 8, 10];
 const LENGTHS = [
     { id: 'short', label: '15–30s' },
     { id: 'medium', label: '30–60s' },
     { id: 'long', label: '60–90s' },
-];
-const RATIOS = [
-    { id: '9:16', hint: 'TikTok, Reels, Shorts' },
-    { id: '1:1', hint: 'Instagram and Facebook feed' },
-    { id: '16:9', hint: 'YouTube, LinkedIn, X' },
-];
-const CAPTIONS = [
-    { id: 'bold', label: 'Bold' },
-    { id: 'clean', label: 'Clean' },
-    { id: 'accent', label: 'Accent' },
-    { id: 'none', label: 'None' },
 ];
 const STEPS = ['Uploading', 'Transcribing', 'Finding the best moments', 'Rendering'];
 const SCORE_PARTS = [
@@ -68,13 +60,17 @@ export default function ClipsPage() {
 function NewProject({ onCreated, onOpen }) {
     const [file, setFile] = useState(null);
     const [fileInfo, setFileInfo] = useState(null);
-    const [options, setOptions] = useState({ count: 5, length: 'short', ratio: '9:16', captionStyle: 'bold', hookTitle: true, prompt: '' });
+    const [options, setOptions] = useState({ ...DEFAULT_SHORTS_OPTIONS, prompt: '' });
     const [upload, setUpload] = useState(null);
     const [error, setError] = useState('');
     const [recent, setRecent] = useState(null);
     const [dragging, setDragging] = useState(false);
     const inputRef = useRef(null);
     const set = (patch) => setOptions((o) => ({ ...o, ...patch }));
+    // Checked before uploading so nobody uploads a 2 GB video only to be told their plan has no clips.
+    // The server still enforces the limit.
+    const { plan } = useAuth();
+    const locked = (PLAN_LIMITS[plan] || PLAN_LIMITS.starter).clipAnalysis === 0;
 
     // A video dropped on the home page arrives in navigation state.
     const location = useLocation();
@@ -115,15 +111,15 @@ function NewProject({ onCreated, onOpen }) {
     };
 
     const start = async () => {
-        if (!file) return;
+        if (!file || locked) return;
         setError('');
         setUpload(0);
         try {
             const sourceUploadId = await uploadVideo(file, setUpload);
-            const { id } = await clipsApi.create({ ...options, sourceUploadId, sourceName: file.name });
+            const { id } = await clipsApi.create({ ...shortsRequest(options), prompt: options.prompt, sourceUploadId, sourceName: file.name });
             onCreated(id);
         } catch (err) {
-            setError(err.message);
+            setError(err.message || 'Could not start the clip project. Try again.');
             setUpload(null);
         }
     };
@@ -139,6 +135,19 @@ function NewProject({ onCreated, onOpen }) {
                     <p>Upload a long video (a podcast, interview, talk or vlog) and get short clips ranked by how likely they are to perform, reframed and captioned.</p>
                 </div>
             </header>
+
+            {locked ? (
+                <div className="clips-locked surface">
+                    <Lock size={16} />
+                    <div>
+                        <strong>Clips is part of the {PLAN_DISPLAY_NAMES.creator} plan and up.</strong>
+                        <p className="muted">Your current plan doesn't include AI clip finding. Upgrade to turn long videos into ranked, captioned clips.</p>
+                    </div>
+                    <Link to="/dashboard/billing" className="btn btn-primary btn-sm">
+                        See plans
+                    </Link>
+                </div>
+            ) : null}
 
             <div className="clips-layout">
                 <section className="surface clips-form">
@@ -178,51 +187,7 @@ function NewProject({ onCreated, onOpen }) {
                         )}
                     </div>
 
-                    <div className="field-row">
-                        <div className="field">
-                            <span>Number of clips</span>
-                            <div className="segmented">
-                                {COUNTS.map((n) => (
-                                    <button key={n} className={options.count === n ? 'is-active' : ''} onClick={() => set({ count: n })} disabled={busy}>
-                                        {n}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="field">
-                            <span>Clip length</span>
-                            <div className="segmented">
-                                {LENGTHS.map((l) => (
-                                    <button key={l.id} className={options.length === l.id ? 'is-active' : ''} onClick={() => set({ length: l.id })} disabled={busy}>
-                                        {l.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="field-row">
-                        <div className="field">
-                            <span>Format</span>
-                            <div className="segmented">
-                                {RATIOS.map((r) => (
-                                    <button key={r.id} className={options.ratio === r.id ? 'is-active' : ''} onClick={() => set({ ratio: r.id })} title={r.hint} disabled={busy}>
-                                        {r.id}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="field">
-                            <span>Captions</span>
-                            <div className="segmented">
-                                {CAPTIONS.map((c) => (
-                                    <button key={c.id} className={options.captionStyle === c.id ? 'is-active' : ''} onClick={() => set({ captionStyle: c.id })} disabled={busy}>
-                                        {c.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
+                    <ShortsSettings value={options} onChange={set} disabled={busy} />
 
                     <label className="field">
                         <span>
@@ -240,11 +205,6 @@ function NewProject({ onCreated, onOpen }) {
                         <small>Leave empty to get the strongest clips overall.</small>
                     </label>
 
-                    <label className="check">
-                        <input type="checkbox" checked={options.hookTitle} onChange={(e) => set({ hookTitle: e.target.checked })} disabled={busy} />
-                        Show the hook as a title for the first 3 seconds
-                    </label>
-
                     {tooShort ? <div className="clips-warning">This video is under 20 seconds. Clips work best from videos a few minutes or longer.</div> : null}
                     {error ? <div className="error-banner">{error}</div> : null}
 
@@ -259,8 +219,13 @@ function NewProject({ onCreated, onOpen }) {
                             </div>
                         </div>
                     ) : (
-                        <button className="btn btn-primary btn-block" onClick={start} disabled={!file}>
-                            <Wand2 size={16} /> Find clips
+                        <button
+                            className="btn btn-primary btn-block"
+                            onClick={start}
+                            disabled={!file || locked || !options.platform}
+                            title={locked ? 'Upgrade your plan to use Clips' : !options.platform ? 'Choose where the shorts are going first' : undefined}
+                        >
+                            {locked ? <Lock size={16} /> : <Wand2 size={16} />} {file && !options.platform ? 'Choose a platform above' : 'Find clips'}
                         </button>
                     )}
                 </section>
@@ -296,22 +261,28 @@ function NewProject({ onCreated, onOpen }) {
 function ProjectView({ id, onBack }) {
     const [project, setProject] = useState(null);
     const [error, setError] = useState('');
-    const timer = useRef(null);
 
-    const load = useCallback(async () => {
-        try {
-            const { project: data } = await clipsApi.get(id);
-            setProject(data);
-            if (data.status === 'processing') timer.current = setTimeout(load, 2500);
-        } catch (err) {
-            setError(err.message);
-        }
-    }, [id]);
-
+    // Polls while the project is processing; stops once it is completed or failed
+    // (the server reports projects lost to a restart as failed).
     useEffect(() => {
+        let timer = null;
+        let cancelled = false;
+        const load = async () => {
+            try {
+                const { project: data } = await clipsApi.get(id);
+                if (cancelled) return;
+                setProject(data);
+                if (data.status === 'processing') timer = setTimeout(load, 2500);
+            } catch (err) {
+                if (!cancelled) setError(err.message || 'Could not load this project.');
+            }
+        };
         load();
-        return () => clearTimeout(timer.current);
-    }, [load]);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [id]);
 
     const remove = async () => {
         if (!window.confirm('Delete this project and its clips?')) return;
@@ -337,7 +308,9 @@ function ProjectView({ id, onBack }) {
                     <h1>{project?.sourceName || 'Clip project'}</h1>
                     <p>
                         {project?.duration ? `${formatTime(project.duration)} source, ` : ''}
-                        {project?.request ? `${project.request.ratio} clips of ${LENGTHS.find((l) => l.id === project.request.length)?.label}` : ''}
+                        {project?.request
+                            ? `${SHORT_PLATFORMS.find((p) => p.id === project.request.platform)?.label || project.request.ratio} clips of ${LENGTHS.find((l) => l.id === project.request.length)?.label}${project.request.layout ? `, ${LAYOUTS.find((l) => l.id === project.request.layout)?.label.toLowerCase()} framing` : ''}`
+                            : ''}
                         {project?.request?.prompt ? `, matching “${project.request.prompt}”` : ''}
                     </p>
                 </div>
@@ -375,13 +348,28 @@ function ProjectView({ id, onBack }) {
                 </section>
             ) : null}
 
-            {project?.status === 'failed' ? <div className="error-banner">{project.error || 'This project failed.'}</div> : null}
+            {project?.status === 'failed' ? (
+                <div className="error-banner">
+                    {project.error || 'This project failed.'}
+                    <div className="clips-failed-actions">
+                        <button className="btn btn-primary btn-sm" onClick={onBack}>
+                            {project.errorCode === 'YOUTUBE_BLOCKED' ? (
+                                'Upload the video file instead'
+                            ) : (
+                                <>
+                                    <RotateCcw size={14} /> Try again
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            ) : null}
             {project?.note ? <p className="clips-note">{project.note}</p> : null}
 
             {clips.length ? (
                 <div className={`clips-grid is-${(project.request?.ratio || '9:16').replace(':', 'x')}`}>
                     {clips.map((clip) => (
-                        <ClipCard key={clip.id} clip={clip} ratio={project.request?.ratio || '9:16'} />
+                        <ClipCard key={clip.id} clip={clip} ratio={project.request?.ratio || '9:16'} platform={project.request?.platform} />
                     ))}
                 </div>
             ) : null}
@@ -389,12 +377,12 @@ function ProjectView({ id, onBack }) {
     );
 }
 
-function ClipCard({ clip, ratio }) {
+function ClipCard({ clip, ratio, platform }) {
     const navigate = useNavigate();
     const setEditorVideo = useEditorStore((s) => s.setVideo);
     const [videoUrl, setVideoUrl] = useState(null);
     const [busy, setBusy] = useState('');
-    const [copied, setCopied] = useState(false);
+    const [copied, setCopied] = useState('');
     const [error, setError] = useState('');
     const blobRef = useRef(null);
 
@@ -435,12 +423,22 @@ function ClipCard({ clip, ratio }) {
         });
     const schedule = () =>
         run('schedule', async () => {
-            navigate('/dashboard/scheduler', { state: { mediaFile: new File([await getBlob()], fileName, { type: 'video/mp4' }), caption: clip.caption || clip.title } });
+            const target = SHORT_PLATFORMS.find((p) => p.id === platform)?.calendar;
+            navigate('/dashboard/scheduler', {
+                state: { mediaFile: new File([await getBlob()], fileName, { type: 'video/mp4' }), caption: clip.caption || clip.title, platforms: target ? [target] : undefined },
+            });
         });
     const copyCaption = async () => {
-        await navigator.clipboard.writeText(clip.caption || clip.title);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        try {
+            await navigator.clipboard.writeText(clip.caption || clip.title);
+            setCopied('ok');
+            setError('');
+        } catch {
+            setCopied('');
+            setError("Couldn't copy to the clipboard. Select the caption text and copy it manually.");
+            return;
+        }
+        setTimeout(() => setCopied(''), 1500);
     };
 
     if (clip.error) {
@@ -499,7 +497,7 @@ function ClipCard({ clip, ratio }) {
                     <div className="clip-card__caption">
                         <p>{clip.caption}</p>
                         <button className="btn-icon btn-sm" onClick={copyCaption} title="Copy caption" aria-label="Copy caption">
-                            {copied ? <Check size={14} /> : <Copy size={14} />}
+                            {copied === 'ok' ? <Check size={14} /> : <Copy size={14} />}
                         </button>
                     </div>
                 ) : null}
