@@ -1,27 +1,18 @@
-# Python Automated Video Service Dockerfile
-FROM python:3.10-slim
+# KenganSocial video service (FastAPI: transcription, clip analysis, face framing, YouTube import)
+FROM python:3.11-slim-bookworm
 
-# Install system dependencies (FFmpeg, OpenCV libs)
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    libsm6 \
-    libxext6 \
-    libgl1-mesa-glx \
+# FFmpeg for decoding/encoding; libglib for OpenCV (headless build, no GUI libraries needed).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libglib2.0-0 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy requirements
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source
+# Includes models/face_detection_yunet_2023mar.onnx (face framing).
 COPY . .
-
-# Ensure /tmp exists (used for jobs)
-RUN mkdir -p /tmp && chmod 777 /tmp
 
 EXPOSE 8000
 

@@ -27,6 +27,12 @@ const Root = () => (
             host: 'example.com',
             iconData: null,
             music: null,
+            kind: 'launch',
+            beats: [],
+            sfx: {},
+            shotAspect: 16 / 9,
+            totalSteps: 0,
+            square: false,
             scenes: [{ type: 'hook', duration: 3, headline: 'Launch video', subline: '', screenshot: null }],
         }}
         calculateMetadata={({ props }) => ({

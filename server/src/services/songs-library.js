@@ -118,7 +118,8 @@ function normalizeCcmixter(upload) {
     if (!file) return null;
     const duration = parseLength(file.file_format_info?.ps);
     if (!duration) return null;
-    const vocals = tags.includes('female_vocals') ? 'female' : tags.includes('male_vocals') ? 'male' : null;
+    // Songs need tagged vocals; instrumentals (used for ad soundtracks) are labelled 'none'.
+    const vocals = tags.includes('female_vocals') ? 'female' : tags.includes('male_vocals') ? 'male' : tags.includes('instrumental') ? 'none' : null;
     if (!vocals) return null;
 
     const genre = SONG_GENRES.find((g) => tags.includes(g.id));
@@ -166,6 +167,21 @@ async function searchCcmixter({ genre, vocals, q, page }) {
     const merged = [];
     for (let i = 0; i < PER_QUERY; i++) for (const list of results) if (list[i]) merged.push(list[i]);
     return { tracks: merged.map(normalizeCcmixter).filter(Boolean), hasMore };
+}
+
+/**
+ * Instrumental tracks for ad soundtracks (ccMixter, CC BY only). Cached like song searches.
+ * @param {string[]} tags  extra ccMixter tags, e.g. ['electronic']
+ */
+export async function searchInstrumentals(tags = [], page = 1) {
+    const key = `inst:${tags.join(',')}:${page}`;
+    const uploads = await cached(key, () =>
+        ccmixterQuery({ lic: 'by', tags: ['instrumental', ...tags].join(','), sort: 'rank', limit: 30, offset: (page - 1) * 30 })
+    );
+    return uploads
+        .map(normalizeCcmixter)
+        .filter((t) => t && t.vocals === 'none' && !t.explicit)
+        .map(remember);
 }
 
 // ---------------------

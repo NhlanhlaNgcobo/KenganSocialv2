@@ -1,0 +1,39 @@
+# Runs the API and the video service on one machine (for example a Google Compute Engine VM).
+# They must share a disk: the API hands the video service file paths in the temp folder,
+# so both containers point TMPDIR at the same volume.
+#
+#   docker compose up -d --build
+#
+# Secrets come from server/.env and python-service/.env on the VM (never commit them).
+# Put a reverse proxy with HTTPS (Caddy, nginx or a Google load balancer) in front of port 5000.
+services:
+  api:
+    build: ./server
+    restart: unless-stopped
+    env_file: ./server/.env
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      PYTHON_API_URL: http://video:8000
+      TMPDIR: /shared/tmp
+    ports:
+      - "5000:5000"
+    volumes:
+      - renders:/shared
+      - cache:/app/.cache
+    depends_on:
+      - video
+
+  video:
+    build: ./python-service
+    restart: unless-stopped
+    env_file: ./python-service/.env
+    environment:
+      TMPDIR: /shared/tmp
+      VIDEO_TMP_DIR: /shared/tmp
+    volumes:
+      - renders:/shared
+
+volumes:
+  renders:
+  cache:

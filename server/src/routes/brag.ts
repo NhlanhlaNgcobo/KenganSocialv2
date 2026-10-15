@@ -7,11 +7,13 @@ import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { checkLimit, planRateLimit } from '../middleware/planGate';
 import { storeUpload } from '../services/manual-edit.service.js';
-import { createLaunchVideo, normalizeLaunchRequest, TONE_MUSIC, TONES } from '../services/brag/index.js';
+import { createLaunchVideo, MOODS, normalizeLaunchRequest, TONE_MOOD, TONES } from '../services/brag/index.js';
 
 /**
- * Launch videos, after /brag (github.com/latent-spaces/brag, MIT).
- * POST /api/brag → job id; poll /api/video/manual-edit/status/:jobId; download from its downloadUrl.
+ * Launch and tutorial videos, after /brag (github.com/latent-spaces/brag, MIT).
+ *  GET  /api/brag/tones   tones with their default music mood, and the moods
+ *  POST /api/brag         { kind: launch|tutorial, url, name, description, focus, tone, format, duration, music, mood, musicTrackId }
+ * POST returns a job id; poll /api/video/manual-edit/status/:jobId; download from its downloadUrl.
  */
 const router = express.Router();
 
@@ -24,7 +26,10 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
 }
 
 router.get('/tones', withWorkspace, (_req: Request, res: Response) => {
-    res.json({ tones: Object.entries(TONES as Record<string, { feel: string; pacing: string }>).map(([id, t]) => ({ id, feel: t.feel, pacing: t.pacing, music: (TONE_MUSIC as any)[id] || null })) });
+    res.json({
+        tones: Object.entries(TONES as Record<string, { feel: string; pacing: string }>).map(([id, t]) => ({ id, feel: t.feel, pacing: t.pacing, mood: (TONE_MOOD as any)[id] || 'upbeat' })),
+        moods: Object.entries(MOODS as Record<string, { label: string; description: string }>).map(([id, m]) => ({ id, label: m.label, description: m.description })),
+    });
 });
 
 router.post('/', withWorkspace, planRateLimit(), checkLimit('renders'), async (req: Request, res: Response) => {
@@ -42,11 +47,11 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('renders'), async (r
         id: jobId,
         userId: uid,
         workspaceId: (req as any).workspaceId,
-        type: 'launch',
+        type: request.kind === 'tutorial' ? 'tutorial' : 'launch',
         status: 'processing',
         stage: 'Queued',
         progress: 0,
-        request: { url: request.url, name: request.name, tone: request.tone, format: request.format, duration: request.duration },
+        request: { kind: request.kind, url: request.url, name: request.name, tone: request.tone, format: request.format, duration: request.duration, mood: request.mood },
         createdAt: new Date().toISOString(),
     });
     res.status(202).json({ jobId, status: 'processing' });
@@ -84,6 +89,8 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('renders'), async (r
             shareCopy: result.shareCopy,
             musicCredit: result.musicCredit,
             musicTrackId: result.musicTrackId,
+            musicMood: result.musicMood,
+            musicBpm: result.musicBpm,
             summary: { width: result.width, height: result.height, seconds: Math.round((result.durationInFrames / result.fps) * 10) / 10 },
             updatedAt: new Date().toISOString(),
         });

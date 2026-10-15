@@ -1,27 +1,26 @@
-# Node.js Express Server Dockerfile
-FROM node:20-slim
+# KenganSocial API (Express + TypeScript via tsx)
+# Runs FFmpeg jobs, and headless Chrome for Remotion launch videos and website capture.
+FROM node:20-bookworm-slim
 
-# Install FFmpeg (requested for some background jobs)
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+# FFmpeg (with libass for burned-in captions) and the libraries Chrome Headless Shell needs.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg ca-certificates fonts-dejavu-core \
+    libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libgbm1 libasound2 libxrandr2 \
+    libxkbcommon0 libxfixes3 libxcomposite1 libxdamage1 libpango-1.0-0 libcairo2 libcups2 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
+# tsx runs the TypeScript routes in production, so dev dependencies are installed too.
+RUN npm ci
 
-# Install dependencies (production only)
-RUN npm install --production
-
-# Copy source code
 COPY . .
 
-# Build step if using TypeScript (since we use tsx in dev, we might need to pre-build for prod)
-# Actually, we can use tsx in prod or build with tsc.
-# For simplicity and speed in this specific project context, we'll use tsx for now 
-# but pre-installing glob and other deps.
-
-EXPOSE 5000
+# Download Chrome Headless Shell for Remotion at build time instead of on the first render.
+RUN node -e "require('@remotion/renderer').ensureBrowser().then(() => console.log('Chrome ready'))"
 
 ENV NODE_ENV=production
+EXPOSE 5000
 
 CMD ["npx", "tsx", "server.js"]

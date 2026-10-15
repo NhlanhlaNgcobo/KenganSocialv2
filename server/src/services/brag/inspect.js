@@ -78,31 +78,25 @@ export async function hostIsPublic(host, cache) {
     return ok;
 }
 
-/** Renders the page in headless Chrome: rendered copy, computed colours/fonts, screenshots. */
-async function capture(url, format) {
-    const { path: executablePath } = await ensureBrowser();
-    const browser = await puppeteer.launch({ executablePath, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
-    const hostCache = new Map();
-    try {
-        const page = await browser.newPage();
-        const size = FORMATS[format];
-        // A browser-sized viewport with the video's aspect ratio.
-        const scale = format === 'landscape' ? 0.75 : 0.45;
-        await page.setViewport({ width: Math.round(size.width * scale), height: Math.round(size.height * scale), deviceScaleFactor: 2 });
-        await page.setRequestInterception(true);
-        page.on('request', async (req) => {
-            try {
-                const u = new URL(req.url());
-                if (u.protocol === 'data:' || u.protocol === 'blob:') return req.continue();
-                if (!['http:', 'https:'].includes(u.protocol) || !(await hostIsPublic(u.hostname, hostCache))) return req.abort();
-                return req.continue();
-            } catch {
-                return req.abort();
-            }
-        });
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-        // Dismiss common cookie banners so they don't sit on every screenshot.
-        await page.evaluate(() => {
+/** Lets the page load only public http(s) hosts (blocks requests into private networks). */
+export async function guardPage(page, hostCache = new Map()) {
+    await page.setRequestInterception(true);
+    page.on('request', async (req) => {
+        try {
+            const u = new URL(req.url());
+            if (u.protocol === 'data:' || u.protocol === 'blob:') return req.continue();
+            if (!['http:', 'https:'].includes(u.protocol) || !(await hostIsPublic(u.hostname, hostCache))) return req.abort();
+            return req.continue();
+        } catch {
+            return req.abort();
+        }
+    });
+}
+
+/** Dismisses common cookie banners so they don't sit on every screenshot. */
+export async function dismissBanners(page) {
+    await page
+        .evaluate(() => {
             const words = /^(accept|accept all|agree|got it|ok|allow all|i agree)$/i;
             for (const b of document.querySelectorAll('button, a')) {
                 if (words.test((b.textContent || '').trim())) {
@@ -110,8 +104,25 @@ async function capture(url, format) {
                     break;
                 }
             }
-        }).catch(() => {});
-        await new Promise((r) => setTimeout(r, 800));
+        })
+        .catch(() => {});
+    await new Promise((r) => setTimeout(r, 800));
+}
+
+/** Renders the page in headless Chrome: rendered copy, computed colours/fonts, screenshots. */
+async function capture(url, format) {
+    const { path: executablePath } = await ensureBrowser();
+    const browser = await puppeteer.launch({ executablePath, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'], timeout: 90000, protocolTimeout: 180000 });
+    const hostCache = new Map();
+    try {
+        const page = await browser.newPage();
+        const size = FORMATS[format];
+        // A browser-sized viewport with the video's aspect ratio.
+        const scale = format === 'landscape' ? 0.75 : 0.45;
+        await page.setViewport({ width: Math.round(size.width * scale), height: Math.round(size.height * scale), deviceScaleFactor: 2 });
+        await guardPage(page, hostCache);
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+        await dismissBanners(page);
 
         const info = await page.evaluate(() => {
             const text = (sel, n) => [...document.querySelectorAll(sel)].map((e) => e.innerText.trim()).filter((t) => t && t.length < 160).slice(0, n);
@@ -133,6 +144,7 @@ async function capture(url, format) {
         });
 
         const screenshots = [];
+        const shotElements = [];
         const viewportH = page.viewport().height;
         const stops = [0, 1, 2].map((i) => Math.min(i * viewportH, Math.max(0, info.height - viewportH)));
         for (const y of [...new Set(stops)]) {
@@ -140,12 +152,54 @@ async function capture(url, format) {
             await new Promise((r) => setTimeout(r, 700)); // let scroll-in animations settle
             const png = await page.screenshot({ type: 'jpeg', quality: 82 });
             screenshots.push(`data:image/jpeg;base64,${Buffer.from(png).toString('base64')}`);
+            shotElements.push(await page.evaluate(VISIBLE_ELEMENTS).catch(() => []));
         }
-        return { ...info, screenshots };
+        return { ...info, screenshots, shotElements };
     } finally {
         await browser.close().catch(() => {});
     }
 }
+
+/**
+ * Runs in the page: buttons, links, fields and headings visible in the viewport, with boxes
+ * in percent of the viewport. The video uses them to aim the cursor, zoom and spotlight.
+ */
+export const VISIBLE_ELEMENTS = () => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const CTA = /get started|start|try|sign ?up|join|create|book|demo|download|install|buy|subscribe|free/i;
+    const out = [];
+    for (const el of document.querySelectorAll('a, button, [role="button"], input, textarea, select, h1, h2, h3')) {
+        const r = el.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8 || r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw) continue;
+        const style = getComputedStyle(el);
+        if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) continue;
+        const tag = el.tagName.toLowerCase();
+        const field = ['input', 'textarea', 'select'].includes(tag);
+        if (field && ['hidden', 'checkbox', 'radio', 'submit'].includes(el.type)) continue;
+        const text = (field ? el.placeholder || el.getAttribute('aria-label') || el.name || '' : el.innerText || el.getAttribute('aria-label') || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 80);
+        if (!text && !field) continue;
+        const buttonLike = tag === 'button' || el.getAttribute('role') === 'button' || /btn|button|cta/i.test(String(el.className || ''));
+        const kind = field ? 'field' : /^h[1-3]$/.test(tag) ? 'heading' : buttonLike ? 'button' : 'link';
+        const priority = (kind === 'button' && CTA.test(text) ? 5 : 0) + (kind === 'field' ? 4 : 0) + (tag === 'h1' ? 4 : 0) + (kind === 'button' ? 2 : 0) + (tag === 'h2' ? 1 : 0);
+        out.push({
+            kind,
+            tag,
+            text,
+            href: tag === 'a' ? el.href : null,
+            inputType: field ? el.type || tag : null,
+            x: (Math.max(0, r.left) / vw) * 100,
+            y: (Math.max(0, r.top) / vh) * 100,
+            w: (Math.min(r.right, vw) - Math.max(0, r.left)) / vw * 100,
+            h: (Math.min(r.bottom, vh) - Math.max(0, r.top)) / vh * 100,
+            priority,
+        });
+    }
+    return out.sort((a, b) => b.priority - a.priority).slice(0, 16);
+};
 
 async function fetchImage(url) {
     if (!url) return null;
@@ -186,6 +240,7 @@ export async function inspectWebsite(rawUrl, format, onStage = () => {}) {
         colors: rendered?.colors || { background: null, text: null, heading: null, accent: parsed.themeColor || null },
         fonts: rendered?.fonts || null,
         screenshots: rendered?.screenshots || [],
+        shotElements: rendered?.shotElements || [],
         ogImageData: ogImage,
         iconData: icon,
     };

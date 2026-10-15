@@ -220,3 +220,56 @@ textarea.input {
     color: var(--text-secondary);
     overflow-wrap: anywhere;
 }
+
+/* Launch video / Tutorial switch */
+.launch-kinds {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.launch-kind {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 12px 14px;
+    text-align: left;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-primary);
+    background: var(--bg-inset);
+    color: var(--text-secondary);
+    transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.launch-kind strong {
+    font-size: 0.92rem;
+    color: var(--text-primary);
+}
+
+.launch-kind small {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+}
+
+.launch-kind:hover:not(:disabled) {
+    border-color: var(--border-strong);
+}
+
+.launch-kind.is-active {
+    border-color: var(--border-accent);
+    background: linear-gradient(135deg, var(--accent-soft), transparent), var(--bg-inset);
+    box-shadow: 0 10px 30px -18px var(--accent-glow);
+}
+
+.launch-kind.is-active svg {
+    color: var(--accent-text);
+}
+
+/* Music moods */
+.launch-moods {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, Clapperboard, Copy, Download, Globe, Loader2, PenLine, RotateCcw, Scissors } from 'lucide-react';
+import { AlertTriangle, Check, Clapperboard, Copy, Download, Globe, GraduationCap, Loader2, Music2, PenLine, RotateCcw, Scissors } from 'lucide-react';
 import { apiClient } from '../../lib/api';
 import MusicPicker from '../../components/music/MusicPicker';
 import { useEditorStore } from '../../stores/editorStore';
@@ -9,7 +9,22 @@ import './Launch.css';
 /**
  * Launch videos, after /brag (github.com/latent-spaces/brag, MIT): point it at a website
  * or describe a product, and get a short launch video with music and share copy.
+ * Tutorials: paste a web app's address and get a step-by-step walkthrough of the real screens.
  */
+
+const KINDS = [
+    { id: 'launch', label: 'Launch video', icon: Clapperboard },
+    { id: 'tutorial', label: 'Tutorial', icon: GraduationCap },
+];
+
+const MOODS = [
+    { id: '', label: 'Match the tone' },
+    { id: 'hype', label: 'Hype' },
+    { id: 'upbeat', label: 'Upbeat' },
+    { id: 'hiphop', label: 'Hip hop' },
+    { id: 'chill', label: 'Chill' },
+    { id: 'cinematic', label: 'Cinematic' },
+];
 
 const TONES = [
     { id: 'default', name: 'Default', feel: 'Punchy, playful, clean' },
@@ -28,6 +43,7 @@ const FORMATS = [
 ];
 
 const STEPS = ['Inspecting', 'Writing the storyboard', 'Choosing music', 'Rendering'];
+const TUTORIAL_STEPS = ['Exploring the app', 'Writing the steps', 'Choosing music', 'Rendering'];
 
 const API_ROOT = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api$/, '');
 
@@ -44,7 +60,7 @@ async function authorizedBlob(url) {
 
 function stepIndex(stage) {
     if (!stage) return 0;
-    if (/storyboard/i.test(stage)) return 1;
+    if (/storyboard|steps/i.test(stage)) return 1;
     if (/music/i.test(stage)) return 2;
     if (/render|done/i.test(stage)) return 3;
     return 0;
@@ -53,10 +69,13 @@ function stepIndex(stage) {
 export default function LaunchPage() {
     const navigate = useNavigate();
     const setEditorVideo = useEditorStore((s) => s.setVideo);
+    const [kind, setKind] = useState('launch');
     const [source, setSource] = useState('website');
     const [form, setForm] = useState({ url: '', name: '', description: '', focus: '', tone: 'default', format: 'landscape', duration: 20, music: true });
     const [music, setMusic] = useState({ genre: '', vocals: '', track: null });
-    const [toneMusic, setToneMusic] = useState({});
+    const [mood, setMood] = useState('');
+    const [pickSong, setPickSong] = useState(false);
+    const [toneMood, setToneMood] = useState({});
     const [job, setJob] = useState(null);
     const [error, setError] = useState('');
     const [videoUrl, setVideoUrl] = useState(null);
@@ -66,12 +85,13 @@ export default function LaunchPage() {
 
     const set = (partial) => setForm((f) => ({ ...f, ...partial }));
 
-    // Default genre per tone, so the picker can say what "match the tone" means.
+    // Default music mood per tone, so "Match the tone" can say what it means.
     useEffect(() => {
         apiClient('/brag/tones')
-            .then(({ tones }) => setToneMusic(Object.fromEntries((tones || []).map((t) => [t.id, t.music]))))
+            .then(({ tones }) => setToneMood(Object.fromEntries((tones || []).map((t) => [t.id, t.mood]))))
             .catch(() => {});
     }, []);
+    const tutorial = kind === 'tutorial';
     const busy = job?.status === 'processing' || job?.status === 'starting';
 
     useEffect(() => () => {
@@ -107,15 +127,14 @@ export default function LaunchPage() {
         setJob({ status: 'starting', stage: 'Starting', progress: 0 });
         try {
             const body = {
+                kind,
                 tone: request.tone,
                 format: request.format,
                 duration: request.duration,
                 music: request.music,
-                ...(request.music
-                    ? { musicGenre: music.genre, musicVocals: music.vocals || 'any', musicTrackId: music.track?.id || '' }
-                    : {}),
+                ...(request.music ? { mood: mood || undefined, musicTrackId: pickSong ? music.track?.id || '' : '' } : {}),
                 focus: request.focus,
-                ...(source === 'website' ? { url: request.url, name: request.name } : { name: request.name, description: request.description }),
+                ...(tutorial || source === 'website' ? { url: request.url, name: request.name } : { name: request.name, description: request.description }),
             };
             const { jobId } = await apiClient('/brag', { method: 'POST', body: JSON.stringify(body) });
             poll(jobId);
@@ -128,7 +147,7 @@ export default function LaunchPage() {
     const openInEditor = () => {
         if (!blobRef.current) return;
         const name = (job?.plan?.productName || 'launch').replace(/[^\w-]+/g, '-').toLowerCase();
-        setEditorVideo(new File([blobRef.current], `${name}-launch.mp4`, { type: 'video/mp4' }));
+        setEditorVideo(new File([blobRef.current], `${name}-${fileLabel}.mp4`, { type: 'video/mp4' }));
         navigate('/editor');
     };
 
@@ -136,7 +155,7 @@ export default function LaunchPage() {
         if (!videoUrl) return;
         const a = document.createElement('a');
         a.href = videoUrl;
-        a.download = `${(job?.plan?.productName || 'launch').replace(/[^\w-]+/g, '-').toLowerCase()}-launch.mp4`;
+        a.download = `${(job?.plan?.productName || 'launch').replace(/[^\w-]+/g, '-').toLowerCase()}-${fileLabel}.mp4`;
         a.click();
     };
 
@@ -151,7 +170,9 @@ export default function LaunchPage() {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const canSubmit = source === 'website' ? form.url.trim().length > 3 : form.description.trim().length > 10;
+    const canSubmit = tutorial || source === 'website' ? form.url.trim().length > 3 : form.description.trim().length > 10;
+    const steps = tutorial ? TUTORIAL_STEPS : STEPS;
+    const fileLabel = tutorial ? 'tutorial' : 'launch';
     const done = job?.status === 'completed' && videoUrl;
 
     return (
@@ -159,12 +180,27 @@ export default function LaunchPage() {
             <header className="page-head">
                 <div>
                     <h1>Launch video</h1>
-                    <p>Point it at a website or describe a product. You get a 15–30 second launch video with music and a caption to post.</p>
+                    <p>
+                        {tutorial
+                            ? 'Paste a web app’s address. We explore it like a new user and make a step-by-step tutorial on the real screens: clicks, typing, zooms and captions.'
+                            : 'Point it at a website or describe a product. You get a 15–30 second launch video, cut to the beat of the music, with a caption to post.'}
+                    </p>
                 </div>
             </header>
 
             <div className="launch-layout">
                 <section className="launch-form surface">
+                    <div className="launch-kinds" role="tablist" aria-label="Video type">
+                        {KINDS.map((k) => (
+                            <button key={k.id} role="tab" aria-selected={kind === k.id} className={`launch-kind ${kind === k.id ? 'is-active' : ''}`} onClick={() => setKind(k.id)} disabled={busy}>
+                                <k.icon size={18} />
+                                <strong>{k.label}</strong>
+                                <small>{k.id === 'tutorial' ? 'How your app works, step by step' : 'A short promo for a product'}</small>
+                            </button>
+                        ))}
+                    </div>
+
+                    {!tutorial ? (
                     <div className="segmented" role="tablist">
                         <button role="tab" aria-selected={source === 'website'} className={source === 'website' ? 'is-active' : ''} onClick={() => setSource('website')} disabled={busy}>
                             <Globe size={15} /> Website
@@ -173,12 +209,17 @@ export default function LaunchPage() {
                             <PenLine size={15} /> Describe it
                         </button>
                     </div>
+                    ) : null}
 
-                    {source === 'website' ? (
+                    {tutorial || source === 'website' ? (
                         <label className="field">
-                            <span>Website address</span>
-                            <input className="input" placeholder="yourproduct.com" value={form.url} onChange={(e) => set({ url: e.target.value })} disabled={busy} />
-                            <small>We read its copy, colours and fonts, and take screenshots to show the real product.</small>
+                            <span>{tutorial ? 'Web app address' : 'Website address'}</span>
+                            <input className="input" placeholder={tutorial ? 'app.yourproduct.com' : 'yourproduct.com'} value={form.url} onChange={(e) => set({ url: e.target.value })} disabled={busy} />
+                            <small>
+                                {tutorial
+                                    ? 'We open it, find the main pages (sign-up, features, how it works) and follow its own links. We never sign in, buy or submit forms.'
+                                    : 'We read its copy, colours and fonts, and take screenshots to show the real product.'}
+                            </small>
                         </label>
                     ) : (
                         <>
@@ -195,9 +236,10 @@ export default function LaunchPage() {
 
                     <label className="field">
                         <span>Focus <em>optional</em></span>
-                        <input className="input" placeholder="A new feature, a launch, one angle…" value={form.focus} onChange={(e) => set({ focus: e.target.value })} disabled={busy} />
+                        <input className="input" placeholder={tutorial ? 'e.g. how to create a booking link' : 'A new feature, a launch, one angle…'} value={form.focus} onChange={(e) => set({ focus: e.target.value })} disabled={busy} />
                     </label>
 
+                    {!tutorial ? (
                     <div className="field">
                         <span>Tone</span>
                         <div className="tone-grid">
@@ -209,6 +251,7 @@ export default function LaunchPage() {
                             ))}
                         </div>
                     </div>
+                    ) : null}
 
                     <div className="field-row">
                         <div className="field">
@@ -221,10 +264,17 @@ export default function LaunchPage() {
                                 ))}
                             </div>
                         </div>
-                        <label className="field">
-                            <span>Length: {form.duration}s</span>
-                            <input type="range" min={12} max={30} step={1} value={form.duration} onChange={(e) => set({ duration: Number(e.target.value) })} disabled={busy} />
-                        </label>
+                        {!tutorial ? (
+                            <label className="field">
+                                <span>Length: {form.duration}s</span>
+                                <input type="range" min={12} max={30} step={1} value={form.duration} onChange={(e) => set({ duration: Number(e.target.value) })} disabled={busy} />
+                            </label>
+                        ) : (
+                            <div className="field">
+                                <span>Length</span>
+                                <small>Set by the number of steps, usually 30–45 seconds.</small>
+                            </div>
+                        )}
                     </div>
 
                     <div className="field">
@@ -233,7 +283,35 @@ export default function LaunchPage() {
                             Add background music
                         </label>
                         {form.music ? (
-                            <MusicPicker value={music} onChange={setMusic} disabled={busy} auto={toneMusic[form.tone]} minSeconds={form.duration + 1} />
+                            <>
+                                <div className="launch-moods" role="radiogroup" aria-label="Music mood">
+                                    {MOODS.map((m) => (
+                                        <button
+                                            key={m.id || 'auto'}
+                                            type="button"
+                                            role="radio"
+                                            aria-checked={!pickSong && mood === m.id}
+                                            className={`chip ${!pickSong && mood === m.id ? 'is-active' : ''}`}
+                                            onClick={() => {
+                                                setMood(m.id);
+                                                setPickSong(false);
+                                            }}
+                                            disabled={busy}
+                                        >
+                                            {m.id ? m.label : `Match the tone (${(tutorial ? 'chill' : toneMood[form.tone]) || 'upbeat'})`}
+                                        </button>
+                                    ))}
+                                    <button type="button" className={`chip ${pickSong ? 'is-active' : ''}`} onClick={() => setPickSong(true)} disabled={busy}>
+                                        <Music2 size={13} /> Pick a song
+                                    </button>
+                                </div>
+                                <small className="muted">
+                                    {pickSong
+                                        ? 'Your song starts at its most energetic part.'
+                                        : 'Free instrumental tracks (CC BY). We start at the most energetic part and cut the scenes on the beat.'}
+                                </small>
+                                {pickSong ? <MusicPicker value={music} onChange={setMusic} disabled={busy} minSeconds={form.duration + 1} /> : null}
+                            </>
                         ) : null}
                     </div>
 
@@ -241,7 +319,7 @@ export default function LaunchPage() {
 
                     <button className="btn btn-primary btn-block" onClick={() => start()} disabled={!canSubmit || busy}>
                         {busy ? <Loader2 size={16} className="spin" /> : <Clapperboard size={16} />}
-                        {busy ? 'Making your video…' : 'Make launch video'}
+                        {busy ? 'Making your video…' : tutorial ? 'Make tutorial' : 'Make launch video'}
                     </button>
                 </section>
 
@@ -250,14 +328,14 @@ export default function LaunchPage() {
                         <div className="launch-empty">
                             <Clapperboard size={28} />
                             <h3>Your video appears here</h3>
-                            <p>It takes one to two minutes: we inspect the product, write a storyboard, pick music and render.</p>
+                            <p>{tutorial ? 'It takes about four to six minutes: we explore the app, plan the steps, pick music and render.' : 'It takes a few minutes: we inspect the product, write a storyboard, pick music and render.'}</p>
                         </div>
                     ) : null}
 
                     {busy ? (
                         <div className="launch-progress">
                             <ol className="steps">
-                                {STEPS.map((s, i) => {
+                                {steps.map((s, i) => {
                                     const current = stepIndex(job?.stage);
                                     return (
                                         <li key={s} className={i < current ? 'is-done' : i === current ? 'is-current' : ''}>
@@ -277,7 +355,7 @@ export default function LaunchPage() {
                         <div className="launch-empty launch-failed" role="alert">
                             <AlertTriangle size={28} />
                             <h3>The video couldn't be made</h3>
-                            <p>{job.error || 'Something went wrong while making the launch video.'}</p>
+                            <p>{job.error || 'Something went wrong while making the video.'}</p>
                             <button className="btn btn-primary btn-sm" onClick={() => start()} disabled={!canSubmit}>
                                 <RotateCcw size={14} /> Try again
                             </button>
@@ -293,7 +371,11 @@ export default function LaunchPage() {
                                 <button className="btn btn-ghost" onClick={() => start()}><RotateCcw size={16} /> Re-roll</button>
                             </div>
 
-                            {job.musicCredit ? <p className="launch-music muted">Music: {job.musicCredit}</p> : null}
+                            {job.musicCredit ? (
+                                <p className="launch-music muted">
+                                    Music{job.musicMood ? ` (${job.musicMood}${job.musicBpm ? `, ${Math.round(job.musicBpm)} BPM` : ''})` : ''}: {job.musicCredit}
+                                </p>
+                            ) : null}
 
                             {job.shareCopy ? (
                                 <div className="share-copy">
@@ -311,22 +393,24 @@ export default function LaunchPage() {
                                     <ol>
                                         {job.plan.scenes.map((s, i) => (
                                             <li key={i}>
-                                                <span className="storyboard__meta">{s.type}, {s.duration.toFixed(1)}s</span>
+                                                <span className="storyboard__meta">{s.step ? `Step ${s.step}` : s.type}, {s.duration.toFixed(1)}s{s.action ? `, ${s.action}` : ''}</span>
                                                 <strong>{s.headline}</strong>
                                                 {s.subline ? <span>{s.subline}</span> : null}
                                             </li>
                                         ))}
                                     </ol>
-                                    {job.planner === 'fallback' ? <p className="muted">The AI planner was unavailable, so this storyboard was built from the site's own copy.</p> : null}
+                                    {job.planner === 'fallback' ? <p className="muted">No AI key is set, so this was built from the site's own pages and copy. Add an OpenRouter or Gemini key for sharper scripts.</p> : null}
                                 </details>
                             ) : null}
 
+                            {!tutorial ? (
                             <div className="try-tones">
                                 <span>Try another tone</span>
                                 {TONES.filter((t) => t.id !== form.tone).slice(0, 4).map((t) => (
                                     <button key={t.id} className="chip" onClick={() => start({ tone: t.id })}>{t.name}</button>
                                 ))}
                             </div>
+                            ) : null}
                         </div>
                     ) : null}
                 </section>

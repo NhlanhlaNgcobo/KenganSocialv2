@@ -176,6 +176,8 @@ export async function getManualEditStatus(req, res) {
             poster: data.poster || null,
             musicCredit: data.musicCredit || null,
             musicTrackId: data.musicTrackId || null,
+            musicMood: data.musicMood || null,
+            musicBpm: data.musicBpm || null,
             error: data.error || null,
         });
     } catch (error) {

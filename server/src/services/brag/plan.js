@@ -1,4 +1,5 @@
 import { generateJson } from '../gemini-json.js';
+import { headline as headlineText, shortLine } from './text.js';
 
 /**
  * Step 2 of the launch-video pipeline: the storyboard.
@@ -89,8 +90,8 @@ export function normalizePlan(raw, source, tone, duration) {
             const scene = {
                 type,
                 eyebrow: clampText(s.eyebrow, 5),
-                headline: clampText(s.headline, 10) || source.title || 'Launch',
-                subline: clampText(s.subline, 16),
+                headline: headlineText(s.headline, 10) || source.title || 'Launch',
+                subline: shortLine(s.subline, 16),
                 screenshot: shot,
                 cta: type === 'outro' && isRealCta(s.cta) ? clampText(s.cta, 5) : '',
                 duration: Number(s.duration) || 3,
@@ -138,11 +139,22 @@ function fallbackPlan(source, tone, duration) {
     const name = source.siteName || (source.title || '').split(/[|—–-]/)[0].trim() || 'Your product';
     const heads = (source.headings || []).map((h) => h.replace(/\s+/g, ' '));
     const cta = (source.ctas || []).find((c) => c.split(' ').length <= 4 && isRealCta(c)) || '';
+    const shots = source.screenshots?.length || 0;
+    const firstSentence = (s) => shortLine(s, 14);
+    const paras = (source.paragraphs || []).map(firstSentence).filter((p) => p.split(' ').length <= 16);
+    // Mix of looks: big type → product reveal → the live page clicking its real CTA → feature cards → outro.
     const scenes = [
-        { type: 'hook', headline: heads[0] || name, subline: '', duration: 2.5 },
-        { type: 'reveal', headline: name, subline: source.description || '', duration: 3.5, screenshot: 0 },
-        ...heads.slice(1, 3).map((h, i) => ({ type: 'showcase', headline: h, subline: '', duration: 3, screenshot: Math.min(i + 1, (source.screenshots?.length || 1) - 1) })),
-        { type: 'outro', headline: name, subline: source.url ? new URL(source.url).hostname : '', cta, duration: 3 },
+        { type: 'hook', headline: heads[0] || name, subline: '', duration: 2.6 },
+        { type: 'reveal', eyebrow: 'Meet', headline: name, subline: firstSentence(source.description), duration: 3.2, screenshot: null },
+        ...(shots ? [{ type: 'showcase', headline: heads[1] || 'See it in action', subline: paras[0] || '', duration: 4, screenshot: 0 }] : []),
+        ...heads.slice(2, 4).map((h, i) => ({
+            type: 'feature',
+            headline: h,
+            subline: paras[i + 1] || '',
+            duration: 3.2,
+            screenshot: i === 1 && shots > 1 ? 1 : null,
+        })),
+        { type: 'outro', headline: name, subline: source.url ? new URL(source.url).hostname : '', cta: cta || 'Try it today', duration: 3.2 },
     ];
     return normalizePlan(
         { scenes, productName: name, shareCopy: source.description || `${name}.`, musicQuery: tone === 'cinematic' ? 'cinematic trailer' : 'upbeat electronic' },
