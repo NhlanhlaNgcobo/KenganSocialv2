@@ -103,6 +103,15 @@ app.use(morgan('dev'));
 // Routes
 // ---------------------
 app.use('/public', express.static(path.join(process.cwd(), 'public')));
+// Platform site-verification files (e.g. TikTok "URL prefix" verification) must sit at the
+// site root. Only files named tiktok*.txt from public/verification are served here.
+app.get(/^\/tiktok[A-Za-z0-9_-]+\.txt$/, (req, res) => {
+    const file = path.join(process.cwd(), 'public', 'verification', path.basename(req.path));
+    res.type('text/plain').sendFile(file, (err) => err && res.status(404).end());
+});
+// Public legal pages (platform app reviews need them on a reachable URL).
+app.get('/terms', (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'legal', 'terms.html')));
+app.get('/privacy', (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'legal', 'privacy.html')));
 if (getStorageDriver() === 'local') {
     app.use('/uploads', express.static(LOCAL_UPLOAD_DIR));
 }

@@ -21,6 +21,11 @@ service cloud.firestore {
     // ── Users ─────────────────────────────────────────────────────────────────
     match /users/{userId} {
       allow read, write: if request.auth.uid == userId;
+
+      // Consent audit trail (POPIA): the user can record and read their own consents.
+      match /consents/{consentId} {
+        allow read, create, update: if request.auth.uid == userId;
+      }
     }
 
     // ── Workspaces ────────────────────────────────────────────────────────────

@@ -1,11 +1,9 @@
 import axios from 'axios';
 import { db } from '../../utils/firestore';
 import admin from 'firebase-admin';
-import { OpenAI } from 'openai';
+import { CHAT_MODEL, chatClient } from '../llm-client.js';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'sk-placeholder-key',
-});
+const openai = chatClient;
 
 // Assuming valid API keys are mapped
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
@@ -162,7 +160,7 @@ export async function fetchTrendingByNiche(niche: string, plan: string = 'starte
     let generatedCards: TrendCard[] = [];
     try {
         const gptRes = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: CHAT_MODEL,
             response_format: { type: 'json_object' },
             messages: [
                 { role: 'system', content: `You are a social media trend analyst. Turn the raw trend data into beautifully formatted distinct video hooks. Output exactly JSON: { "cards": [ { "id": "card_XYZ123", "hook": "...", "videoIdea": "...", "captionPreview": "...", "hashtags": ["#tag1", "#tag2"], "platform": "tiktok|instagram|youtube", "viralityScore": 1-10 int, "difficulty": "easy|medium|hard", "source": "origin source" } ] }` },

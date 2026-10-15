@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { authErrorMessage } from '../lib/auth-errors';
 import './Auth.css';
 
 export default function LoginPage() {
@@ -20,7 +21,7 @@ export default function LoginPage() {
             await login(email, password);
             navigate('/dashboard');
         } catch (err) {
-            setError(err.message || 'Failed to sign in');
+            setError(authErrorMessage(err, 'Could not sign in. Try again.'));
         } finally {
             setLoading(false);
         }
@@ -33,7 +34,7 @@ export default function LoginPage() {
             await loginWithGoogle();
             navigate('/dashboard');
         } catch (err) {
-            setError(err.message || 'Google sign-in failed');
+            setError(authErrorMessage(err, 'Google sign-in failed. Try again.'));
         } finally {
             setLoading(false);
         }

@@ -64,6 +64,19 @@ export default function ConnectionsPage() {
     const [youtubeRefreshLoading, setYoutubeRefreshLoading] = useState(false);
     const [youtubeUploadLoading, setYoutubeUploadLoading] = useState(false);
     const [youtubeMessage, setYoutubeMessage] = useState('');
+    // Result of a platform sign-in: the server redirects back with ?connected=<p> or ?error=<p>.
+    const [oauthNotice, setOauthNotice] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const ok = params.get('connected');
+        const failed = params.get('error');
+        const name = (id) => PLATFORM_META[id]?.name || id;
+        if (ok) return { tone: 'success', text: `${name(ok)} is connected.` };
+        if (failed) return { tone: 'error', text: `${name(failed)} could not be connected. Try again, and if it keeps failing check the API log for the reason.` };
+        return null;
+    });
+    useEffect(() => {
+        if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
+    }, []);
     const [youtubeUploadForm, setYoutubeUploadForm] = useState({
         videoUrl: '',
         title: '',
@@ -166,7 +179,18 @@ export default function ConnectionsPage() {
             window.location.assign(data.url);
         } catch (error) {
             console.error('Connection launch failed:', error);
-            setYoutubeMessage(error.message || 'Failed to start OAuth connection.');
+            const KEYS = {
+                youtube: 'YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET',
+                instagram: 'FACEBOOK_APP_ID and FACEBOOK_APP_SECRET',
+                tiktok: 'TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET',
+                linkedin: 'LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET',
+            };
+            const name = PLATFORM_META[platformId]?.name || platformId;
+            setYoutubeMessage(
+                /OAUTH_NOT_CONFIGURED/.test(error.message || '')
+                    ? `${name} is not set up on the server yet. Add ${KEYS[platformId] || 'its app keys'} to server/.env (see docs/SOCIAL_SETUP.md), then restart the API.`
+                    : error.message || 'Could not start the connection. Try again.'
+            );
             setConnecting(null);
         }
     };
@@ -282,6 +306,12 @@ export default function ConnectionsPage() {
                 <div>
                     <h1>Social Connections</h1>
                     <p className="page-subtitle">Manage your linked social media accounts and pages.</p>
+                    {oauthNotice ? (
+                        <div className={oauthNotice.tone === 'error' ? 'error-banner' : 'success-banner'} role="status" style={{ marginTop: 12 }}>
+                            {oauthNotice.text}{' '}
+                            <button className="btn-icon btn-sm" onClick={() => setOauthNotice(null)} aria-label="Dismiss">×</button>
+                        </div>
+                    ) : null}
                 </div>
                 <div>
                     <button className="btn btn-secondary" style={{ marginRight: '12px' }} onClick={handleAddFolder}>

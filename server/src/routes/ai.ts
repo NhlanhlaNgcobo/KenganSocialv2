@@ -1,11 +1,8 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { OpenAI } from 'openai';
+import { CHAT_MODEL, chatClient } from '../services/llm-client.js';
 import admin from 'firebase-admin';
 
-// Initialize open ai strictly bypassing default env error if key is occasionally omitted in local dev
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'sk-placeholder-key',
-});
+const openai = chatClient;
 
 const router = express.Router();
 
@@ -36,7 +33,7 @@ router.post('/generate-captions', withWorkspace, planRateLimit(), checkLimit('ai
             if (!systemPrompt) return null;
 
             const response = await openai.chat.completions.create({
-                model: 'gpt-4o-mini',
+                model: CHAT_MODEL,
                 temperature: 0.7,
                 messages: [
                     { role: 'system', content: `You are an elite social media manager writing in a ${tone} tone for the niche: ${niche}. ${systemPrompt}. Return ONLY the final caption/structure requested, no surrounding conversation.` },
@@ -72,7 +69,7 @@ router.post('/generate-hooks', withWorkspace, planRateLimit(), checkLimit('aiCal
     const { transcript, niche } = req.body;
     try {
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: CHAT_MODEL,
             response_format: { type: "json_object" },
             messages: [
                 { role: 'system', content: `You output exactly JSON. Format: { "hooks": [ { "hook": "text", "type": "question|controversy|stat|story", "explanation": "why" } ] }` },
@@ -92,7 +89,7 @@ router.post('/hashtag-research', withWorkspace, planRateLimit(), checkLimit('aiC
     const { topic, platform } = req.body;
     try {
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: CHAT_MODEL,
             response_format: { type: "json_object" },
             messages: [
                 { role: 'system', content: `Output JSON: { "data": { "high_volume": [], "medium": [], "niche": [], "trending": [] } }` },
@@ -118,7 +115,7 @@ router.post('/repurpose', withWorkspace, planRateLimit(), checkLimit('aiCalls'),
             if (!systemPrompt) return;
 
             const response = await openai.chat.completions.create({
-                model: 'gpt-4o-mini',
+                model: CHAT_MODEL,
                 messages: [
                     { role: 'system', content: `Adapt this existing ${fromPlatform} caption into an optimized ${platform} piece. Do NOT add context. Strictly adhere to these rules: ${systemPrompt}` },
                     { role: 'user', content: caption }

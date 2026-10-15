@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import axios from 'axios';
+import crypto from 'crypto';
 import cron from 'node-cron';
 import { db } from '../utils/firestore';
 import { encrypt, decrypt } from '../utils/tokenEncryption';
@@ -32,9 +33,9 @@ const OAUTH_CONFIG = {
         authUrl: 'https://www.facebook.com/v19.0/dialog/oauth',
         tokenUrl: 'https://graph.facebook.com/v19.0/oauth/access_token',
         scopes: [
-            'instagram_basic', 'instagram_content_publish',
-            'instagram_manage_insights', 'pages_manage_posts', 'pages_show_list',
-            'ads_management', 'business_management',
+            // Publishing Reels and reading insights for an Instagram professional account linked to a Page.
+            'instagram_basic', 'instagram_content_publish', 'instagram_manage_insights',
+            'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'business_management',
         ],
         clientId: () => env('FACEBOOK_APP_ID'),
         clientSecret: () => env('FACEBOOK_APP_SECRET'),
@@ -43,7 +44,10 @@ const OAUTH_CONFIG = {
     tiktok: {
         authUrl: 'https://www.tiktok.com/v2/auth/authorize/',
         tokenUrl: 'https://open.tiktokapis.com/v2/oauth/token/',
-        scopes: ['user.info.basic', 'video.upload', 'video.list', 'research.data.basic'],
+        // Login Kit + Content Posting API. research.data.basic belongs to the Research API and makes
+        // TikTok reject the whole sign-in for normal apps. TIKTOK_SCOPES also picks the posting mode:
+        // with video.publish posts go straight to the profile, with only video.upload to the TikTok inbox.
+        scopes: (env('TIKTOK_SCOPES') || 'user.info.basic,video.publish').split(',').map((x) => x.trim()).filter(Boolean),
         clientId: () => env('TIKTOK_CLIENT_KEY'),
         clientSecret: () => env('TIKTOK_CLIENT_SECRET'),
         redirectUri: () => `${REDIRECT_BASE}/api/connections/tiktok/callback`,
@@ -127,9 +131,32 @@ function ensureOAuthConfig(platform: Platform) {
     return cfg;
 }
 
+// OAuth state is signed and expires, so a callback can only attach an account to the
+// workspace that started the sign-in (a forged state naming another workspace is refused).
+const STATE_TTL_MS = 15 * 60 * 1000;
+function stateKey() {
+    const key = env('TOKEN_ENCRYPTION_KEY');
+    if (!key) throw new Error('TOKEN_ENCRYPTION_KEY_NOT_SET');
+    return key;
+}
+function signState(data: { workspaceId: string; platform: string }) {
+    const payload = Buffer.from(JSON.stringify({ ...data, exp: Date.now() + STATE_TTL_MS, n: crypto.randomBytes(8).toString('hex') })).toString('base64url');
+    const sig = crypto.createHmac('sha256', stateKey()).update(payload).digest('base64url');
+    return `${payload}.${sig}`;
+}
+function verifyState(state: string | undefined): { workspaceId: string; platform: string } {
+    const [payload, sig] = String(state || '').split('.');
+    if (!payload || !sig) throw new Error('INVALID_OAUTH_STATE');
+    const expected = crypto.createHmac('sha256', stateKey()).update(payload).digest('base64url');
+    if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) throw new Error('INVALID_OAUTH_STATE');
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    if (!data.exp || data.exp < Date.now()) throw new Error('EXPIRED_OAUTH_STATE');
+    return data;
+}
+
 function buildOAuthUrl(platform: Platform, workspaceId: string) {
     const cfg = ensureOAuthConfig(platform);
-    const state = Buffer.from(JSON.stringify({ workspaceId, platform })).toString('base64url');
+    const state = signState({ workspaceId, platform });
 
     const params = new URLSearchParams({
         client_id: cfg.clientId(),
@@ -142,8 +169,13 @@ function buildOAuthUrl(platform: Platform, workspaceId: string) {
     });
 
     if (platform === 'tiktok') {
+        // TikTok: client_key instead of client_id, comma-separated scopes, and none of
+        // Google's access_type/prompt parameters.
         params.set('client_key', cfg.clientId());
         params.delete('client_id');
+        params.set('scope', cfg.scopes.join(','));
+        params.delete('access_type');
+        params.delete('prompt');
     }
 
     return `${cfg.authUrl}?${params.toString()}`;
@@ -281,7 +313,7 @@ router.get('/:platform/auth-url', withWorkspace, (req: Request, res: Response) =
 router.get('/youtube/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = JSON.parse(Buffer.from(state, 'base64url').toString());
+        const { workspaceId } = verifyState(state);
         const cfg = OAUTH_CONFIG.youtube;
 
         // Exchange code for tokens
@@ -332,7 +364,7 @@ router.get('/youtube/callback', async (req: Request, res: Response) => {
 router.get('/instagram/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = JSON.parse(Buffer.from(state, 'base64url').toString());
+        const { workspaceId } = verifyState(state);
         const cfg = OAUTH_CONFIG.instagram;
 
         // Exchange code
@@ -398,7 +430,7 @@ router.get('/instagram/callback', async (req: Request, res: Response) => {
 router.get('/tiktok/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = JSON.parse(Buffer.from(state, 'base64url').toString());
+        const { workspaceId } = verifyState(state);
         const cfg = OAUTH_CONFIG.tiktok;
 
         // Exchange code — TikTok uses client_key, not client_id
@@ -410,11 +442,16 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
             redirect_uri: cfg.redirectUri(),
         }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
 
-        const { access_token, refresh_token, expires_in, open_id } = tokenRes.data.data;
+        // TikTok v2 returns the token fields at the top level (older docs showed them under data).
+        const tokens = tokenRes.data?.data?.access_token ? tokenRes.data.data : tokenRes.data;
+        if (!tokens?.access_token) {
+            throw new Error(`TikTok token exchange failed: ${tokens?.error || 'no token'} ${tokens?.error_description || ''}`.trim());
+        }
+        const { access_token, refresh_token, expires_in, open_id } = tokens;
 
-        // Get user info
+        // Get user info. follower_count needs user.info.stats, so only basic fields are requested.
         const userRes = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
-            params: { fields: 'open_id,display_name,avatar_url,follower_count' },
+            params: { fields: 'open_id,display_name,avatar_url' },
             headers: { Authorization: `Bearer ${access_token}` },
         });
 
@@ -427,7 +464,7 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
             accountId: open_id,
             accountName: user?.display_name ?? '',
             accountAvatar: user?.avatar_url,
-            followersCount: user?.follower_count ?? 0,
+            followersCount: 0,
             scope: cfg.scopes,
             meta: { open_id, display_name: user?.display_name, avatar_url: user?.avatar_url },
         });
@@ -445,7 +482,7 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
 router.get('/linkedin/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = JSON.parse(Buffer.from(state, 'base64url').toString());
+        const { workspaceId } = verifyState(state);
         const cfg = OAUTH_CONFIG.linkedin;
 
         const tokenRes = await axios.post(cfg.tokenUrl, new URLSearchParams({
@@ -494,7 +531,7 @@ router.get('/linkedin/callback', async (req: Request, res: Response) => {
 router.get('/pinterest/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = JSON.parse(Buffer.from(state, 'base64url').toString());
+        const { workspaceId } = verifyState(state);
         const cfg = OAUTH_CONFIG.pinterest;
 
         const tokenRes = await axios.post(cfg.tokenUrl,
@@ -542,7 +579,7 @@ router.get('/pinterest/callback', async (req: Request, res: Response) => {
 router.get('/threads/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = JSON.parse(Buffer.from(state, 'base64url').toString());
+        const { workspaceId } = verifyState(state);
         const cfg = OAUTH_CONFIG.threads;
 
         const tokenRes = await axios.post(cfg.tokenUrl, new URLSearchParams({
@@ -830,9 +867,12 @@ async function refreshPlatformToken(workspaceId: string, platform: Platform): Pr
             grant_type: 'refresh_token',
             refresh_token: refreshToken,
         }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-        newAccessToken = res.data.data.access_token;
-        newRefreshToken = res.data.data.refresh_token ?? refreshToken;
-        expiresIn = res.data.data.expires_in ?? 3600;
+        // TikTok v2 returns token fields at the top level.
+        const t = res.data?.data?.access_token ? res.data.data : res.data;
+        if (!t?.access_token) throw new Error(`TikTok token refresh failed: ${t?.error || 'no token'}`);
+        newAccessToken = t.access_token;
+        newRefreshToken = t.refresh_token ?? refreshToken;
+        expiresIn = t.expires_in ?? 3600;
     } else if (platform === 'instagram' || platform === 'threads') {
         // Meta exchange long-lived token for new long-lived token
         const res = await axios.get(cfg.tokenUrl, {

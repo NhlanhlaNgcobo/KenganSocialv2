@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
+import { useWorkspace } from '../context/WorkspaceContext';
+import { apiClient } from '../lib/api';
 import './Onboarding.css';
 
 
@@ -148,37 +148,17 @@ function StepSetup({ onNext }) {
         setSaving(true);
         setError('');
         try {
-            // Update main profile with basic info and consents
-            await setDoc(
-                doc(db, 'users', user.uid),
-                {
-                    fullName: fullName.trim(),
-                    niche: industry,
-                    consents: {
-                        popia: popiaConsent,
-                        marketing: marketingConsent,
-                        timestamp: new Date().toISOString()
-                    }
-                },
-                { merge: true }
-            );
-
-            // Also keep subcollection for audit trail
-            await setDoc(
-                doc(db, 'users', user.uid, 'consents', 'initial'),
-                {
-                    popiaConsent,
-                    marketingConsent,
-                    timestamp: serverTimestamp(),
-                    acceptedAt: serverTimestamp(),
-                    version: '1.0'
-                },
-                { merge: true }
-            );
+            // The server saves the profile, the consent record (POPIA audit trail) and the
+            // workspace name together.
+            await apiClient('/auth/onboarding', {
+                method: 'POST',
+                body: { fullName: fullName.trim(), niche: industry, workspaceName: workspaceName.trim(), popiaConsent, marketingConsent },
+            });
 
             onNext({ fullName: fullName.trim(), workspaceName: workspaceName.trim(), industry });
         } catch (err) {
-            setError('Failed to save. Please try again.');
+            console.error('Onboarding save failed:', err);
+            setError(err.message || 'Could not save your details. Try again.');
         } finally {
             setSaving(false);
         }
@@ -534,7 +514,8 @@ function WelcomeModal({ name, onClose }) {
 
 // ─── Main Onboarding Page ──────────────────────────────────────────────────────
 export default function OnboardingPage() {
-    const { user } = useAuth();
+    const { user, refreshProfile } = useAuth();
+    const { fetchWorkspaces } = useWorkspace();
     const navigate = useNavigate();
     const [step, setStep] = useState(0);
     const [userData, setUserData] = useState({});
@@ -551,24 +532,18 @@ export default function OnboardingPage() {
 
     const handleComplete = async (plan) => {
         try {
-            await setDoc(
-                doc(db, 'users', user.uid),
-                {
-                    onboardingComplete: true,
-                    niche: userData.industry || '',
-                    plan,
-                    onboardingCompletedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-            setShowWelcome(true);
+            await apiClient('/auth/onboarding', { method: 'POST', body: { complete: true, plan } });
         } catch (err) {
-            console.error('Failed to complete onboarding:', err);
+            // Finishing is best-effort: the profile and workspace were saved in step 1.
+            console.error('Failed to mark onboarding complete:', err);
         }
+        setShowWelcome(true);
     };
 
-    const handleWelcomeClose = () => {
+    const handleWelcomeClose = async () => {
         setShowWelcome(false);
+        // Pick up the new name and workspace name before showing the dashboard.
+        await Promise.allSettled([refreshProfile(), fetchWorkspaces()]);
         navigate('/dashboard');
     };
 

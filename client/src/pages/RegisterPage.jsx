@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
+import { authErrorMessage } from '../lib/auth-errors';
 import './Auth.css';
 
 export default function RegisterPage() {
@@ -52,9 +53,9 @@ export default function RegisterPage() {
                 console.warn('Failed to save granular consents (Firestore rules):', err);
             }
 
-            navigate('/dashboard');
+            navigate('/onboarding');
         } catch (err) {
-            setError(err.message || 'Failed to create account');
+            setError(authErrorMessage(err, 'Could not create your account. Try again.'));
         } finally {
             setLoading(false);
         }
@@ -65,9 +66,9 @@ export default function RegisterPage() {
         setLoading(true);
         try {
             await loginWithGoogle();
-            navigate('/dashboard');
+            navigate('/onboarding');
         } catch (err) {
-            setError(err.message || 'Google sign-in failed');
+            setError(authErrorMessage(err, 'Google sign-in failed. Try again.'));
         } finally {
             setLoading(false);
         }

@@ -197,3 +197,18 @@ export async function removeMember(req, res) {
         res.status(500).json({ error: 'Failed to remove member' });
     }
 }
+
+// PATCH /api/workspaces/:workspaceId  { name }  (owner or admin, checked by requireRole)
+export async function updateWorkspace(req, res) {
+    try {
+        const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+        if (name.length < 3 || name.length > 50) return res.status(400).json({ error: 'Workspace names are 3–50 characters.' });
+        const db = getFirestore();
+        const ref = db.collection('workspaces').doc(req.params.workspaceId);
+        await ref.update({ name, updatedAt: new Date().toISOString() });
+        res.json({ workspace: { id: ref.id, ...(await ref.get()).data() } });
+    } catch (error) {
+        console.error('[Workspace] Update failed:', error.message);
+        res.status(500).json({ error: 'Could not update the workspace.' });
+    }
+}

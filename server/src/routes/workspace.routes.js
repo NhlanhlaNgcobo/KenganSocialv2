@@ -6,8 +6,9 @@ import {
     getMembers,
     addMember,
     removeMember,
+    updateWorkspace,
 } from '../controllers/workspace.controller.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
+import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -17,6 +18,7 @@ router.use(requireAuth);
 router.get('/', getWorkspaces);
 router.post('/', createWorkspace);
 router.get('/:workspaceId', getWorkspaceById);
+router.patch('/:workspaceId', requireRole('owner', 'admin'), updateWorkspace);
 router.get('/:workspaceId/members', getMembers);
 router.post('/:workspaceId/members', addMember);
 router.delete('/:workspaceId/members/:memberId', removeMember);

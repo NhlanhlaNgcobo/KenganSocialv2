@@ -154,7 +154,21 @@ router.post('/profile', async (req: Request, res: Response) => {
 
         const userDoc = await db.collection('users').doc(decoded.uid).get();
         if (userDoc.exists) {
-            return res.status(200).json({ user: { uid: decoded.uid, ...userDoc.data() } });
+            // Sign-up races: the auth listener can create the profile from the email prefix
+            // before the name from the sign-up form arrives. Take the real name, and rename the
+            // still-default workspace to match.
+            const existing: any = userDoc.data();
+            const prefix = decoded.email?.split('@')[0];
+            const name = typeof displayName === 'string' ? displayName.trim().slice(0, 100) : '';
+            if (name && existing.displayName === prefix && name !== prefix) {
+                const now = new Date().toISOString();
+                await userDoc.ref.update({ displayName: name, updatedAt: now });
+                const owned = await db.collection('workspaces').where('ownerId', '==', decoded.uid).limit(1).get();
+                const ws = owned.docs[0];
+                if (ws && ws.data().name === `${prefix}'s Workspace`) await ws.ref.update({ name: `${name}'s Workspace`, updatedAt: now });
+                existing.displayName = name;
+            }
+            return res.status(200).json({ user: { uid: decoded.uid, ...existing } });
         }
 
         const now = new Date().toISOString();
@@ -285,6 +299,51 @@ router.put('/profile', async (req: Request, res: Response) => {
         return res.status(200).json({ user: { uid: decoded.uid, ...updated.data() } });
     } catch (err: any) {
         return res.status(500).json({ error: 'UPDATE_FAILED' });
+    }
+});
+
+// ─── POST /api/auth/onboarding ───────────────────────────────────────────────
+// Saves onboarding answers server-side (the browser never writes profiles directly).
+// Step 1: { fullName, niche, workspaceName, popiaConsent, marketingConsent }
+// Finish: { complete: true, plan }
+router.post('/onboarding', async (req: Request, res: Response) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'MISSING_TOKEN' });
+        const decoded = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
+        const body = req.body || {};
+        const now = new Date().toISOString();
+        const userRef = db.collection('users').doc(decoded.uid);
+        const updates: Record<string, unknown> = { updatedAt: now };
+
+        if (body.complete) {
+            updates.onboardingComplete = true;
+            updates.onboardingCompletedAt = now;
+            if (['starter', 'nano', 'creator', 'agency'].includes(body.plan)) updates.selectedPlan = body.plan;
+        } else {
+            const fullName = typeof body.fullName === 'string' ? body.fullName.trim().slice(0, 100) : '';
+            const workspaceName = typeof body.workspaceName === 'string' ? body.workspaceName.trim() : '';
+            if (!fullName) return res.status(400).json({ error: 'Add your name.' });
+            if (workspaceName.length < 3 || workspaceName.length > 50) return res.status(400).json({ error: 'Workspace names are 3–50 characters.' });
+            if (body.popiaConsent !== true) return res.status(400).json({ error: 'Consent to the privacy policy is required to continue.' });
+
+            const consents = { popia: true, marketing: body.marketingConsent === true, timestamp: now, version: '1.0' };
+            Object.assign(updates, { displayName: fullName, fullName, niche: String(body.niche || '').slice(0, 60), consents });
+            // POPIA audit trail, recorded by the server with the request IP.
+            await userRef.collection('consents').doc('initial').set(
+                { popiaConsent: true, marketingConsent: consents.marketing, acceptedAt: now, version: '1.0', ip: req.ip || null, userAgent: String(req.headers['user-agent'] || '').slice(0, 300) },
+                { merge: true }
+            );
+            const owned = await db.collection('workspaces').where('ownerId', '==', decoded.uid).limit(1).get();
+            if (!owned.empty) await owned.docs[0].ref.update({ name: workspaceName, niche: updates.niche, updatedAt: now });
+        }
+
+        await userRef.set(updates, { merge: true });
+        const user = await userRef.get();
+        return res.status(200).json({ user: { uid: decoded.uid, ...user.data() } });
+    } catch (err: any) {
+        console.error('Onboarding save error:', err.message);
+        return res.status(500).json({ error: 'Could not save your details. Try again.' });
     }
 });
 

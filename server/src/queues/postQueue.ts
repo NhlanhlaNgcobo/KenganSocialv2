@@ -107,6 +107,7 @@ async function publishMultiplexer(platform: string, workspaceId: string, options
                 accessToken,
                 openId: connRaw.accountId,
                 videoUrl: options.mediaUrl,
+                title: options.caption || '',
             });
         case 'linkedin':
             return publishToLinkedIn({

@@ -186,19 +186,23 @@ export default function CalendarPage() {
 
     const handleCreatePost = async () => {
         try {
-            const formData = new FormData();
-            formData.append('video', mediaFile!);
-
-            // 1. Upload Media
-            const uploadRes = await apiClient(`/video/manual-edit/upload`, {
-                method: 'POST',
-                body: formData
-            });
+            // 1. Upload the video to media storage. Platforms fetch it from this URL when the
+            //    post goes out, so it must be stored durably (not the editor's temporary upload).
+            let mediaUrl = '';
+            if (mediaFile) {
+                const formData = new FormData();
+                formData.append('file', mediaFile);
+                const uploadRes = await apiClient(`/workspaces/${currentWorkspace.id}/media/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                mediaUrl = uploadRes.url;
+            }
 
             // 2. Create Schedule
             const payload = {
                 platforms: selectedPlatforms,
-                mediaUrl: uploadRes.videoUrl, // Server should return url
+                mediaUrl,
                 caption: captions[activeTab] || Object.values(captions)[0] || '',
                 scheduledAt: new Date(`${scheduledAt}T${scheduledTime}`).toISOString(),
                 platformOptions: selectedPlatforms.reduce((acc, p) => ({ ...acc, [p]: { caption: captions[p] } }), {}),

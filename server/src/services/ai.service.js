@@ -1,6 +1,9 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import { GEMINI_MODEL } from '../config/ai-models.js';
+import { requestOpenRouterText } from './openrouter.js';
+
+const OPENROUTER_TEXT_MODEL = process.env.AI_TEXT_MODEL || process.env.AI_JSON_MODEL || 'anthropic/claude-haiku-4.5';
 
 // -------------------------------------------------------
 // Provider Initialization
@@ -66,7 +69,7 @@ length, and formatting for the target platform.`,
 };
 
 // -------------------------------------------------------
-// Core Generation Function – Gemini first, OpenAI fallback
+// Core Generation Function – OpenRouter, then Gemini, then OpenAI
 // -------------------------------------------------------
 
 /**
@@ -81,7 +84,25 @@ export async function generateContent(type, userPrompt, options = {}) {
 
     const fullPrompt = buildPrompt(systemPrompt, userPrompt, options);
 
-    // --- Try Gemini first ---
+    // --- OpenRouter first when configured (fastest and most reliable here) ---
+    if (process.env.OPENROUTER_API_KEY) {
+        try {
+            const text = await requestOpenRouterText({
+                model: OPENROUTER_TEXT_MODEL,
+                maxTokens: 1500,
+                temperature: 0.8,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: fullPrompt },
+                ],
+            });
+            if (text && text.trim().length > 0) return { result: text.trim(), provider: 'openrouter' };
+        } catch (error) {
+            console.warn('[AI Service] OpenRouter failed, trying Gemini:', error.message);
+        }
+    }
+
+    // --- Then Gemini ---
     const gemini = getGemini();
     if (gemini) {
         try {
@@ -117,7 +138,7 @@ export async function generateContent(type, userPrompt, options = {}) {
         }
     }
 
-    throw new Error('No AI provider is available. Set GEMINI_API_KEY or OPENAI_API_KEY.');
+    throw new Error('The AI writer is unavailable right now. Try again in a minute.');
 }
 
 // -------------------------------------------------------

@@ -2,10 +2,10 @@ import express, { Request, Response, NextFunction } from 'express';
 import { db } from '../utils/firestore';
 import admin from 'firebase-admin';
 import { processLeadScore, Lead } from '../services/leads/scoreService';
-import { OpenAI } from 'openai';
+import { CHAT_MODEL, chatClient } from '../services/llm-client.js';
 
 const router = express.Router();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-mock' });
+const openai = chatClient;
 
 import { withWorkspace } from '../middleware/withWorkspace';
 import { requirePlan } from '../middleware/planGate';
@@ -119,7 +119,7 @@ router.post('/:id/dm', withWorkspace, requirePlan('agency'), async (req: Request
 
     try {
         const aiRes = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: CHAT_MODEL,
             messages: [
                 { role: 'system', content: `You are an Agency Sales Rep. Write a persuasive cold outreach DM to a specific prospect. Context: ${JSON.stringify(lead)}` }
             ]

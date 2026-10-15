@@ -4,11 +4,9 @@ import { db } from '../utils/firestore';
 import admin from 'firebase-admin';
 import { redis } from '../utils/redis';
 import axios from 'axios';
-import { OpenAI } from 'openai';
+import { CHAT_MODEL, chatClient } from '../services/llm-client.js';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'sk-placeholder-key',
-});
+const openai = chatClient;
 
 const router = express.Router();
 const META_APP_SECRET = process.env.META_APP_SECRET || '';
@@ -233,7 +231,7 @@ router.post('/webhook/instagram', async (req: Request, res: Response) => {
             } else {
                 // Generate Smart AI Reply and push to specific Inbox review queue
                 const aiRes = await openai.chat.completions.create({
-                    model: 'gpt-4o-mini',
+                    model: CHAT_MODEL,
                     messages: [
                         { role: 'system', content: 'You are helping a creator manage their DMs. Write a short, engaging 1-sentence reply to this fan message.' },
                         { role: 'user', content: text }

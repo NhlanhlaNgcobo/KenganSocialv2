@@ -138,9 +138,19 @@ export function AuthProvider({ children }) {
         setPlan('starter');
     };
 
+    /** Re-reads the profile and workspace after they change (e.g. at the end of onboarding). */
+    const refreshProfile = async () => {
+        const data = await apiClient('/auth/me');
+        setProfile(data.user);
+        setWorkspace(data.workspace || null);
+        setPlan(data.plan || data.user?.plan || 'starter');
+        return data;
+    };
+
     const value = {
         user,
         profile,
+        refreshProfile,
         workspace,
         plan,
         loading,

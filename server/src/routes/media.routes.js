@@ -6,7 +6,7 @@ import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 const router = express.Router({ mergeParams: true });
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+    limits: { fileSize: 250 * 1024 * 1024 } // 250MB: short-form videos
 });
 
 // All media routes require authentication and proper role
