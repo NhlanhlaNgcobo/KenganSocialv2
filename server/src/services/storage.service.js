@@ -84,9 +84,38 @@ function s3PublicBase() {
 // Local disk
 // ---------------------
 
+/**
+ * Base URL for locally stored files, as saved in the database and shown in the app.
+ * In development this is the local API (http://localhost:PORT), so files display even when the
+ * public tunnel is down; in production it is SERVER_URL. LOCAL_MEDIA_BASE_URL overrides both.
+ * Platforms that download media themselves get the public address via publicMediaUrl().
+ */
+function localApiBase() {
+    return `http://localhost:${process.env.PORT || 5000}`;
+}
 function localPublicBase() {
-    const serverUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 5000}`;
-    return `${serverUrl.replace(/\/+$/, '')}/uploads`;
+    const base =
+        process.env.LOCAL_MEDIA_BASE_URL ||
+        (process.env.NODE_ENV === 'production' && process.env.SERVER_URL ? process.env.SERVER_URL : localApiBase());
+    return `${base.replace(/\/+$/, '')}/uploads`;
+}
+
+/**
+ * A media URL that outside services (Instagram, TikTok, …) can download: locally stored files are
+ * rewritten from the local API address to SERVER_URL (e.g. the ngrok tunnel). Other URLs pass through.
+ */
+export function publicMediaUrl(url) {
+    if (!url || getStorageDriver() !== 'local') return url;
+    const server = (process.env.SERVER_URL || '').replace(/\/+$/, '');
+    const local = `${localApiBase()}/uploads/`;
+    return server && url.startsWith(local) ? `${server}/uploads/${url.slice(local.length)}` : url;
+}
+
+/** Locally stored files may be saved under either base (older records used SERVER_URL). */
+function localKeyFromUrl(fileUrl) {
+    const marker = '/uploads/';
+    const at = String(fileUrl || '').indexOf(marker);
+    return at === -1 ? null : decodeURIComponent(fileUrl.slice(at + marker.length));
 }
 
 function resolveLocalPath(key) {
@@ -170,8 +199,8 @@ export async function deleteFile(fileUrl) {
         const driver = getStorageDriver();
 
         if (driver === 'local') {
-            const key = fileUrl.split(`${localPublicBase()}/`)[1];
-            if (key) await fs.unlink(resolveLocalPath(decodeURIComponent(key)));
+            const key = localKeyFromUrl(fileUrl);
+            if (key) await fs.unlink(resolveLocalPath(key));
             return;
         }
 

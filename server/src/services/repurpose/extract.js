@@ -1,11 +1,38 @@
+import axios from 'axios';
 import { safeGet } from '../../utils/safe-fetch.js';
 
 /**
  * Pulls the readable text out of an article or web page so it can be repurposed.
  * Fetching goes through safeGet, which refuses private and internal addresses.
+ * YouTube videos are read from their captions (or transcribed) by the Python video service.
  */
 
 const MAX_CHARS = 14000;
+const PYTHON_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
+const YOUTUBE_URL = /^https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
+
+const withScheme = (raw) => {
+    const url = String(raw || '').trim();
+    return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+};
+
+export function isYouTubeUrl(rawUrl) {
+    return YOUTUBE_URL.test(withScheme(rawUrl));
+}
+
+/** Text of a YouTube video: its captions, or (when it has none) a transcription of its audio. */
+export async function fetchYouTubeText(rawUrl, plan = 'creator') {
+    const url = withScheme(rawUrl);
+    if (!YOUTUBE_URL.test(url)) throw Object.assign(new Error('Paste a YouTube video link (youtube.com/watch, youtu.be or /shorts).'), { status: 400 });
+    try {
+        const { data } = await axios.post(`${PYTHON_URL}/process/youtube-transcript`, { url, plan }, { timeout: 20 * 60 * 1000 });
+        return data;
+    } catch (error) {
+        if (error.code === 'ECONNREFUSED') throw Object.assign(new Error('The video service is not running, so YouTube links cannot be read right now.'), { status: 503 });
+        const detail = error.response?.data?.detail;
+        throw Object.assign(new Error(detail?.message || 'That YouTube video could not be read.'), { status: error.response?.status === 400 ? 400 : 422 });
+    }
+}
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', mdash: '—', ndash: '–', hellip: '…' };
 
@@ -63,7 +90,8 @@ export async function fetchArticle(rawUrl) {
         throw Object.assign(new Error('That does not look like a web address.'), { status: 400 });
     }
     if (/(^|\.)(youtube\.com|youtu\.be)$/i.test(host)) {
-        throw Object.assign(new Error('For a YouTube video, use the "YouTube → shorts" tab: it turns the video into short clips you can then write posts for.'), {
+        // Video links are handled by fetchYouTubeText; this catches channel and playlist pages.
+        throw Object.assign(new Error('Paste a link to a single YouTube video (youtube.com/watch, youtu.be or /shorts), not a channel or playlist.'), {
             status: 400,
         });
     }

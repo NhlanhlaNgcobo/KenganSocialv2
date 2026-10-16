@@ -103,9 +103,12 @@ export default function RepurposePage() {
     const clip = project?.clips?.find((c) => c.id === clipId);
     const togglePlatform = (id) => setPlatforms((list) => (list.includes(id) ? list.filter((p) => p !== id) : [...list, id]));
 
+    // A YouTube video link in the Link tab is read from its captions (or transcribed).
+    const linkIsYoutube = /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com\/(watch|shorts|live|embed)|youtu\.be\/)/i.test(url.trim());
+    const [linkRights, setLinkRights] = useState(false);
     const canSubmit =
         platforms.length > 0 &&
-        ((source === 'url' && url.trim().length > 4) || (source === 'text' && text.trim().length >= 80) || (source === 'clip' && clip?.transcript));
+        ((source === 'url' && url.trim().length > 4 && (!linkIsYoutube || linkRights)) || (source === 'text' && text.trim().length >= 80) || (source === 'clip' && clip?.transcript));
 
     const isYoutube = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch|shorts|live)|youtu\.be\/)/i.test(ytUrl.trim());
 
@@ -162,7 +165,16 @@ export default function RepurposePage() {
                     : source === 'text'
                       ? { type: 'text', text, title }
                       : { type: 'text', text: clip.transcript, title: clip.title };
-            setResult(await repurposeApi.generate({ source: sourceBody, platforms, tone, audience, cta }));
+            setResult(
+                await repurposeApi.generate({
+                    source: sourceBody,
+                    platforms,
+                    tone,
+                    audience,
+                    cta,
+                    ...(source === 'url' && linkIsYoutube ? { rightsConfirmed: linkRights } : {}),
+                })
+            );
         } catch (err) {
             setError(err.message);
         } finally {
@@ -191,9 +203,19 @@ export default function RepurposePage() {
 
                     {source === 'url' ? (
                         <label className="field">
-                            <span>Article or page address</span>
-                            <input className="input" placeholder="yourblog.com/latest-post" value={url} onChange={(e) => setUrl(e.target.value)} disabled={busy} />
-                            <small>Blog posts, news articles, newsletters and landing pages. For videos, use Clips first.</small>
+                            <span>Article, page or YouTube video</span>
+                            <input className="input" placeholder="yourblog.com/latest-post or a YouTube link" value={url} onChange={(e) => setUrl(e.target.value)} disabled={busy} />
+                            <small>
+                                {linkIsYoutube
+                                    ? 'We read the video’s captions (or transcribe it if it has none) and write posts from what is said.'
+                                    : 'Blog posts, news articles, newsletters, landing pages and YouTube videos.'}
+                            </small>
+                        </label>
+                    ) : null}
+                    {source === 'url' && linkIsYoutube ? (
+                        <label className="check">
+                            <input type="checkbox" checked={linkRights} onChange={(e) => setLinkRights(e.target.checked)} disabled={busy} />
+                            I own this video or have permission to repurpose it
                         </label>
                     ) : null}
 
@@ -395,7 +417,11 @@ export default function RepurposePage() {
                     {source !== 'youtube' && busy ? (
                         <div className="surface repurpose-empty">
                             <Loader2 size={24} className="spin" />
-                            <p>Reading the source and writing {platforms.length} posts. This takes about 20 seconds.</p>
+                            <p>
+                                {source === 'url' && linkIsYoutube
+                                    ? `Reading the video and writing ${platforms.length} posts. About 30 seconds, or a few minutes if the video has no captions and has to be transcribed.`
+                                    : `Reading the source and writing ${platforms.length} posts. This takes about 20 seconds.`}
+                            </p>
                         </div>
                     ) : null}
                     {result ? (

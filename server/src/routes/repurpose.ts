@@ -2,14 +2,15 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { checkLimit, planRateLimit } from '../middleware/planGate';
-import { fetchArticle } from '../services/repurpose/extract.js';
+import { fetchArticle, fetchYouTubeText, isYouTubeUrl } from '../services/repurpose/extract.js';
 import { generateDrafts, PLATFORMS, TONES } from '../services/repurpose/generate.js';
 
 /**
  * Repurpose: one source (article link, pasted text or a clip transcript) → native
  * posts per platform. Scheduling uses the existing /api/schedule endpoints.
  *  GET  /api/repurpose/options
- *  POST /api/repurpose   { source: { type: 'url'|'text', url?, text?, title? }, platforms, tone, audience?, cta? }
+ *  POST /api/repurpose   { source: { type: 'url'|'text', url?, text?, title? }, platforms, tone, audience?, cta?, rightsConfirmed? }
+ * A YouTube video link is read from its captions (or transcribed) and needs rightsConfirmed: true.
  */
 const router = express.Router();
 
@@ -33,7 +34,15 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('aiCalls'), async (r
         let title = text(source.title, 200);
         let content = '';
         let origin: Record<string, string> | null = null;
-        if (source.type === 'url') {
+        if (source.type === 'url' && isYouTubeUrl(source.url)) {
+            if (body.rightsConfirmed !== true) {
+                return res.status(400).json({ error: 'Confirm that you own this video or have permission to repurpose it.' });
+            }
+            const video = await fetchYouTubeText(text(source.url, 600), (req as any).plan);
+            title = video.title || title;
+            content = [video.description ? `Video description: ${String(video.description).slice(0, 600)}` : '', video.text].filter(Boolean).join('\n\n');
+            origin = { url: text(source.url, 600), siteName: video.channel || 'YouTube', kind: 'youtube', textSource: video.source };
+        } else if (source.type === 'url') {
             const article = await fetchArticle(text(source.url, 600));
             title = article.title || title;
             content = [article.description, article.text].filter(Boolean).join('\n\n');

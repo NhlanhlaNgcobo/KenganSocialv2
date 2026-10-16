@@ -15,6 +15,7 @@ import { publishToThreads } from '../services/publishers/threads';
 import { decrypt } from '../utils/tokenEncryption';
 
 import { redis } from '../utils/redis';
+import { publicMediaUrl } from '../services/storage.service.js';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 // Reusing shared client
@@ -48,7 +49,8 @@ async function processJob(job: Job<PublishPayload>) {
 
     // Process platforms concurrently
     const results = await Promise.allSettled(
-        platforms.map(p => publishMultiplexer(p, workspaceId, { mediaUrl, caption, ...platformOptions[p] }))
+        // Platforms download the file themselves, so they get the public address (e.g. the tunnel).
+        platforms.map(p => publishMultiplexer(p, workspaceId, { mediaUrl: publicMediaUrl(mediaUrl), caption, ...platformOptions[p] }))
     );
 
     const published: { platform: string, postId: string }[] = [];

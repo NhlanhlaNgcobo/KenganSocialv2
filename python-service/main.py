@@ -1436,6 +1436,115 @@ async def download_url(req: DownloadUrlRequest):
             raise HTTPException(422, detail={"error": "IMPORT_FAILED", "message": message[:300] or "The video could not be downloaded."})
 
 
+class YoutubeTranscriptRequest(BaseModel):
+    url: str
+    plan: str = "creator"
+    # Audio transcription is the fallback when a video has no captions; it can be switched off.
+    allowTranscription: bool = True
+
+
+def _caption_text_from_json3(payload: Dict[str, Any]) -> str:
+    """YouTube's json3 caption format: events → segs → utf8 text."""
+    parts: List[str] = []
+    for event in payload.get("events") or []:
+        line = "".join(seg.get("utf8", "") for seg in event.get("segs") or []).strip()
+        if line and line != "\n":
+            parts.append(line)
+    text = re.sub(r"\s+", " ", " ".join(parts))
+    # Auto captions often repeat the previous line; drop exact consecutive duplicates.
+    return re.sub(r"\b(.{20,}?)\s+\1\b", r"\1", text).strip()
+
+
+def _pick_caption_track(info: Dict[str, Any]) -> Optional[Tuple[str, str, bool]]:
+    """Returns (language, json3 url, is_auto) preferring uploaded captions in the video's language, then English."""
+    original = (info.get("language") or "").split("-")[0].lower()
+    for source, is_auto in ((info.get("subtitles") or {}, False), (info.get("automatic_captions") or {}, True)):
+        if not source:
+            continue
+        langs = list(source.keys())
+        preferred = [l for l in langs if original and l.split("-")[0].lower() == original and "orig" in l] + \
+            [l for l in langs if original and l.split("-")[0].lower() == original] + \
+            [l for l in langs if l.split("-")[0].lower() == "en"] + langs
+        # Auto captions list every translation; only the original track is worth using.
+        if is_auto:
+            preferred = [l for l in preferred if l.endswith("-orig") or l.split("-")[0].lower() in (original, "en")] or preferred[:1]
+        for lang in preferred:
+            for fmt in source.get(lang) or []:
+                if fmt.get("ext") == "json3" and fmt.get("url"):
+                    return lang, fmt["url"], is_auto
+    return None
+
+
+def _youtube_transcript(url: str, plan: str, allow_transcription: bool) -> Dict[str, Any]:
+    import urllib.request
+    import yt_dlp
+
+    base = {"noplaylist": True, "quiet": True, "no_warnings": True, "noprogress": True, "skip_download": True}
+    with yt_dlp.YoutubeDL(base) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
+        raise ValueError("Live streams and premieres can't be read. Try again after the stream has ended.")
+    meta = {
+        "title": info.get("title") or "YouTube video",
+        "channel": info.get("channel") or info.get("uploader"),
+        "durationSec": info.get("duration"),
+        "description": (info.get("description") or "")[:2000],
+        "videoId": info.get("id"),
+    }
+
+    track = _pick_caption_track(info)
+    if track:
+        lang, caption_url, is_auto = track
+        with urllib.request.urlopen(caption_url, timeout=30) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        text = _caption_text_from_json3(payload)
+        if len(text) >= 80:
+            return {**meta, "text": text[:20000], "language": lang, "source": "auto-captions" if is_auto else "captions"}
+
+    if not allow_transcription:
+        raise ValueError("This video has no captions to read.")
+    duration = float(info.get("duration") or 0)
+    if duration and duration > 2 * 3600:
+        raise ValueError("This video has no captions, and it is too long to transcribe (over 2 hours).")
+
+    # No captions: download the audio only and transcribe it.
+    stem = TMP / f"yt_audio_{info.get('id', 'video')}_{int(time.time())}"
+    opts = {**base, "skip_download": False, "format": "bestaudio[ext=m4a]/bestaudio/best", "outtmpl": str(stem) + ".%(ext)s"}
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        ydl.download([url])
+    downloaded = sorted(TMP.glob(stem.name + ".*"))
+    if not downloaded:
+        raise ValueError("The audio could not be downloaded.")
+    wav = stem.with_suffix(".wav")
+    try:
+        run_ffmpeg("-i", str(downloaded[0]), "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", str(wav))
+        result = local_transcribe(wav, plan)
+        words = [w.get("text", "") for w in result.get("words", [])]
+        text = re.sub(r"\s+([,.!?;:])", r"\1", " ".join(words)).strip()
+        if len(text) < 80:
+            raise ValueError("No speech was found in this video.")
+        return {**meta, "text": text[:20000], "language": result.get("language"), "source": "transcription"}
+    finally:
+        cleanup(*downloaded, wav)
+
+
+@app.post("/process/youtube-transcript")
+async def youtube_transcript(req: YoutubeTranscriptRequest):
+    """Text of a YouTube video for Repurpose: its captions, or a transcription of its audio."""
+    url = req.url.strip()
+    if not YOUTUBE_URL.match(url):
+        raise HTTPException(400, detail={"error": "UNSUPPORTED_URL", "message": "Paste a YouTube video link (youtube.com/watch, youtu.be or /shorts)."})
+    async with job_semaphore:
+        try:
+            return await asyncio.to_thread(_youtube_transcript, url, req.plan, req.allowTranscription)
+        except ValueError as exc:
+            raise HTTPException(422, detail={"error": "TRANSCRIPT_REJECTED", "message": str(exc)})
+        except Exception as exc:
+            message = re.sub(r"^ERROR:\s*(\[[^\]]+\]\s*)?([A-Za-z0-9_-]{11}:\s*)?", "", str(exc)).strip()
+            log.warning("YouTube transcript failed for %s: %s", url, message)
+            raise HTTPException(422, detail={"error": "TRANSCRIPT_FAILED", "message": message[:300] or "The video could not be read."})
+
+
 @app.get("/health")
 async def health():
     return {

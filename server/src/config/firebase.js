@@ -36,6 +36,13 @@ export function initializeFirebaseAdmin() {
     });
 
     db = admin.firestore();
+    // Drop undefined fields instead of failing the whole write (optional values such as an
+    // auto-frame summary field are often undefined). Must run before the first Firestore call.
+    try {
+        db.settings({ ignoreUndefinedProperties: true });
+    } catch (error) {
+        console.warn('[Firebase] Could not set ignoreUndefinedProperties:', error.message);
+    }
     auth = admin.auth();
     storage = admin.storage();
 

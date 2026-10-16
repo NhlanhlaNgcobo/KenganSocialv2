@@ -52,7 +52,9 @@ export const PLATFORMS = {
 
 export const TONES = ['Professional', 'Friendly', 'Bold', 'Educational', 'Witty'];
 
-const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+// Social platforms show markdown literally, so **bold**, __bold__ and # headings are stripped.
+const plain = (t) => t.replace(/\*\*(.+?)\*\*/gs, '$1').replace(/__(.+?)__/gs, '$1').replace(/^#{1,6}\s+/gm, '');
+const str = (v, max) => (typeof v === 'string' ? plain(v.trim()).slice(0, max) : '');
 const list = (v, maxItems, maxLen) => (Array.isArray(v) ? v.map((x) => str(x, maxLen)).filter(Boolean).slice(0, maxItems) : []);
 
 /** Validates and trims the model output for one platform; returns null when unusable. */
@@ -60,7 +62,7 @@ function normalizeDraft(platform, raw) {
     if (!raw || typeof raw !== 'object') return null;
     switch (platform) {
         case 'x': {
-            const thread = list(raw.thread, 10, 280);
+            const thread = list(raw.thread, 8, 280);
             return thread.length ? { thread } : null;
         }
         case 'instagram': {
@@ -127,6 +129,8 @@ Rules for every platform:
 - Write natively for each platform; do not paste the same text everywhere.
 - Plain language. No clichés such as "game-changer", "unlock", "dive in", "in today's fast-paced world" or "excited to share".
 - Write in the same language as the source.
+- Plain text only: no markdown (no **bold**, no # headings). Social platforms show those symbols literally.
+- Respect the post counts and lengths given for each platform.
 
 Write for these platforms:
 ${wanted.map((p) => `- "${p}": ${PLATFORMS[p].spec} Shape: ${PLATFORMS[p].shape}`).join('\n')}

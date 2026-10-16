@@ -11,7 +11,8 @@ av<19
 # scenedetect without its [opencv] extra: that pulls in opencv-python, which conflicts with
 # opencv-python-headless below and breaks cv2 (e.g. no CascadeClassifier).
 scenedetect
-opencv-python-headless
+# OpenCV 5 removed CascadeClassifier, which main.py uses for face detection.
+opencv-python-headless>=4.10,<5
 numpy
 # HiGHS linear-programming solver for L1 camera-path stabilization
 scipy
