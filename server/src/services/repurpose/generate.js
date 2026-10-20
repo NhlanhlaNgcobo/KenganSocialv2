@@ -6,18 +6,6 @@ import { generateJson } from '../gemini-json.js';
  */
 
 export const PLATFORMS = {
-    linkedin: {
-        label: 'LinkedIn',
-        schedulable: true,
-        spec: 'A LinkedIn post, max 1,300 characters. Open with a bold insight or specific number on line 1. Short paragraphs of 1–2 lines with blank lines between. Practical takeaway. End with a question that invites comments. Up to 3 hashtags on the last line.',
-        shape: '{"text": "..."}',
-    },
-    x: {
-        label: 'X thread',
-        schedulable: false,
-        spec: 'An X (Twitter) thread of 4–7 posts, each max 270 characters. Post 1 is the hook and promises the payoff. One idea per post. The last post sums up and has a soft call to action. No hashtags except at most one in the last post.',
-        shape: '{"thread": ["post 1", "post 2"]}',
-    },
     instagram: {
         label: 'Instagram',
         schedulable: false,
@@ -30,15 +18,9 @@ export const PLATFORMS = {
         spec: 'A 30–45 second talking-head script for TikTok/Reels/Shorts plus a caption. Script: hook in the first 3 seconds, 3 punchy beats, payoff, call to action; written as spoken lines. Caption max 150 characters with 3–5 hashtags.',
         shape: '{"script": ["line 1", "line 2"], "caption": "..."}',
     },
-    threads: {
-        label: 'Threads',
-        schedulable: true,
-        spec: 'A Threads post, max 500 characters. Conversational, a clear opinion or hot take from the source. No hashtags.',
-        shape: '{"text": "..."}',
-    },
     facebook: {
         label: 'Facebook',
-        schedulable: false,
+        schedulable: true,
         spec: 'A Facebook post, 80–250 words. Friendly and story-led, easy to share. End with a question or call to action. At most 2 hashtags.',
         shape: '{"text": "..."}',
     },
@@ -61,10 +43,6 @@ const list = (v, maxItems, maxLen) => (Array.isArray(v) ? v.map((x) => str(x, ma
 function normalizeDraft(platform, raw) {
     if (!raw || typeof raw !== 'object') return null;
     switch (platform) {
-        case 'x': {
-            const thread = list(raw.thread, 8, 280);
-            return thread.length ? { thread } : null;
-        }
         case 'instagram': {
             const text = str(raw.text, 2200);
             const hashtags = list(raw.hashtags, 15, 40).map((h) => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, ''));
@@ -81,7 +59,7 @@ function normalizeDraft(platform, raw) {
             return title ? { title, description, tags: list(raw.tags, 15, 40) } : null;
         }
         default: {
-            const text = str(raw.text, platform === 'threads' ? 500 : 3000);
+            const text = str(raw.text, 3000);
             return text ? { text } : null;
         }
     }
@@ -91,8 +69,6 @@ function normalizeDraft(platform, raw) {
 export function draftToText(platform, draft) {
     if (!draft) return '';
     switch (platform) {
-        case 'x':
-            return draft.thread.map((p, i) => `${i + 1}/${draft.thread.length} ${p}`).join('\n\n');
         case 'instagram':
             return `${draft.text}\n\n${draft.hashtags.join(' ')}`.trim();
         case 'tiktok':

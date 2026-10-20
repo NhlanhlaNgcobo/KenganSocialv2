@@ -87,7 +87,7 @@ export async function planCarousel({ kit, source, goal = 'educate', slideCount =
         .map(([id, d]) => `- ${id}: ${d}`)
         .join('\n');
     const style = kit.style?.summary ? `Visual style learned from the brand's references: ${kit.style.summary}${kit.style.layoutPatterns?.length ? ` Layouts they use: ${kit.style.layoutPatterns.join(', ')}.` : ''}` : '';
-    const prompt = `You are a social media strategist and copywriter for ${kit.name || 'a business'}. Plan an Instagram/LinkedIn carousel.
+    const prompt = `You are a social media strategist and copywriter for ${kit.name || 'a business'}. Plan an Instagram/Facebook carousel.
 
 Goal: ${GOALS[goal] || GOALS.educate}
 Slides: exactly ${slideCount}

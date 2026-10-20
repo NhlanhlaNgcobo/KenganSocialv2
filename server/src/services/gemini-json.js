@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GEMINI_MODEL } from '../config/ai-models.js';
 import { extractJsonObject, requestOpenRouterText } from './openrouter.js';
+import { freeFallbackEnabled, requestPollinationsText } from './pollinations-text.js';
+import { jsonrepair } from 'jsonrepair';
 
 /**
  * Asks a model for JSON. Used by the clip finder, repurposing and launch storyboards.
@@ -19,7 +21,9 @@ function providerOrder() {
         .split(',')
         .map((p) => p.trim().toLowerCase())
         .filter(Boolean);
-    return configured.filter((p) => (p === 'openrouter' && process.env.OPENROUTER_API_KEY) || (p === 'gemini' && process.env.GEMINI_API_KEY));
+    const available = configured.filter((p) => (p === 'openrouter' && process.env.OPENROUTER_API_KEY) || (p === 'gemini' && process.env.GEMINI_API_KEY));
+    // Free last resort (text only): keeps AI features working without a paid key.
+    return freeFallbackEnabled() ? [...available, 'pollinations'] : available;
 }
 
 async function viaOpenRouter(parts, temperature) {
@@ -38,6 +42,55 @@ async function viaOpenRouter(parts, temperature) {
         ],
     });
     return JSON.parse(extractJsonObject(text));
+}
+
+/**
+ * Parses JSON from small open models, which make a few predictable mistakes: an extra "{" opening a
+ * sibling key ("},{"next":" instead of "},"next":"), trailing commas, unescaped quotes.
+ */
+function lenientJson(text) {
+    try {
+        return JSON.parse(text);
+    } catch {
+        /* try the repairs below */
+    }
+    // Drop a stray "{" between sibling keys, then the matching surplus "}" at the end.
+    let fixed = text.replace(/\}\s*,\s*\{\s*(?=")/g, () => '},');
+    let balance = 0;
+    for (const ch of fixed) balance += ch === '{' ? 1 : ch === '}' ? -1 : 0;
+    while (balance < 0 && /\}\s*$/.test(fixed)) {
+        fixed = fixed.replace(/\}\s*$/, '');
+        balance += 1;
+    }
+    try {
+        return JSON.parse(fixed);
+    } catch {
+        return JSON.parse(jsonrepair(fixed));
+    }
+}
+
+/** Free fallback: text parts only (the anonymous model has no vision), JSON extracted from the reply. */
+async function viaPollinations(parts, temperature) {
+    const text = parts.filter((p) => p.text).map((p) => p.text).join('\n\n');
+    let lastError;
+    // The free model occasionally returns cut-off or invalid JSON; ask again before giving up.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const reply = await requestPollinationsText({
+            temperature,
+            json: true,
+            messages: [
+                { role: 'system', content: 'You reply with a single complete, valid JSON object and nothing else. No markdown fences. Keep string values concise.' },
+                { role: 'user', content: text },
+            ],
+        });
+        try {
+            return lenientJson(extractJsonObject(reply));
+        } catch (error) {
+            lastError = error;
+            console.warn(`[AI] pollinations reply was not valid JSON (attempt ${attempt + 1}): ${error.message}; reply starts: ${reply.slice(0, 200).replace(/\s+/g, ' ')}`);
+        }
+    }
+    throw lastError;
 }
 
 async function viaGemini(parts, temperature) {
@@ -69,7 +122,9 @@ export async function generateJson(parts, { temperature = 0.9 } = {}) {
     let lastError;
     for (const provider of providers) {
         try {
-            return provider === 'openrouter' ? await viaOpenRouter(parts, temperature) : await viaGemini(parts, temperature);
+            if (provider === 'openrouter') return await viaOpenRouter(parts, temperature);
+            if (provider === 'pollinations') return await viaPollinations(parts, temperature);
+            return await viaGemini(parts, temperature);
         } catch (error) {
             lastError = error;
             console.warn(`[AI] ${provider} JSON request failed${providers.length > 1 ? ', trying the next provider' : ''}:`, error.message);

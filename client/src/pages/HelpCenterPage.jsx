@@ -11,7 +11,7 @@ const PRIVACY_EMAIL = 'privacy@kengansocial.com';
 const FAQ = [
     {
         q: 'How do I connect a social account?',
-        a: 'Open Connections in your dashboard and choose Connect next to the platform. You sign in with that platform and approve access. YouTube, Instagram, TikTok, LinkedIn, Pinterest and Threads are supported.',
+        a: 'Open Connections in your dashboard and choose Connect next to the platform. You sign in with that platform and approve access. Instagram, Facebook Pages, TikTok and YouTube are supported.',
     },
     {
         q: 'How do I schedule a post?',
@@ -31,7 +31,11 @@ const FAQ = [
     },
     {
         q: 'When do usage limits reset?',
-        a: 'Monthly counters (posts, exports, AI generations, renders) reset on the 1st of each month at 00:00 UTC.',
+        a: 'Monthly counters (posts, exports, AI credits, renders, transcription hours) reset on the 1st of each month at 00:00 UTC.',
+    },
+    {
+        q: 'What is an AI credit?',
+        a: 'One AI text generation (a caption, hooks, a script, a repurpose run or a carousel’s writing) uses 1 credit. AI images cost more to make: each fast image uses 2 credits and each best-quality image 6. Free images use no extra credits. Transcription is counted in hours of video, rounded up per video.',
     },
     {
         q: 'Where do I set up my brand kit?',

@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import {
     Instagram,
     Facebook,
-    Linkedin,
-    Twitter,
     Youtube,
     Smartphone,
     CheckCircle2,
@@ -16,43 +14,36 @@ import {
     MessageSquare,
     Video,
     ExternalLink,
-    Pin,
-    AtSign,
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
 import './Connections.css';
 
 const PLATFORM_META = {
-    // TikTok and X marks are monochrome, so they follow the theme's text colour.
-    tiktok: { name: 'TikTok', icon: Smartphone, color: 'var(--text-primary)' },
+    // The TikTok mark is monochrome, so it follows the theme's text colour.
     instagram: { name: 'Instagram', icon: Instagram, color: '#E4405F' },
     facebook: { name: 'Facebook Page', icon: Facebook, color: '#1877F2' },
-    linkedin: { name: 'LinkedIn', icon: Linkedin, color: '#0A66C2' },
-    twitter: { name: 'X (Twitter)', icon: Twitter, color: 'var(--text-primary)' },
+    tiktok: { name: 'TikTok', icon: Smartphone, color: 'var(--text-primary)' },
     youtube: { name: 'YouTube', icon: Youtube, color: '#FF0000' },
-    pinterest: { name: 'Pinterest', icon: Pin, color: '#BD081C' },
-    threads: { name: 'Threads', icon: AtSign, color: 'var(--text-primary)' },
 };
 
-const ALL_PLATFORMS = ['tiktok', 'instagram', 'youtube', 'linkedin', 'pinterest', 'threads', 'facebook', 'twitter'];
-const REAL_OAUTH_PLATFORMS = new Set(['youtube', 'instagram', 'tiktok', 'linkedin', 'pinterest', 'threads']);
-// Shown in the list but disabled until their OAuth flow exists on the server.
-const COMING_SOON_PLATFORMS = new Set(['facebook', 'twitter']);
+// KenganSocial covers the four main social marketing platforms.
+const ALL_PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube'];
+const REAL_OAUTH_PLATFORMS = new Set(ALL_PLATFORMS);
+const COMING_SOON_PLATFORMS = new Set();
 
 const SERVER_KEYS = {
     youtube: 'YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET',
     instagram: 'FACEBOOK_APP_ID and FACEBOOK_APP_SECRET',
+    facebook: 'FACEBOOK_APP_ID and FACEBOOK_APP_SECRET',
     tiktok: 'TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET',
-    linkedin: 'LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET',
-    pinterest: 'PINTEREST_APP_ID and PINTEREST_APP_SECRET',
-    threads: 'THREADS_APP_ID and THREADS_APP_SECRET',
 };
 
 // ?reason=<code> values the OAuth callbacks redirect back with.
 const REASON_MESSAGES = {
     no_channel: 'That Google account has no YouTube channel. Create a channel on YouTube first, then connect again.',
     no_instagram_business: 'No Instagram Business account was found. Your Instagram must be a Professional account linked to a Facebook Page.',
+    no_page: 'No Facebook Page was found on that account. Create a Page (or ask its admin to add you), then connect again.',
 };
 
 const FOLDERS_KEY = (workspaceId) => `kengan-client-folders-${workspaceId || 'none'}`;

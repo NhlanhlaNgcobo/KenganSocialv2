@@ -1,3 +1,4 @@
+@import '../components/clips/caption-fonts.css';
 /* KenganSocial editor — layout modelled on OpenCut, colours from the Kengan brand. */
 
 .ke-root {
@@ -36,6 +37,12 @@
     font-size: 13px;
     overflow: hidden;
     user-select: none;
+}
+
+/* The app's global headings take the app theme's text colour (near-black in light mode); the
+   editor is always dark, so its headings inherit the editor's text colour instead. */
+.ke-root :is(h1, h2, h3, h4, h5, h6) {
+    color: inherit;
 }
 
 .ke-root *,
@@ -987,6 +994,15 @@
     pointer-events: none;
 }
 
+/* Transition wrapper around a clip (clip-path, masks, slides) and effect overlays. */
+.ke-preview__tx,
+.ke-preview__fx {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
 .ke-preview__media {
     position: absolute;
     inset: 0;
@@ -1166,6 +1182,15 @@
     padding: 0 10px;
     font: inherit;
     font-size: 12px;
+}
+
+.ke-subhead {
+    margin: 10px 0 2px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ke-text-3);
 }
 
 .ke-subpanel {
@@ -1914,3 +1939,352 @@
     object-fit: cover;
     background: var(--ke-accent-soft);
 }
+
+/* ---------- Effects & transitions panels ---------- */
+
+.ke-fx-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.ke-fx-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid var(--ke-border);
+    background: var(--ke-panel-2);
+    color: var(--ke-text-2);
+    font: inherit;
+    cursor: pointer;
+    text-align: center;
+}
+
+.ke-fx-card:hover {
+    border-color: var(--ke-border-strong);
+    color: var(--ke-text);
+}
+
+.ke-fx-card.is-active {
+    border-color: var(--ke-accent);
+    color: var(--ke-text);
+    background: var(--ke-accent-soft);
+}
+
+.ke-fx-card small {
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.ke-fx-card__thumb {
+    position: relative;
+    display: block;
+    aspect-ratio: 16 / 10;
+    border-radius: 6px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #4f6d8f 0%, #c58a5c 55%, #2c3440 100%) center / cover;
+}
+
+.ke-fx-card__thumb > i {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.ke-tr-demo > i {
+    display: grid;
+    place-items: center;
+    font-style: normal;
+    font-weight: 700;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.ke-tr-demo__a {
+    background: linear-gradient(135deg, #3b6fd8, #1e3a8a);
+}
+
+.ke-tr-demo__b {
+    background: linear-gradient(135deg, #f59e0b, #db2777);
+}
+
+/* ---------- Lumetri-style colour panel ---------- */
+
+.ke-lumetri__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.ke-lumetri__section {
+    border: 1px solid var(--ke-border);
+    border-radius: 8px;
+    margin-top: 8px;
+    background: var(--ke-panel-2);
+}
+
+.ke-lumetri__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--ke-text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+}
+
+.ke-lumetri__head svg {
+    transform: rotate(-90deg);
+    transition: transform 0.15s;
+}
+
+.ke-lumetri__section.is-open .ke-lumetri__head svg {
+    transform: none;
+}
+
+.ke-lumetri__dot {
+    width: 6px;
+    height: 6px;
+    margin-left: auto;
+    border-radius: 50%;
+    background: var(--ke-accent-2);
+}
+
+.ke-lumetri__body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0 10px 10px;
+}
+
+.ke-lumetri__slider {
+    display: grid;
+    grid-template-columns: 78px 1fr 52px;
+    align-items: center;
+    gap: 8px;
+}
+
+.ke-lumetri__slider > span {
+    color: var(--ke-text-2);
+    font-size: 12px;
+}
+
+.ke-lumetri__slider > span.is-changed {
+    color: var(--ke-accent-2);
+}
+
+.ke-lumetri__slider input[type='range'] {
+    width: 100%;
+    height: 4px;
+    border-radius: 99px;
+    accent-color: var(--ke-accent);
+}
+
+.ke-lumetri__num {
+    width: 52px;
+    height: 24px;
+    padding: 0 4px;
+    border: 1px solid var(--ke-border);
+    border-radius: 5px;
+    background: var(--ke-panel);
+    color: var(--ke-text);
+    font: inherit;
+    font-size: 11.5px;
+    text-align: right;
+}
+
+.ke-lumetri__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ke-lumetri__row > span {
+    width: 78px;
+    color: var(--ke-text-2);
+    font-size: 12px;
+}
+
+.ke-lumetri__row .ke-select {
+    flex: 1;
+}
+
+.ke-curve {
+    width: 100%;
+    max-width: 240px;
+    aspect-ratio: 1;
+    margin: 6px auto;
+    border-radius: 6px;
+    background: #0d0d10;
+    border: 1px solid var(--ke-border);
+    cursor: crosshair;
+    touch-action: none;
+}
+
+.ke-curve circle {
+    cursor: grab;
+}
+
+.ke-wheels {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.ke-wheel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.ke-wheel__label {
+    font-size: 11px;
+    color: var(--ke-text-2);
+}
+
+.ke-wheel__pad {
+    position: relative;
+    width: 100%;
+    max-width: 92px;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    cursor: crosshair;
+    touch-action: none;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.ke-wheel__puck {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    background: rgba(0, 0, 0, 0.4);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.ke-wheel input[type='range'] {
+    width: 100%;
+    accent-color: var(--ke-accent);
+}
+
+.ke-bands {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.ke-band {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    position: relative;
+}
+
+.ke-band.is-active {
+    border-color: #fff;
+}
+
+.ke-band.is-changed::after {
+    content: "";
+    position: absolute;
+    right: -3px;
+    top: -3px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #fff;
+}
+
+/* ---------- Caption templates ---------- */
+
+.ke-cap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 8px;
+}
+
+.ke-cap-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid var(--ke-border);
+    background: var(--ke-panel-2);
+    color: var(--ke-text-2);
+    font: inherit;
+    cursor: pointer;
+}
+
+.ke-cap-card:hover {
+    border-color: var(--ke-border-strong);
+    color: var(--ke-text);
+}
+
+.ke-cap-card.is-active {
+    border-color: var(--ke-accent);
+    background: var(--ke-accent-soft);
+    color: var(--ke-text);
+}
+
+.ke-cap-card small {
+    font-size: 11px;
+}
+
+.ke-cap-card__stage {
+    display: flex;
+    justify-content: center;
+    height: 64px;
+    padding: 6px 4px;
+    border-radius: 6px;
+    background: linear-gradient(160deg, #475569, #1e293b 60%, #0f172a);
+    text-align: center;
+    overflow: hidden;
+}
+/* Preset discovery and editable recipe storyboard. */
+.ke-preset-search { display: grid; gap: 8px; margin: 10px 0 14px; }
+.ke-preset-search__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ke-preset-search__row > small { color: #929299; font-size: 10px; white-space: nowrap; }
+.ke-preset-search .ke-seg--text button { font-size: 10px; padding: 0 8px; white-space: nowrap; }
+.ke-view:has(.ke-recipe) .ke-tpl-list { max-height: 230px; overflow-y: auto; flex-shrink: 0; }
+.ke-view:has(.ke-recipe) .ke-tpl { flex-shrink: 0; }
+.ke-view:has(.ke-recipe) .ke-tpl__body p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ke-view:has(.ke-recipe) > .ke-btn--primary { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 -8px 16px #111115; }
+.ke-render-badge { display: block; font-size: 9px; color: #c9a86c; padding: 0 4px 5px; }
+.ke-recipe { border: 1px solid #34343b; border-radius: 10px; padding: 12px; margin: 14px 0; background: #19191e; }
+.ke-recipe__heading { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.ke-recipe__heading > span { font-size: 8px; letter-spacing: 0.12em; color: #b5c990; }
+.ke-recipe__strip { display: flex; gap: 3px; height: 28px; margin: 10px 0; }
+.ke-recipe__strip > span { display: grid; place-items: center; min-width: 12px; background: #344235; color: #d6efb8; border-radius: 3px; font-size: 9px; }
+.ke-recipe__strip > span:nth-child(even) { background: #3a3447; color: #e4d6fa; }
+.ke-recipe__slot { display: flex; align-items: center; gap: 7px; margin: 9px 0; }
+.ke-recipe__number { color: #929299; font: 10px monospace; }
+.ke-recipe__slot img, .ke-recipe__placeholder { width: 32px; height: 43px; object-fit: cover; border-radius: 3px; background: #292932; }
+.ke-recipe__field { flex: 1; min-width: 0; display: grid; gap: 4px; font-size: 11px; }
+.ke-recipe__field > span { display: flex; justify-content: space-between; gap: 4px; }
+.ke-recipe__field small { color: #9999a2; white-space: nowrap; font-size: 9px; }
+.ke-safe-guides { position: absolute; inset: 8% 12% 20% 6%; z-index: 500; border: 1px dashed rgba(255,255,255,.55); pointer-events: none; }
+.ke-safe-guides span { position: absolute; top: 4px; left: 4px; font-size: 9px; color: white; background: #0008; padding: 2px 4px; }
+.ke-word-timing { margin-top: 12px; font-size: 11px; }
+.ke-word-timing summary { cursor: pointer; color: #cadbb5; }
+.ke-word-timing__row { display: grid; grid-template-columns: 1fr 58px 58px; align-items: center; gap: 6px; margin-top: 6px; }
+.ke-word-timing__row input { min-width: 0; padding: 5px; }
+.ke-effect-controls { padding-bottom: 10px; margin-bottom: 6px; border-bottom: 1px solid var(--ke-border); }
+
+.ke-recipe__pool { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:12px; overflow-wrap:anywhere; }
+.ke-scopes { display:grid; gap:10px; }
+.ke-scopes canvas { width:100%; background:#090b10; border:1px solid #303541; border-radius:6px; }
+.ke-scopes canvas[aria-label="Sampled colour frame"] { max-height:180px; object-fit:contain; }

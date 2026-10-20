@@ -1,3 +1,4 @@
+import { CAPTION_TEMPLATES } from './lib/caption-templates';
 import type { AspectRatio, CanvasSize, TextElement, TrackType, VideoFilter } from './types';
 
 export const TRACK_HEIGHTS: Record<TrackType, number> = {
@@ -45,11 +46,58 @@ export const FILTER_PREVIEW_CSS: Record<VideoFilter, string> = {
     cool: 'hue-rotate(15deg) saturate(1.05) brightness(1.02)',
     drama: 'contrast(1.4) brightness(0.92) saturate(1.2)',
     neon: 'saturate(2) contrast(1.3) brightness(1.1) hue-rotate(10deg)',
+    'teal-orange': 'saturate(1.2) contrast(1.08) sepia(0.12) hue-rotate(-8deg)',
+    golden: 'sepia(0.35) saturate(1.25) brightness(1.04)',
+    moody: 'contrast(1.15) brightness(0.92) saturate(0.78) hue-rotate(6deg)',
+    vintage: 'sepia(0.4) contrast(0.9) brightness(1.05) saturate(0.85)',
+    'cross-process': 'contrast(1.2) saturate(1.35) hue-rotate(-12deg) sepia(0.15)',
+    'bleach-bypass': 'saturate(0.45) contrast(1.35) brightness(0.98)',
+    matte: 'contrast(0.84) brightness(1.06) saturate(0.9)',
+    'film-warm': 'sepia(0.22) saturate(1.1) contrast(1.05)',
+    'film-cool': 'hue-rotate(10deg) saturate(1.05) contrast(1.04) brightness(1.02)',
+    sepia: 'sepia(1)',
+    cyberpunk: 'saturate(1.5) contrast(1.15) hue-rotate(-25deg)',
+    pastel: 'saturate(0.75) brightness(1.08) contrast(0.88)',
 };
 
-export const FILTERS: VideoFilter[] = ['none', 'vivid', 'fade', 'noir', 'warm', 'cool', 'drama', 'neon'];
+/** Display names for looks. */
+export const LOOK_LABELS: Record<VideoFilter, string> = {
+    none: 'None',
+    vivid: 'Vivid',
+    fade: 'Faded',
+    noir: 'Noir',
+    warm: 'Warm',
+    cool: 'Cool',
+    drama: 'Drama',
+    neon: 'Neon',
+    'teal-orange': 'Teal & orange',
+    golden: 'Golden hour',
+    moody: 'Moody',
+    vintage: 'Vintage',
+    'cross-process': 'Cross process',
+    'bleach-bypass': 'Bleach bypass',
+    matte: 'Matte',
+    'film-warm': 'Warm film',
+    'film-cool': 'Cool film',
+    sepia: 'Sepia',
+    cyberpunk: 'Cyberpunk',
+    pastel: 'Pastel',
+};
 
-export const FONT_FAMILIES = ['Inter', 'Arial', 'Georgia', 'Impact', 'Courier New'];
+export const FILTERS = Object.keys(FILTER_PREVIEW_CSS) as VideoFilter[];
+
+export const FONT_FAMILIES = ['Inter', 'Poppins', 'Anton', 'Bebas Neue', 'Arial', 'Impact', 'Georgia', 'Courier New'];
+
+/** Caption fonts bundled with the app (public/fonts/captions) and burned in by the renderer. */
+const BUNDLED_FONTS: Record<string, string> = {
+    Anton: "'Kengan Anton', Impact, sans-serif",
+    'Bebas Neue': "'Kengan Bebas', Impact, sans-serif",
+    Poppins: "'Kengan Poppins', Arial, sans-serif",
+    Impact: "Impact, 'Kengan Anton', sans-serif",
+};
+
+/** CSS font-family for the preview. */
+export const previewFont = (family: string) => BUNDLED_FONTS[family] || family;
 
 export const DEFAULT_TEXT: Omit<TextElement, 'id' | 'startTime'> = {
     type: 'text',
@@ -71,15 +119,7 @@ export const DEFAULT_TEXT: Omit<TextElement, 'id' | 'startTime'> = {
     opacity: 1,
 };
 
-/** Caption presets surfaced in the Captions tab. */
-export const CAPTION_STYLES: Record<string, Partial<TextElement>> = {
-    bold: { fontSize: 76, fontWeight: 'bold', color: '#ffffff', backgroundColor: 'transparent', fontFamily: 'Impact' },
-    minimal: { fontSize: 56, fontWeight: 'normal', color: '#ffffff', backgroundColor: 'rgba(0,0,0,0.55)', fontFamily: 'Inter' },
-    karaoke: { fontSize: 72, fontWeight: 'bold', color: '#facc15', backgroundColor: 'transparent', fontFamily: 'Arial' },
-    neon: { fontSize: 72, fontWeight: 'bold', color: '#22d3ee', backgroundColor: 'rgba(0,0,0,0.35)', fontFamily: 'Arial' },
-    impact: { fontSize: 88, fontWeight: 'bold', color: '#ffffff', backgroundColor: 'transparent', fontFamily: 'Impact' },
-    highlighter: { fontSize: 60, fontWeight: 'bold', color: '#ffffff', backgroundColor: 'rgba(0,0,0,0.65)', fontFamily: 'Arial' },
-    accent: { fontSize: 64, fontWeight: 'bold', color: '#ffffff', backgroundColor: '#e04a18', fontFamily: 'Arial' },
-};
+/** Caption styles by template id (lib/caption-templates.ts holds the full templates). */
+export const CAPTION_STYLES: Record<string, Partial<TextElement>> = Object.fromEntries(CAPTION_TEMPLATES.map((t) => [t.id, t.style]));
 
 export const SPEED_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2];

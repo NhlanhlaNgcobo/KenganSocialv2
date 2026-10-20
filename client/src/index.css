@@ -699,9 +699,12 @@ input[type='radio'] {
     transform: translateY(4px);
   }
 
+  /* End on "none", not translateY(0): with animation-fill-mode both, any transform left on the
+     page container turns it into the containing block for position:fixed children, which traps
+     every modal and drawer inside the page instead of covering the screen. */
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -737,16 +740,19 @@ input[type='radio'] {
   }
 }
 
+/* "backwards" (not "both"): once the animation ends nothing stays applied. A filled transform
+   animation makes the element a containing block for position:fixed children, which would trap
+   modals and drawers inside the page. */
 .animate-fade-in {
-  animation: fadeIn 0.25s ease-out both;
+  animation: fadeIn 0.25s ease-out backwards;
 }
 
 .animate-slide-in {
-  animation: slideInLeft 0.2s ease-out both;
+  animation: slideInLeft 0.2s ease-out backwards;
 }
 
 .stagger-children > * {
-  animation: fadeIn 0.25s ease-out both;
+  animation: fadeIn 0.25s ease-out backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {

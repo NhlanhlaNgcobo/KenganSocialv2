@@ -70,8 +70,8 @@ async function planGuide(request, onStage) {
     onStage('Writing the steps', 25);
     const { plan, planner } = await planTutorial(app, { focus: request.focus });
     // The renderer reads identity the same way for both kinds.
-    const iconData = await fetchIcon(app.iconUrl);
-    return { source: { url: app.url, colors: app.colors, fonts: app.fonts, iconData }, plan, planner };
+    const [iconData, logoData] = await Promise.all([fetchIcon(app.iconUrl), fetchIcon(app.colors?.logoUrl)]);
+    return { source: { url: app.url, colors: app.colors, fonts: app.fonts, iconData, logoData }, plan, planner };
 }
 
 async function fetchIcon(url) {

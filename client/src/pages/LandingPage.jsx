@@ -7,12 +7,11 @@ import {
     Check,
     Clapperboard,
     Instagram,
-    Linkedin,
+    Facebook,
     MessageCircle,
     Megaphone,
     Music2,
     PenLine,
-    Pin,
     Play,
     Scissors,
     ShieldCheck,
@@ -20,7 +19,6 @@ import {
     Upload,
     Wand2,
     Youtube,
-    AtSign,
 } from 'lucide-react';
 import LandingNavbar from '../components/layout/LandingNavbar';
 import { useAuth } from '../context/AuthContext';
@@ -35,9 +33,7 @@ const NETWORKS = [
     { icon: Music2, label: 'TikTok' },
     { icon: Instagram, label: 'Instagram Reels' },
     { icon: Youtube, label: 'YouTube Shorts' },
-    { icon: Linkedin, label: 'LinkedIn' },
-    { icon: AtSign, label: 'Threads' },
-    { icon: Pin, label: 'Pinterest' },
+    { icon: Facebook, label: 'Facebook' },
 ];
 
 const STEPS = [

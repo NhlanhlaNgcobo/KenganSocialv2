@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { FFMPEG, probe, run } from './ffmpeg-runner.js';
+import { applyCleanup, hasCleanup, normalizeCleanup } from './clip-cleanup.js';
 
 /**
  * Clip enhancement: stabilization and auto-framing, producing a new video file.
@@ -212,19 +213,29 @@ async function applyFit(inputPath, workDir, ratio, duration, onProgress) {
  * @param {(pct: number) => void} [opts.onProgress]
  * @param {string} [opts.jobId]  manual_edit_jobs id the Python service may write progress to
  */
-export async function enhanceVideo({ inputPath, stabilize: stab, autoframe, onProgress = () => {}, jobId = null }) {
+export async function enhanceVideo({ inputPath, stabilize: stab, autoframe, cleanup: rawCleanup = null, onProgress = () => {}, jobId = null }) {
     const info = await probe(inputPath);
-    if (!info.hasVideo) throw new Error('This file has no video track to enhance.');
+    const cleanup = rawCleanup ? normalizeCleanup(rawCleanup) : null;
+    const wantsCleanup = cleanup && hasCleanup(cleanup);
+    if (!info.hasVideo && (stab || autoframe || !wantsCleanup)) throw new Error('This file has no video track to enhance.');
     const duration = info.duration || 1;
     const workDir = fs.mkdtempSync(path.join(RENDER_DIR, 'enhance-'));
 
     // Progress budget: stabilization 0–60 (or 0–100 alone), auto-frame the rest.
     const stabShare = stab ? (autoframe ? 0.6 : 1) : 0;
     const report = (f) => onProgress(Math.min(99, Math.round(f * 100)));
-    const summary = { stabilized: false, autoframe: null };
+    const summary = { stabilized: false, autoframe: null, cleanup: null };
 
     try {
         let current = inputPath;
+        // Clean-up first: denoising before stabilisation gives the motion analysis cleaner frames.
+        if (wantsCleanup) {
+            const cleanShare = stab || autoframe ? 0.25 : 1;
+            const cleaned = path.join(workDir, info.hasVideo ? 'cleaned.mp4' : 'cleaned.m4a');
+            const done = await applyCleanup(current, cleaned, cleanup, info, (f) => report(f * cleanShare));
+            current = cleaned;
+            summary.cleanup = { ...done, options: cleanup };
+        }
         if (stab) {
             const options = normalizeStabilizeOptions(stab);
             const progressJob = jobId ? { progressJobId: jobId, progressFrom: 0, progressTo: Math.round(stabShare * 99) } : {};
@@ -270,7 +281,7 @@ export async function enhanceVideo({ inputPath, stabilize: stab, autoframe, onPr
 
         if (current === inputPath) throw new Error(summary.autoframe?.reason || 'Nothing to change for this clip.');
 
-        const outputPath = path.join(RENDER_DIR, `enhanced_${uuidv4()}.mp4`);
+        const outputPath = path.join(RENDER_DIR, `enhanced_${uuidv4()}${path.extname(current) || '.mp4'}`);
         fs.renameSync(current, outputPath);
         onProgress(100);
         return { outputPath, summary };

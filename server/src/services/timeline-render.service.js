@@ -1,9 +1,15 @@
 import fs from 'fs';
+import { buildTextAss, FONTS_DIR } from './timeline-text-ass.js';
+import { effectFilters, gradeFilters, LOOKS, normalizeEffects, normalizeGrade, normalizeTransition, TRANSITIONS } from './timeline-fx.js';
+import crypto from 'crypto';
+import sharp from 'sharp';
+import { buildLut, isNeutralColor, lutToCube, normalizeColor, vignetteAt } from './color-pipeline.js';
 import os from 'os';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { FFMPEG, probe, run } from './ffmpeg-runner.js';
 import { getUploadPath } from './manual-edit.service.js';
+import { CAPTION_MOTIONS, TEXT_ANIMATIONS } from './caption-motion.js';
 
 /**
  * Renders a multi-track editor timeline (edit config v2) to a single MP4.
@@ -26,22 +32,14 @@ export const EXPORT_PRESETS = {
     youtube: { width: 1920, height: 1080 },
 };
 
-const FILTER_PRESETS = {
-    vivid: 'eq=saturation=1.5:contrast=1.1:brightness=0.05',
-    fade: 'eq=saturation=0.6:brightness=0.1:contrast=0.9',
-    noir: 'hue=s=0,eq=contrast=1.3:brightness=-0.05',
-    warm: 'colorbalance=rs=0.15:gs=0.05:bs=-0.1:rm=0.1:gm=0.0:bm=-0.1',
-    cool: 'colorbalance=rs=-0.1:gs=0.0:bs=0.15:rm=-0.05:gm=0.05:bm=0.1',
-    drama: 'eq=contrast=1.4:brightness=-0.08:saturation=1.2,unsharp=5:5:1.0',
-    neon: 'eq=saturation=2.0:contrast=1.3:brightness=0.1,hue=h=10',
-};
+const FILTER_PRESETS = LOOKS;
 
 const LIMITS = {
     maxDuration: 3 * 60 * 60,
-    maxMain: 300,
+    maxMain: 2500,
     maxOverlays: 40,
     maxAudio: 40,
-    maxText: 600,
+    maxText: 4000,
     maxTextLength: 500,
 };
 
@@ -94,13 +92,15 @@ function normalizeTransform(raw) {
     const t = {
         scaleStart: num(raw.scaleStart, 1, 0.1, 4),
         scaleEnd: num(raw.scaleEnd, num(raw.scaleStart, 1, 0.1, 4), 0.1, 4),
+        xEnd: num(raw.xEnd, num(raw.x, 0, -5000, 5000), -5000, 5000),
+        yEnd: num(raw.yEnd, num(raw.y, 0, -5000, 5000), -5000, 5000),
         x: num(raw.x, 0, -5000, 5000),
         y: num(raw.y, 0, -5000, 5000),
         rotation: num(raw.rotation, 0, -360, 360),
         flipH: !!raw.flipH,
         flipV: !!raw.flipV,
     };
-    const identity = t.scaleStart === 1 && t.scaleEnd === 1 && !t.x && !t.y && !t.rotation && !t.flipH && !t.flipV;
+    const identity = t.scaleStart === 1 && t.scaleEnd === 1 && !t.x && !t.y && !t.xEnd && !t.yEnd && !t.rotation && !t.flipH && !t.flipV;
     return identity ? null : t;
 }
 
@@ -122,7 +122,11 @@ function normalizeMedia(item, ownerId) {
         length: Math.max(0.05, Math.min(length, LIMITS.maxDuration)),
         volume: num(item.volume, 1, 0, 2),
         filter: FILTER_PRESETS[item.filter] ? item.filter : 'none',
+        grade: normalizeGrade(item.grade),
         transform: normalizeTransform(item.transform),
+        effects: normalizeEffects(item.effects),
+        transitionIn: normalizeTransition(item.transitionIn),
+        color: item.color && typeof item.color === 'object' ? normalizeColor(item.color) : null,
     };
 }
 
@@ -130,6 +134,9 @@ function normalizeText(item) {
     const content = String(item?.content ?? '').slice(0, LIMITS.maxTextLength);
     const timelineStart = num(item.timelineStart, 0, 0, LIMITS.maxDuration);
     const timelineEnd = num(item.timelineEnd, timelineStart + 3, timelineStart + 0.05, LIMITS.maxDuration);
+    if ([...CAPTION_MOTIONS, ...TEXT_ANIMATIONS.map((a) => a.id)].includes(item.captionMotion) && num(item.captionDuration, timelineEnd - timelineStart, 0.05, 600) > 30) {
+        throw new RenderInputError('Animated captions must be 30 seconds or shorter. Split the caption first.');
+    }
     return {
         content,
         timelineStart,
@@ -143,6 +150,18 @@ function normalizeText(item) {
         x: num(item.x, 0, -5000, 5000),
         y: num(item.y, 0, -5000, 5000),
         opacity: num(item.opacity, 1, 0, 1),
+        rotation: num(item.rotation, 0, -360, 360),
+        stroke: { color: parseColor(item.strokeColor) || { hex: '000000', alpha: 0 }, width: Math.round(num(item.strokeWidth, 0, 0, 40)) },
+        animation: ['fade', 'pop'].includes(item.animation) ? item.animation : 'none',
+        captionMotion: [...CAPTION_MOTIONS, ...TEXT_ANIMATIONS.map((a) => a.id)].includes(item.captionMotion) ? item.captionMotion : null,
+        captionWords: Array.isArray(item.captionWords) ? item.captionWords.slice(0, 100).map((w) => ({
+            text: String(w?.text ?? '').slice(0, 100),
+            start: num(w?.start, 0, 0, 600),
+            end: num(w?.end, 0, 0, 600),
+        })) : [],
+        captionOffset: num(item.captionOffset, 0, 0, 600),
+        captionDuration: num(item.captionDuration, timelineEnd - timelineStart, 0.05, 600),
+        accentColor: parseColor(item.accentColor) || { hex: 'a3e635', alpha: 1 },
     };
 }
 
@@ -184,12 +203,63 @@ export function normalizeTimelineConfig(config, ownerId) {
     const duration = Math.min(LIMITS.maxDuration, Math.max(num(config.duration, 0, 0), ...ends, 0));
     if (duration <= 0.05) throw new RenderInputError('The timeline is empty.');
 
-    return { ...preset, fps, background, duration, main, overlays, audio, text };
+    // Imported .cube LUTs referenced by clips (creative.look = 'lut:<id>'), as { size, data: [r,g,b,...] }.
+    const luts = {};
+    for (const [id, lut] of Object.entries(config.luts && typeof config.luts === 'object' ? config.luts : {}).slice(0, 20)) {
+        const size = Math.round(Number(lut?.size));
+        if (!/^[\w-]{1,64}$/.test(id) || !(size >= 2 && size <= 65) || !Array.isArray(lut.data) || lut.data.length !== size * size * size * 3) continue;
+        luts[id] = { size, data: Float32Array.from(lut.data, (v) => Math.min(1, Math.max(0, Number(v) || 0))) };
+    }
+
+    return { ...preset, fps, background, duration, main, overlays, audio, text, luts };
+}
+
+/**
+ * Colour grade files for a clip: a .cube LUT (lut3d) and, with a vignette, a mask image.
+ * Cached per work folder by settings, so repeated looks are built once.
+ */
+async function colorAssets(color, spec, workDir) {
+    if (!color) return { lut: null, mask: null };
+    const key = crypto.createHash('sha1').update(JSON.stringify(color)).digest('hex').slice(0, 16);
+    let lut = null;
+    if (!isNeutralColor(color)) {
+        lut = path.join(workDir, `grade_${key}.cube`);
+        if (!fs.existsSync(lut)) fs.writeFileSync(lut, lutToCube(buildLut(color, spec.luts)));
+    }
+    let mask = null;
+    const vig = color.vignette;
+    if (vig?.amount) {
+        mask = { path: path.join(workDir, `vignette_${key}.png`), mode: vig.amount < 0 ? 'multiply' : 'screen' };
+        if (!fs.existsSync(mask.path)) {
+            const { width: W, height: H } = spec;
+            // Built at a quarter size and scaled up: vignettes are smooth.
+            const w = Math.ceil(W / 4);
+            const h = Math.ceil(H / 4);
+            const px = Buffer.alloc(w * h);
+            for (let y = 0; y < h; y += 1) {
+                for (let x = 0; x < w; x += 1) {
+                    const { dark, light } = vignetteAt(vig, (x + 0.5) / w, (y + 0.5) / h, W / H);
+                    px[y * w + x] = Math.round((vig.amount < 0 ? dark : light) * 255);
+                }
+            }
+            await sharp(px, { raw: { width: w, height: h, channels: 1 } }).resize(W, H, { kernel: 'cubic' }).toColourspace('srgb').png().toFile(mask.path);
+        }
+    }
+    return { lut, mask };
 }
 
 // ---------------------------------------------------------------------------
 // FFmpeg helpers
 // ---------------------------------------------------------------------------
+
+let libassAvailable = null;
+async function hasLibass() {
+    if (libassAvailable === null) {
+        const filters = await run(FFMPEG, ['-hide_banner', '-filters']).catch(() => '');
+        libassAvailable = /\bsubtitles\b/.test(String(filters));
+    }
+    return libassAvailable;
+}
 
 let drawtextCaps = null;
 async function getDrawtextCaps() {
@@ -238,6 +308,12 @@ const FONT_CANDIDATES = {
 function resolveFont(family, bold) {
     if (process.env.EDITOR_FONT_FILE && fs.existsSync(process.env.EDITOR_FONT_FILE)) return process.env.EDITOR_FONT_FILE;
     const key = String(family || '').toLowerCase();
+    const BUNDLED = { anton: ['Anton-Regular.ttf', 'Anton-Regular.ttf'], 'bebas neue': ['BebasNeue-Regular.ttf', 'BebasNeue-Regular.ttf'], poppins: ['Poppins-Bold.ttf', 'Poppins-Black.ttf'] };
+    const bundled = BUNDLED[key] || (process.platform !== 'win32' && key === 'impact' ? BUNDLED.anton : null);
+    if (bundled) {
+        const file = path.join(FONTS_DIR, bundled[bold ? 1 : 0]);
+        if (fs.existsSync(file)) return file;
+    }
     const pick = (dir, pair) => {
         const file = path.join(dir, pair[bold ? 1 : 0]);
         return fs.existsSync(file) ? file : null;
@@ -264,9 +340,10 @@ const ENCODE_AUDIO = ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2']
 // ---------------------------------------------------------------------------
 
 /** Scale to fit, apply the colour filter to the picture only, then letterbox with the background. */
-function fitFilter(W, H, bgHex, filterName) {
+function fitFilter(W, H, bgHex, filterName, grade = null, lutPath = null) {
     const filter = filterName && filterName !== 'none' ? `,${FILTER_PRESETS[filterName]}` : '';
-    return `scale=${W}:${H}:force_original_aspect_ratio=decrease${filter},pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x${bgHex}`;
+    const lut = lutPath ? `,lut3d=file='${filterPath(lutPath)}':interp=tetrahedral` : '';
+    return `scale=${W}:${H}:force_original_aspect_ratio=decrease${filter}${gradeFilters(grade)}${lut},pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x${bgHex}`;
 }
 
 /**
@@ -284,11 +361,12 @@ function transformFilters(t, W, H, length, bgHex) {
     const zoom = animated
         ? `(${t.scaleStart.toFixed(4)}+${(t.scaleEnd - t.scaleStart).toFixed(4)}*min(t/${Math.max(length, 0.04).toFixed(3)},1))`
         : t.scaleStart.toFixed(4);
-    if (animated || t.scaleStart !== 1 || t.x || t.y) {
-        const margin = 2 * Math.ceil(Math.max(Math.abs(t.x), Math.abs(t.y)) / 2) + 2;
+    if (animated || t.scaleStart !== 1 || t.x || t.y || t.xEnd || t.yEnd) {
+        const margin = 2 * Math.ceil(Math.max(Math.abs(t.x), Math.abs(t.y), Math.abs(t.xEnd), Math.abs(t.yEnd)) / 2) + 2;
         parts.push(`scale=w='trunc(${W}*${zoom}/2)*2':h='trunc(${H}*${zoom}/2)*2'${animated ? ':eval=frame' : ''}`);
         parts.push(`pad=w='max(iw,${W})+${2 * margin}':h='max(ih,${H})+${2 * margin}':x='(ow-iw)/2':y='(oh-ih)/2':color=0x${bgHex}${animated ? ':eval=frame' : ''}`);
-        parts.push(`crop=${W}:${H}:x='(iw-${W})/2-(${t.x.toFixed(1)})':y='(ih-${H})/2-(${t.y.toFixed(1)})'`);
+        const travel = (a, b) => `${a.toFixed(1)}+${(b - a).toFixed(1)}*min(t/${Math.max(length, 0.04).toFixed(3)},1)`;
+        parts.push(`crop=${W}:${H}:x='(iw-${W})/2-(${travel(t.x, t.xEnd)})':y='(ih-${H})/2-(${travel(t.y, t.yEnd)})'`);
     }
     if (t.rotation) parts.push(`rotate=a=${t.rotation.toFixed(3)}*PI/180:fillcolor=0x${bgHex}`);
     return parts.length ? `,${parts.join(',')}` : '';
@@ -313,6 +391,7 @@ function overlayTransformFilters(t) {
 
 async function renderSegment(segment, spec, outPath) {
     const { width: W, height: H, fps, background } = spec;
+    const assets = segment.kind === 'gap' ? { lut: null, mask: null } : await colorAssets(segment.color, spec, path.dirname(outPath));
     const len = segment.length.toFixed(3);
     const args = ['-hide_banner', '-y'];
     const graph = [];
@@ -326,21 +405,21 @@ async function renderSegment(segment, spec, outPath) {
     } else if (segment.kind === 'image') {
         args.push('-loop', '1', '-framerate', String(fps), '-t', len, '-i', segment.path);
         args.push('-f', 'lavfi', '-t', len, '-i', 'anullsrc=r=48000:cl=stereo');
-        graph.push(`[0:v]${fitFilter(W, H, background.hex, segment.filter)}${transformFilters(segment.transform, W, H, segment.length, background.hex)},fps=${fps},format=yuv420p,setsar=1[v]`);
+        graph.push(`[0:v]${fitFilter(W, H, background.hex, segment.filter, segment.grade, assets.lut)}${transformFilters(segment.transform, W, H, segment.length, background.hex)}${effectFilters(segment.effects, W, H, fps)},fps=${fps},format=yuv420p,setsar=1[v]`);
         audioLabel = '1:a';
     } else {
         const info = await probe(segment.path);
         const srcLen = (segment.sourceEnd - segment.sourceStart).toFixed(3);
         args.push('-ss', segment.sourceStart.toFixed(3), '-t', srcLen, '-i', segment.path);
         if (info.hasVideo) {
-            graph.push(`[0:v]setpts=(PTS-STARTPTS)/${segment.speed},${fitFilter(W, H, background.hex, segment.filter)}${transformFilters(segment.transform, W, H, segment.length, background.hex)},fps=${fps},format=yuv420p,setsar=1[v]`);
+            graph.push(`[0:v]setpts=(PTS-STARTPTS)/${segment.speed},${fitFilter(W, H, background.hex, segment.filter, segment.grade, assets.lut)}${transformFilters(segment.transform, W, H, segment.length, background.hex)}${effectFilters(segment.effects, W, H, fps)}${padFilter(segment)},fps=${fps},format=yuv420p,setsar=1[v]`);
         } else {
             args.push('-f', 'lavfi', '-i', `color=c=0x${background.hex}:s=${W}x${H}:r=${fps}:d=${len}`);
             graph.push(`[1:v]format=yuv420p,setsar=1[v]`);
         }
         if (info.hasAudio && segment.volume > 0) {
             const tempo = atempoChain(segment.speed);
-            graph.push(`[0:a]asetpts=PTS-STARTPTS${tempo.length ? `,${tempo.join(',')}` : ''},volume=${segment.volume.toFixed(3)},aresample=48000,aformat=channel_layouts=stereo[a]`);
+            graph.push(`[0:a]asetpts=PTS-STARTPTS${tempo.length ? `,${tempo.join(',')}` : ''},volume=${segment.volume.toFixed(3)},aresample=48000,aformat=channel_layouts=stereo${audioPadFilter(segment)}[a]`);
             audioLabel = 'a';
         } else {
             const idx = info.hasVideo ? 1 : 2;
@@ -349,10 +428,120 @@ async function renderSegment(segment, spec, outPath) {
         }
     }
 
+    if (assets.mask) {
+        // Vignette: blend the mask over the finished picture (multiply darkens, screen lightens).
+        const k = args.filter((a) => a === '-i').length;
+        args.push('-loop', '1', '-i', assets.mask.path);
+        const end = `,fps=${fps},format=yuv420p,setsar=1[v]`;
+        const i = graph.findIndex((g) => g.endsWith(end));
+        if (i >= 0) {
+            graph[i] = `${graph[i].slice(0, -end.length)},fps=${fps},format=gbrp[pre];[${k}:v]scale=${W}:${H},format=gbrp[vm];[pre][vm]blend=all_mode=${assets.mask.mode}:shortest=1,format=yuv420p,setsar=1[v]`;
+        }
+    }
     args.push('-filter_complex', graph.join(';'));
     args.push('-map', '[v]', '-map', audioLabel === 'a' ? '[a]' : audioLabel);
     args.push('-t', len, '-r', String(fps), ...ENCODE_VIDEO, ...ENCODE_AUDIO, '-video_track_timescale', '90000', outPath);
     await run(FFMPEG, args);
+}
+
+/** Frozen frames where a transition needs more picture than the source has (tpad clone). */
+function padFilter(segment) {
+    const head = segment.padHead || 0;
+    const tail = segment.padTail || 0;
+    if (head < 0.01 && tail < 0.01) return '';
+    return `,tpad=start_mode=clone:start_duration=${head.toFixed(3)}:stop_mode=clone:stop_duration=${tail.toFixed(3)}`;
+}
+
+/** Silence matching padFilter, so picture and sound stay in sync. */
+function audioPadFilter(segment) {
+    const head = segment.padHead || 0;
+    const tail = segment.padTail || 0;
+    const parts = [];
+    if (head >= 0.01) parts.push(`adelay=${Math.round(head * 1000)}:all=1`);
+    if (tail >= 0.01) parts.push(`apad=pad_dur=${tail.toFixed(3)}`);
+    return parts.length ? `,${parts.join(',')}` : '';
+}
+
+/**
+ * Transitions are centred on the cut: half the duration comes from footage after the outgoing
+ * clip, half from footage before the incoming clip (frozen frames when the source has none), so
+ * the timeline length and every later element keep their positions. Mutates the segments
+ * (extends source windows / pads) and returns the boundaries with a transition.
+ */
+async function prepareTransitions(segments) {
+    const boundaries = [];
+    for (let i = 1; i < segments.length; i += 1) {
+        const a = segments[i - 1];
+        const b = segments[i];
+        const t = b.transitionIn;
+        if (!t || a.kind === 'gap' || b.kind === 'gap') continue;
+        const d = Math.min(t.duration, a.length * 0.9, b.length * 0.9);
+        if (d < 0.15) continue;
+        const h = d / 2;
+        for (const [seg, side] of [[a, 'tail'], [b, 'head']]) {
+            if (seg.kind === 'image') {
+                seg.length += h;
+                continue;
+            }
+            const sourceDuration = (await probe(seg.path)).duration || seg.sourceEnd;
+            const need = h * seg.speed;
+            if (side === 'tail') {
+                const extra = Math.max(0, Math.min(need, sourceDuration - seg.sourceEnd));
+                seg.sourceEnd += extra;
+                seg.padTail = (seg.padTail || 0) + (need - extra) / seg.speed;
+            } else {
+                const extra = Math.max(0, Math.min(need, seg.sourceStart));
+                seg.sourceStart -= extra;
+                seg.padHead = (seg.padHead || 0) + (need - extra) / seg.speed;
+            }
+            seg.length += h;
+        }
+        boundaries.push({ index: i, type: TRANSITIONS[t.type], duration: d });
+    }
+    return boundaries;
+}
+
+/**
+ * Joins rendered segments. Runs without a transition are stream-copied (concat demuxer); runs are
+ * then joined with xfade (picture) and acrossfade (sound).
+ */
+async function joinSegments(segmentPaths, boundaries, workDir, spec) {
+    const cuts = new Map(boundaries.map((b) => [b.index, b]));
+    const groups = [[]];
+    segmentPaths.forEach((p, i) => {
+        if (cuts.has(i)) groups.push([]);
+        groups[groups.length - 1].push(p);
+    });
+    const groupFiles = [];
+    for (const [g, files] of groups.entries()) {
+        const list = `group_${g}.txt`;
+        fs.writeFileSync(path.join(workDir, list), files.map((f) => `file '${path.basename(f)}'`).join('\n'));
+        const out = `group_${g}.mp4`;
+        await run(FFMPEG, ['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', out], { cwd: workDir });
+        groupFiles.push(out);
+    }
+    if (groupFiles.length === 1) {
+        fs.renameSync(path.join(workDir, groupFiles[0]), path.join(workDir, 'base.mp4'));
+        return;
+    }
+    const lengths = [];
+    for (const f of groupFiles) lengths.push((await probe(path.join(workDir, f))).duration);
+    const args = ['-hide_banner', '-y'];
+    for (const f of groupFiles) args.push('-i', f);
+    const graph = [];
+    let v = '[0:v]';
+    let a = '[0:a]';
+    let merged = lengths[0];
+    boundaries.forEach((b, k) => {
+        const offset = Math.max(0, merged - b.duration);
+        graph.push(`${v}[${k + 1}:v]xfade=transition=${b.type}:duration=${b.duration.toFixed(3)}:offset=${offset.toFixed(3)}[v${k + 1}]`);
+        graph.push(`${a}[${k + 1}:a]acrossfade=d=${b.duration.toFixed(3)}:c1=tri:c2=tri[a${k + 1}]`);
+        v = `[v${k + 1}]`;
+        a = `[a${k + 1}]`;
+        merged = merged + lengths[k + 1] - b.duration;
+    });
+    args.push('-filter_complex', graph.join(';'), '-map', v, '-map', a, '-r', String(spec.fps), ...ENCODE_VIDEO, ...ENCODE_AUDIO, 'base.mp4');
+    await run(FFMPEG, args, { cwd: workDir });
 }
 
 /** Lays out the main track; overlapping clips are pushed back rather than dropped. Extends spec.duration if needed. */
@@ -387,7 +576,8 @@ async function composite(basePath, spec, workDir, outPath, onProgress) {
         const k = inputIndex++;
         const t0 = ov.timelineStart.toFixed(3);
         const t1 = (ov.timelineStart + ov.length).toFixed(3);
-        const filter = ov.filter !== 'none' ? `,${FILTER_PRESETS[ov.filter]}` : '';
+        const ovAssets = await colorAssets(ov.color ? { ...ov.color, vignette: { amount: 0 } } : null, spec, workDir);
+        const filter = `${ov.filter !== 'none' ? `,${FILTER_PRESETS[ov.filter]}` : ''}${gradeFilters(ov.grade)}${ovAssets.lut ? `,lut3d=file='${filterPath(ovAssets.lut)}':interp=tetrahedral` : ''}`;
         if (ov.kind === 'image') {
             args.push('-loop', '1', '-framerate', String(spec.fps), '-t', ov.length.toFixed(3), '-i', ov.path);
             graph.push(`[${k}:v]setpts=PTS-STARTPTS+${t0}/TB,scale=${W}:${H}:force_original_aspect_ratio=decrease${filter}${overlayTransformFilters(ov.transform)},format=yuva420p${overlayRotation(ov.transform)}[ov${i}]`);
@@ -407,11 +597,20 @@ async function composite(basePath, spec, workDir, outPath, onProgress) {
         current = `[vo${i}]`;
     }
 
-    // One drawtext per line: FFmpeg renders "\n" in a textfile as a missing-glyph box
+    // All text in one libass pass when FFmpeg has it (fast, outlines, boxes, animations, fonts).
+    if (spec.text.length && (await hasLibass())) {
+        fs.writeFileSync(path.join(workDir, 'text.ass'), buildTextAss(spec.text, W, H), 'utf8');
+        graph.push(`${current}subtitles=filename=text.ass:fontsdir='${filterPath(FONTS_DIR)}'[vtext]`);
+        current = '[vtext]';
+    }
+    const drawtextItems = current === '[vtext]' ? [] : spec.text;
+    if (drawtextItems.some((t) => t.captionMotion)) throw new RenderInputError('Animated captions require FFmpeg with libass. Install subtitle support before exporting this project.');
+
+    // Fallback: one drawtext per line. FFmpeg renders "\n" in a textfile as a missing-glyph box
     // with common fonts, and per-line placement lets us honour alignment.
-    const caps = spec.text.length ? await getDrawtextCaps() : null;
+    const caps = drawtextItems.length ? await getDrawtextCaps() : null;
     let textIndex = 0;
-    for (const t of spec.text) {
+    for (const t of drawtextItems) {
         const font = resolveFont(t.fontFamily, t.bold);
         const color = `0x${t.color.hex}@${(t.color.alpha * t.opacity).toFixed(3)}`;
         const lines = t.content.split(/\r?\n/);
@@ -443,6 +642,10 @@ async function composite(basePath, spec, workDir, outPath, onProgress) {
                 ...(caps?.yAlign ? ['y_align=font'] : []),
                 enable,
             ];
+            if (t.stroke.width > 0 && t.stroke.color.alpha > 0 && t.background.alpha === 0) {
+                opts.push(`borderw=${t.stroke.width}`, `bordercolor=0x${t.stroke.color.hex}@${(t.stroke.color.alpha * t.opacity).toFixed(3)}`);
+            }
+            if (t.animation !== 'none') opts.push(`alpha='min(1,max(0,(t-${t.timelineStart.toFixed(3)})/${t.animation === 'pop' ? '0.12' : '0.25'}))'`);
             if (t.background.alpha > 0) {
                 opts.push('box=1', `boxcolor=0x${t.background.hex}@${(t.background.alpha * t.opacity).toFixed(3)}`, `boxborderw=${Math.round(t.fontSize * 0.18)}`);
             } else {
@@ -493,6 +696,7 @@ export async function renderTimeline(config, ownerId, onProgress = () => {}) {
 
     try {
         const segments = planMainTrack(spec);
+        const boundaries = await prepareTransitions(segments);
         const segmentPaths = [];
         for (const [i, segment] of segments.entries()) {
             const out = path.join(workDir, `seg_${String(i).padStart(4, '0')}.mp4`);
@@ -501,10 +705,8 @@ export async function renderTimeline(config, ownerId, onProgress = () => {}) {
             report(((i + 1) / segments.length) * 0.6);
         }
 
-        const listPath = path.join(workDir, 'segments.txt');
-        fs.writeFileSync(listPath, segmentPaths.map((p) => `file '${path.basename(p)}'`).join('\n'));
         const basePath = path.join(workDir, 'base.mp4');
-        await run(FFMPEG, ['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', 'segments.txt', '-c', 'copy', 'base.mp4'], { cwd: workDir });
+        await joinSegments(segmentPaths, boundaries, workDir, spec);
         report(0.65);
 
         const outPath = path.join(RENDER_DIR, `export_${uuidv4()}.mp4`);

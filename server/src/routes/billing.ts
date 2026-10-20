@@ -4,7 +4,7 @@ import axios from 'axios';
 import admin from 'firebase-admin';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { PLAN_LIMITS, PLAN_DISPLAY_NAMES, Plan, PlanFeature } from '../utils/planLimits';
+import { MAX_CLIENTS, MAX_SOURCE_MINUTES, PLAN_LIMITS, PLAN_DISPLAY_NAMES, Plan, PlanFeature } from '../utils/planLimits';
 import { redis } from '../utils/redis';
 import { getMonth } from '../utils/dateUtils';
 import { calculateWorkspaceStorage } from '../utils/storage';
@@ -18,8 +18,9 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const PAYSTACK_CALLBACK_URL = process.env.PAYSTACK_CALLBACK_URL || `${FRONTEND_URL}/dashboard/billing`;
 export const BILLING_EMAIL = 'billing@kengansocial.com';
 const BILLING_SUPPORT_URL = process.env.PAYSTACK_BILLING_SUPPORT_URL || `mailto:${BILLING_EMAIL}`;
-// Annual billing charges 12 months at this fraction of the monthly price (0.85 = 15% off).
-const ANNUAL_DISCOUNT = 0.85;
+// Annual billing charges 12 months at this fraction of the monthly price (0.9 = 10% off; deeper
+// discounts push the full-use margin below 50%).
+const ANNUAL_DISCOUNT = 0.9;
 const ANNUAL_DISCOUNT_PERCENT = Math.round((1 - ANNUAL_DISCOUNT) * 100);
 const PAYMENTS_NOT_CONFIGURED = "Payments aren't set up yet. Contact us to upgrade and we'll sort it out.";
 
@@ -40,27 +41,27 @@ type CatalogEntry = {
 const PLAN_CATALOG: Record<string, CatalogEntry> = {
     creator_starter: {
         label: 'Creator Starter',
-        amountZar: 249,
+        amountZar: 299,
         tier: 'nano',
-        description: 'For creators posting regularly who want AI help.',
+        description: 'For creators posting regularly who want AI help and a taste of AI clips.',
     },
     creator_pro: {
         label: 'Creator Pro',
-        amountZar: 499,
+        amountZar: 699,
         tier: 'creator',
         description: 'For full-time creators running several channels.',
         popular: true,
     },
     agency: {
         label: 'Agency',
-        amountZar: 1999,
+        amountZar: 3499,
         tier: 'agency',
-        description: 'For teams and agencies managing clients.',
+        description: 'For teams and agencies managing several client brands.',
         extras: ['Leads board'],
     },
     enterprise: {
         label: 'Enterprise',
-        amountZar: 4999,
+        amountZar: 8999,
         tier: 'agency',
         description: 'For larger organisations with custom needs.',
         contactOnly: true,
@@ -102,10 +103,11 @@ function featuresForTier(tier: Plan): string[] {
         line(l.posts, 'scheduled posts / month', 'Unlimited scheduled posts'),
         line(l.exports, 'video exports / month', 'Unlimited video exports'),
         line(l.connections, 'connected accounts', 'Unlimited connected accounts'),
-        line(l.aiCalls, 'AI generations / month', 'Unlimited AI generations'),
-        line(l.renders, 'AI renders / month', 'Unlimited AI renders'),
-        line(l.clipAnalysis, 'clip analyses / month', 'Unlimited clip analyses'),
+        line(l.aiCalls, 'AI credits / month', 'Unlimited AI credits'),
+        line(l.renders, 'launch & tutorial videos / month', 'Unlimited launch & tutorial videos'),
+        l.clipAnalysis > 0 ? `${formatCount(l.clipAnalysis)} AI clip projects / month (videos up to ${MAX_SOURCE_MINUTES[tier]} min)` : null,
         line(l.transcribeHrs, 'hrs transcription / month', 'Unlimited transcription'),
+        MAX_CLIENTS[tier] === -1 ? 'Client approvals, unlimited clients' : MAX_CLIENTS[tier] > 0 ? `Client approvals for up to ${MAX_CLIENTS[tier]} clients` : null,
         `${l.storageGB} GB storage`,
     ].filter(Boolean) as string[];
 }

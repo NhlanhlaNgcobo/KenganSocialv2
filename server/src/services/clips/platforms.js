@@ -29,6 +29,14 @@ export const PLATFORMS = {
         safeTop: 0.12,
         safeBottom: 0.25,
     },
+    facebook: {
+        label: 'Facebook Reels',
+        ratio: '9:16',
+        length: 'short',
+        maxLength: 'long', // Facebook Reels run up to 90s
+        safeTop: 0.12,
+        safeBottom: 0.25,
+    },
 };
 
 export const DEFAULT_SAFE = { safeTop: 0.08, safeBottom: 0.16 };

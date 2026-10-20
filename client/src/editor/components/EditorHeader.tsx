@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, Download, Keyboard } from 'lucide-react';
+import { ChevronLeft, Download, Keyboard, Wand2 } from 'lucide-react';
+import { useAiEditStore } from '../stores/ai-edit-store';
 import { useProjectStore } from '../stores/project-store';
 import { useUiStore } from '../stores/ui-store';
 import { SHORTCUTS } from '../hooks/use-editor-shortcuts';
@@ -8,6 +9,8 @@ import { SHORTCUTS } from '../hooks/use-editor-shortcuts';
 export function EditorHeader() {
     const { name, setName, lastSavedAt } = useProjectStore();
     const setExportOpen = useUiStore((s) => s.setExportOpen);
+    const openAiEdit = useAiEditStore((s) => s.openStudio);
+    const aiEditBusy = useAiEditStore((s) => s.edit.running || s.analysis.running);
     const [showKeys, setShowKeys] = useState(false);
 
     return (
@@ -38,6 +41,9 @@ export function EditorHeader() {
                         </div>
                     ) : null}
                 </div>
+                <button className={`ke-btn ke-btn--ai ${aiEditBusy ? 'is-busy' : ''}`} onClick={openAiEdit} title="Edit your footage in the style of a reference video">
+                    <Wand2 size={15} /> AI edit{aiEditBusy ? '…' : ''}
+                </button>
                 <button className="ke-btn ke-btn--primary" onClick={() => setExportOpen(true)}>
                     <Download size={15} /> Export
                 </button>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Flame, Loader2, Save, Wand2 } from 'lucide-react';
+import { ArrowRight, Flame, Loader2, Save, Wand2 } from 'lucide-react';
+import { useAiEditStore } from '../../stores/ai-edit-store';
 import { useAuth } from '../../../context/AuthContext';
 import { CAPTION_STYLES } from '../../constants';
 import { applyKeepSegments, type AutoEditOptions } from '../../lib/ai';
@@ -130,8 +131,18 @@ export function AiView() {
     return (
         <div className="ke-view">
             <div className="ke-view__head">
-                <h3>AI Edit</h3>
+                <h3>AI tools</h3>
             </div>
+            <button className="aie-launch" onClick={() => useAiEditStore.getState().openStudio()}>
+                <span className="aie-launch__icon">
+                    <Wand2 size={16} />
+                </span>
+                <span>
+                    <strong>AI Edit in a style</strong>
+                    <small>Paste a TikTok or YouTube video you like; we edit your footage the same way.</small>
+                </span>
+                <ArrowRight size={15} />
+            </button>
             <SourcePicker />
 
             {running ? (

@@ -24,12 +24,9 @@ const SOURCES = [
 ];
 
 const PLATFORMS = [
-    { id: 'linkedin', label: 'LinkedIn', limit: 3000, schedulable: true },
-    { id: 'x', label: 'X thread', limit: 280, perPost: true },
     { id: 'instagram', label: 'Instagram', limit: 2200, calendar: true },
     { id: 'tiktok', label: 'TikTok', limit: 2200, calendar: true },
-    { id: 'threads', label: 'Threads', limit: 500, schedulable: true },
-    { id: 'facebook', label: 'Facebook', limit: 63206 },
+    { id: 'facebook', label: 'Facebook', limit: 63206, schedulable: true, calendar: true },
     { id: 'youtube', label: 'YouTube', limit: 5000, calendar: true },
 ];
 
@@ -44,7 +41,7 @@ export default function RepurposePage() {
     const [projectId, setProjectId] = useState('');
     const [project, setProject] = useState(null);
     const [clipId, setClipId] = useState('');
-    const [platforms, setPlatforms] = useState(['linkedin', 'x', 'instagram', 'tiktok']);
+    const [platforms, setPlatforms] = useState(['instagram', 'facebook', 'tiktok', 'youtube']);
     const [tone, setTone] = useState('Friendly');
     const [audience, setAudience] = useState('');
     const [cta, setCta] = useState('');
@@ -106,6 +103,10 @@ export default function RepurposePage() {
     // A YouTube video link in the Link tab is read from its captions (or transcribed).
     const linkIsYoutube = /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com\/(watch|shorts|live|embed)|youtu\.be\/)/i.test(url.trim());
     const [linkRights, setLinkRights] = useState(false);
+    // When YouTube blocks reading a link, the video can be uploaded instead (it is transcribed).
+    const [linkBlocked, setLinkBlocked] = useState(false);
+    const [fallbackFile, setFallbackFile] = useState(null);
+    const fallbackInput = useRef(null);
     const canSubmit =
         platforms.length > 0 &&
         ((source === 'url' && url.trim().length > 4 && (!linkIsYoutube || linkRights)) || (source === 'text' && text.trim().length >= 80) || (source === 'clip' && clip?.transcript));
@@ -176,8 +177,37 @@ export default function RepurposePage() {
                 })
             );
         } catch (err) {
+            if (err.data?.code === 'YOUTUBE_BLOCKED') setLinkBlocked(true);
             setError(err.message);
         } finally {
+            setBusy(false);
+        }
+    };
+
+    /** Fallback for a blocked YouTube link: upload the video file, transcribe it, write the posts. */
+    const generateFromUpload = async () => {
+        if (!fallbackFile) return;
+        setBusy(true);
+        setError('');
+        setResult(null);
+        try {
+            setUploadPct(0);
+            const uploadId = await uploadVideo(fallbackFile, setUploadPct);
+            setUploadPct(null);
+            setResult(
+                await repurposeApi.generate({
+                    source: { type: 'upload', uploadId, name: fallbackFile.name.replace(/\.[^.]+$/, '') },
+                    platforms,
+                    tone,
+                    audience,
+                    cta,
+                })
+            );
+            setLinkBlocked(false);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setUploadPct(null);
             setBusy(false);
         }
     };
@@ -217,6 +247,25 @@ export default function RepurposePage() {
                             <input type="checkbox" checked={linkRights} onChange={(e) => setLinkRights(e.target.checked)} disabled={busy} />
                             I own this video or have permission to repurpose it
                         </label>
+                    ) : null}
+                    {source === 'url' && linkIsYoutube && linkBlocked ? (
+                        <div className="repurpose-fallback" role="status">
+                            <strong>YouTube didn’t let our server read this video.</strong>
+                            <p>Upload the video file instead and we’ll transcribe it and write the posts. You can download your own video from YouTube Studio (Content → ⋮ → Download).</p>
+                            <input ref={fallbackInput} type="file" accept="video/*,audio/*" hidden onChange={(e) => setFallbackFile(e.target.files?.[0] || null)} />
+                            <div className="repurpose-fallback__actions">
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => fallbackInput.current?.click()} disabled={busy}>
+                                    <Upload size={14} /> {fallbackFile ? fallbackFile.name : 'Choose the video'}
+                                </button>
+                                <button type="button" className="btn btn-primary btn-sm" onClick={generateFromUpload} disabled={busy || !fallbackFile || !platforms.length}>
+                                    {busy ? <Loader2 size={14} className="spin" /> : null} Write posts from the upload
+                                </button>
+                                <button type="button" className="link-button" onClick={() => (setSource('text'), setLinkBlocked(false))} disabled={busy}>
+                                    or paste the transcript
+                                </button>
+                            </div>
+                            {uploadPct !== null ? <small>Uploading… {uploadPct}%</small> : null}
+                        </div>
                     ) : null}
 
                     {source === 'text' ? (
@@ -411,7 +460,7 @@ export default function RepurposePage() {
                         <div className="surface repurpose-empty">
                             <Repeat2 size={26} />
                             <h3>Posts appear here</h3>
-                            <p>Each platform gets its own format: a LinkedIn post, an X thread, an Instagram caption with hashtags, a TikTok script and more. Everything stays editable.</p>
+                            <p>Each platform gets its own format: an Instagram caption with hashtags, a Facebook post, a TikTok script and YouTube title, description and tags. Everything stays editable.</p>
                         </div>
                     ) : null}
                     {source !== 'youtube' && busy ? (
@@ -487,7 +536,7 @@ function DraftCard({ platform, draft, connected }) {
         }
     };
 
-    // X threads: count each post as it is now in the text box (posts are separated by blank lines).
+    // Multi-post formats: count each post as it is now in the text box (posts are separated by blank lines).
     const threadPosts = platform.perPost ? value.split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean) : [];
     const overLimit = platform.perPost ? threadPosts.some((t) => t.length > platform.limit) : value.length > platform.limit;
 

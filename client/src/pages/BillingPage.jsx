@@ -9,7 +9,7 @@ import './Billing.css';
 const USAGE_ROWS = [
     { key: 'posts', label: 'Scheduled posts' },
     { key: 'exports', label: 'Video exports' },
-    { key: 'aiCalls', label: 'AI generations' },
+    { key: 'aiCalls', label: 'AI credits' },
     { key: 'renders', label: 'AI renders' },
 ];
 

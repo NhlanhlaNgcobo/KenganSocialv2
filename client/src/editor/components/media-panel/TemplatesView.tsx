@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { FILTER_PREVIEW_CSS, LOOK_LABELS } from '../../constants';
+import { EFFECTS, TRANSITIONS } from '../../lib/fx';
 import { Loader2, Wand2 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { musicApi, type SongGenres } from '../../../lib/music-api';
@@ -6,7 +8,10 @@ import { applyTemplate, TEMPLATES, type AutoCutTemplate, type TemplateMusic } fr
 import { useAiStore } from '../../stores/ai-store';
 import { useTimelineStore } from '../../stores/timeline-store';
 import { useUiStore } from '../../stores/ui-store';
+import { arrangeClips } from '../../lib/arrange-clips';
 import { SourcePicker } from './SourcePicker';
+import { useMediaStore } from '../../stores/media-store';
+import { PresetSearch, matchesPreset } from './PresetSearch';
 
 function Badge({ children }: { children: React.ReactNode }) {
     return <span className="ke-tpl__badge">{children}</span>;
@@ -17,6 +22,18 @@ export function TemplatesView() {
     const sourceMediaId = useAiStore((s) => s.sourceMediaId);
     const notify = useUiStore((s) => s.notify);
     const [selected, setSelected] = useState<AutoCutTemplate>(TEMPLATES[0]);
+    const [query, setQuery] = useState('');
+    const [collection, setCollection] = useState('all');
+    const [sourceIds, setSourceIds] = useState<string[]>([]);
+    const [category, setCategory] = useState('all');
+    const [excluded, setExcluded] = useState<string[]>([]);
+    const [pace, setPace] = useState(1);
+    const items = useMediaStore((s) => s.items);
+    const footage = items.filter((item) => item.type !== 'audio');
+    const automatic = arrangeClips(selected.recipe || [], footage.filter((m) => !excluded.includes(m.id)));
+    const assigned = (selected.recipe || []).map((_, i) => sourceIds[i] || automatic[i] || '');
+    const sourceThumb = footage.find((item) => item.id === sourceMediaId)?.thumbnailUrl;
+    const visible = TEMPLATES.filter((t) => matchesPreset(t.id, `${t.name} ${t.description}`, query, collection) && (category === 'all' || t.category === category));
     const [texts, setTexts] = useState<Record<string, string>>({});
     const [running, setRunning] = useState<{ stage: string; progress: number } | null>(null);
     const controller = useRef<AbortController | null>(null);
@@ -26,10 +43,14 @@ export function TemplatesView() {
 
     useEffect(() => {
         musicApi.songGenres().then(setSongGenres).catch(() => setSongGenres(null));
+        return () => controller.current?.abort();
     }, []);
 
     const choose = (t: AutoCutTemplate) => {
         setSelected(t);
+        setTexts({});
+        setSourceIds([]);
+        setPace(1);
         setMusic({ genre: t.music?.genre || '', vocals: t.music?.vocals || 'any' });
     };
 
@@ -40,14 +61,16 @@ export function TemplatesView() {
     ].filter(Boolean) as [string, string, string][];
 
     const apply = async () => {
-        if (!sourceMediaId) return;
-        const hasEdits = useTimelineStore.getState().tracks.some((t) => t.isMain && t.elements.length > 1);
+        if (!sourceMediaId || controller.current) return;
+        const hasEdits = useTimelineStore.getState().tracks.some((t) => t.isMain && t.elements.length > 0);
         if (hasEdits && !window.confirm(`Apply “${selected.name}”? It replaces the clips on your main track (Ctrl+Z restores them).`)) return;
         controller.current = new AbortController();
         setRunning({ stage: 'Starting', progress: 0 });
         try {
             const message = await applyTemplate(selected, sourceMediaId, {
                 allowAi,
+                sourceIds: assigned,
+                pace,
                 hookText: texts.hookText,
                 ctaText: texts.ctaText,
                 lowerThird: texts.lowerThird,
@@ -59,6 +82,7 @@ export function TemplatesView() {
         } catch (error) {
             if ((error as Error).message !== 'Cancelled') notify((error as Error).message, 'error');
         } finally {
+            controller.current = null;
             setRunning(null);
         }
     };
@@ -66,30 +90,66 @@ export function TemplatesView() {
     return (
         <div className="ke-view">
             <div className="ke-view__head">
-                <h3>Auto-cut templates</h3>
+                <h3>Video templates</h3>
             </div>
-            <SourcePicker />
+            <SourcePicker allowImages={!!selected.recipe} videoOnly={!selected.recipe} disabled={!!running} />
+            <PresetSearch query={query} onQuery={setQuery} collection={collection} onCollection={setCollection} count={visible.length} />
 
+            <select className="ke-select" aria-label="Template category" value={category} onChange={(e) => setCategory(e.target.value)}>
+                <option value="all">All stories</option><option value="gym">Gym ? 10 recipes</option><option value="lifestyle">Lifestyle ? 10 recipes</option><option value="vlog">Vlog ? 10 recipes</option>
+            </select>
             <div className="ke-tpl-list">
-                {TEMPLATES.map((t) => (
+                {visible.map((t) => (
                     <button key={t.id} className={`ke-tpl ${selected.id === t.id ? 'is-active' : ''}`} onClick={() => choose(t)} disabled={!!running}>
                         <div className={`ke-tpl__frame is-${t.ratio.replace(':', 'x')}`} aria-hidden="true">
-                            <span />
+                            <span style={{ filter: FILTER_PREVIEW_CSS[t.filter], background: sourceThumb ? `url(${sourceThumb}) center / cover` : undefined }} />
                         </div>
                         <div className="ke-tpl__body">
                             <strong>{t.name}</strong>
                             <p>{t.description}</p>
                             <div className="ke-tpl__badges">
                                 <Badge>{t.ratio}</Badge>
+                                {t.recipe ? <Badge>{t.recipe.length} editable shots</Badge> : null}
                                 <Badge>{t.targetSeconds ? `~${t.targetSeconds}s` : 'Full length'}</Badge>
                                 {t.strategy !== 'even' ? <Badge>AI cuts</Badge> : null}
                                 {t.captions ? <Badge>Captions</Badge> : null}
                                 {t.music ? <Badge>Music</Badge> : null}
+                                {t.filter !== 'none' ? <Badge>{LOOK_LABELS[t.filter]}</Badge> : null}
+                                {t.transition ? <Badge>{TRANSITIONS.find((x) => x.type === t.transition?.type)?.label}</Badge> : null}
+                                {t.effects?.length ? <Badge>{t.effects.map((e) => EFFECTS.find((x) => x.type === e.type)?.label).join(' + ')}</Badge> : null}
                             </div>
                         </div>
                     </button>
                 ))}
             </div>
+
+            {selected.recipe ? <div className="ke-recipe">
+                <div className="ke-recipe__heading"><strong>{selected.name}</strong><span>YOUR SHOT LIST</span></div>
+                <p className="ke-note">{selected.description}</p>
+                <p className="ke-note">Clips are arranged automatically using filenames, duration and orientation. Rename clips with shot labels for better matching. Review or override any slot below.</p>
+                <details><summary>Footage pool</summary>
+                    {footage.map((m) => <label key={m.id} className="ke-recipe__pool"><input type="checkbox" disabled={!!running} checked={!excluded.includes(m.id)} onChange={() => { setExcluded((ids) => ids.includes(m.id) ? ids.filter((id) => id !== m.id) : [...ids, m.id]); setSourceIds([]); }} />{m.name}</label>)}
+                </details>
+                <button className="ke-btn ke-btn--sm" disabled={!!running} onClick={() => setSourceIds([])}>Rearrange automatically</button>
+                <div className="ke-recipe__strip" aria-label="Shot duration preview">
+                    {selected.recipe.map((shot, i) => <span key={i} style={{ flex: shot.seconds }} title={`${shot.label}: ${(shot.seconds / pace).toFixed(1)}s`}>{i + 1}</span>)}
+                </div>
+                {selected.recipe.map((shot, i) => {
+                    const item = items.find((m) => m.id === assigned[i]);
+                    return <label key={`${selected.id}-${i}`} className="ke-recipe__slot">
+                        <span className="ke-recipe__number">{String(i + 1).padStart(2, '0')}</span>
+                        {item?.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <span className="ke-recipe__placeholder" />}
+                        <span className="ke-recipe__field"><span>{shot.label} <small>{(shot.seconds / pace).toFixed(1)}s{shot.speed ? ` · ${shot.speed}×` : ''}</small></span>
+                            <select className="ke-select" aria-label={`Footage for ${shot.label}`} disabled={!!running} value={sourceIds[i] || ''} onChange={(e) => setSourceIds((ids) => { const next = [...ids]; next[i] = e.target.value; return next; })}>
+                                <option value="">Auto: {items.find((m) => m.id === automatic[i])?.name || 'No footage'}</option>
+                                {footage.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                            </select>
+                        </span>
+                    </label>;
+                })}
+                <label className="ke-range"><span>Edit pace</span><input aria-label="Template edit pace" disabled={!!running} type="range" min={0.5} max={2} step={0.1} value={pace} onChange={(e) => setPace(Number(e.target.value))} /><strong>{pace.toFixed(1)}×</strong></label>
+                <p className="ke-note">Pace changes shot lengths. Short sources are trimmed to what is available. Cuts use this recipe’s timing; they are not automatically synced to music.</p>
+            </div> : null}
 
             {textFields.length ? (
                 <div className="ke-stack">
@@ -150,7 +210,7 @@ export function TemplatesView() {
                     </div>
                 </div>
             ) : (
-                <button className="ke-btn ke-btn--primary ke-btn--block" onClick={apply} disabled={!sourceMediaId}>
+                <button className="ke-btn ke-btn--primary ke-btn--block" onClick={apply} disabled={!sourceMediaId || (!!selected.recipe && !automatic.length)}>
                     <Wand2 size={15} /> Apply “{selected.name}”
                 </button>
             )}

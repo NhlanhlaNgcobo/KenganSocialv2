@@ -6,9 +6,7 @@ import {
     Smartphone,
     Instagram,
     Youtube,
-    Linkedin,
-    Trello,
-    MessageSquare,
+    Facebook,
     Image as ImageIcon,
     Video,
     Clock,
@@ -52,9 +50,7 @@ const PLATFORMS = [
     { id: 'youtube', name: 'YouTube', icon: Youtube, color: '#FF0000', limit: 5000 },
     { id: 'instagram', name: 'Instagram', icon: Instagram, color: '#E4405F', limit: 2200 },
     { id: 'tiktok', name: 'TikTok', icon: Smartphone, color: 'var(--text-primary)', limit: 4000 },
-    { id: 'linkedin', name: 'LinkedIn', icon: Linkedin, color: '#0A66C2', limit: 3000 },
-    { id: 'pinterest', name: 'Pinterest', icon: Trello, color: '#BD081C', limit: 500 },
-    { id: 'threads', name: 'Threads', icon: MessageSquare, color: 'var(--text-primary)', limit: 500 }
+    { id: 'facebook', name: 'Facebook', icon: Facebook, color: '#1877F2', limit: 63206 },
 ];
 
 const STATUS_LABELS: Record<string, { label: string; badge: string }> = {

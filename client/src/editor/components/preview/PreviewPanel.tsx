@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Expand, Minimize, Pause, Play, Repeat, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react';
-import { FILTER_PREVIEW_CSS } from '../../constants';
+import { previewFont } from '../../constants';
 import { formatTimecode, getElementEnd, getElementLength } from '../../lib/time';
 import { cssTransform, getTransform } from '../../lib/transform';
 import { useMediaStore } from '../../stores/media-store';
@@ -8,9 +8,57 @@ import { usePlaybackStore } from '../../stores/playback-store';
 import { getCanvasSize, useProjectStore } from '../../stores/project-store';
 import { useTimelineStore } from '../../stores/timeline-store';
 import type { AspectRatio, MediaElement, TextElement } from '../../types';
+import { previewFilter } from '../../lib/grade';
+import { effectPreview, transitionStyles, transitionWindows } from '../../lib/fx';
+import { isNeutralColor, vignetteAt } from '../../lib/color-pipeline.js';
+import { GradedCanvas, useLut, webgl2Available } from './GradedCanvas';
+import type { ColorSettings } from '../../types';
 import { GuideTrackPlayer } from './GuideTrackPlayer';
 import { LyricOverlay } from './LyricOverlay';
 import { MediaLayer } from './MediaLayer';
+import { captionFrame } from '../../lib/caption-motion.js';
+
+/** Vignette masks (data URLs) by settings and canvas shape; the export builds the same mask. */
+const vignetteCache = new Map<string, string>();
+function vignetteMask(vig: ColorSettings['vignette'], aspect: number): string {
+    const key = `${JSON.stringify(vig)}:${aspect.toFixed(3)}`;
+    const hit = vignetteCache.get(key);
+    if (hit) return hit;
+    const w = 96;
+    const h = Math.max(8, Math.round(w / aspect));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    const img = ctx.createImageData(w, h);
+    for (let y = 0; y < h; y += 1)
+        for (let x = 0; x < w; x += 1) {
+            const { dark, light } = vignetteAt(vig, (x + 0.5) / w, (y + 0.5) / h, aspect);
+            const v = Math.round((vig.amount < 0 ? dark : light) * 255);
+            const i = (y * w + x) * 4;
+            img.data[i] = v;
+            img.data[i + 1] = v;
+            img.data[i + 2] = v;
+            img.data[i + 3] = 255;
+        }
+    ctx.putImageData(img, 0, 0);
+    const url = canvas.toDataURL();
+    if (vignetteCache.size > 30) vignetteCache.delete(vignetteCache.keys().next().value as string);
+    vignetteCache.set(key, url);
+    return url;
+}
+
+function GradedImage({ src, color, style }: { src: string; color: ColorSettings; style: React.CSSProperties }) {
+    const [img, setImg] = useState<HTMLImageElement | null>(null);
+    const luts = useProjectStore((st) => st.luts);
+    const lut = useLut(color, luts);
+    return (
+        <>
+            <img ref={setImg} src={src} alt="" className="ke-preview__media" style={{ ...style, opacity: 0 }} draggable={false} />
+            {lut ? <GradedCanvas source={img} lut={lut} className="ke-preview__media" style={style} /> : null}
+        </>
+    );
+}
 
 /** Elements this far ahead of the playhead are mounted early so cuts don't stall. */
 const PRELOAD_SECONDS = 2.5;
@@ -30,6 +78,7 @@ export function PreviewPanel() {
     const containerRef = useRef<HTMLDivElement>(null);
     const [box, setBox] = useState({ width: 0, height: 0 });
     const [fullscreen, setFullscreen] = useState(false);
+    const [safeGuides, setSafeGuides] = useState(false);
     type TextDrag = { trackId: string; id: string; startX: number; startY: number; x: number; y: number; dx: number; dy: number };
     const [drag, setDragState] = useState<TextDrag | null>(null);
     const dragRef = useRef<TextDrag | null>(null);
@@ -57,21 +106,53 @@ export function PreviewPanel() {
 
     const scale = box.width / canvas.width || 0;
 
+    const windows = useMemo(() => transitionWindows(tracks.find((t) => t.isMain)), [tracks]);
+    /** Seconds each main clip extends before its start / after its end for transitions. */
+    const extend = useMemo(() => {
+        const map = new Map<string, { head: number; tail: number }>();
+        for (const w of windows) {
+            map.set(w.incomingId, { head: w.duration / 2, tail: map.get(w.incomingId)?.tail || 0 });
+            map.set(w.outgoingId, { head: map.get(w.outgoingId)?.head || 0, tail: w.duration / 2 });
+        }
+        return map;
+    }, [windows]);
+
     // Bottom track first so higher tracks paint on top.
     const layers = useMemo(() => {
         const ordered = [...tracks].reverse();
         return ordered.flatMap((track, trackIndex) =>
             track.elements
                 .filter((el) => !el.hidden)
-                .filter((el) => currentTime >= el.startTime - PRELOAD_SECONDS && currentTime < getElementEnd(el) + 0.25)
-                .map((el) => ({
-                    track,
-                    element: el,
-                    z: trackIndex,
-                    active: currentTime >= el.startTime && currentTime < getElementEnd(el),
-                }))
+                .filter((el) => currentTime >= el.startTime - PRELOAD_SECONDS && currentTime < getElementEnd(el) + 0.25 + (extend.get(el.id)?.tail || 0))
+                .map((el) => {
+                    const ext = extend.get(el.id);
+                    return {
+                        track,
+                        element: el,
+                        z: trackIndex,
+                        active: currentTime >= el.startTime - (ext?.head || 0) && currentTime < getElementEnd(el) + (ext?.tail || 0),
+                    };
+                })
         );
-    }, [tracks, currentTime]);
+    }, [tracks, currentTime, extend]);
+
+    /** Transition state of a main clip right now: its role and CSS, or null. */
+    const transitionFor = (id: string) => {
+        for (const w of windows) {
+            const from = w.at - w.duration / 2;
+            if (currentTime < from || currentTime >= from + w.duration) continue;
+            if (w.outgoingId !== id && w.incomingId !== id) continue;
+            const styles = transitionStyles(w.type, (currentTime - from) / w.duration);
+            return { incoming: w.incomingId === id, style: w.incomingId === id ? styles.b : styles.a, wash: styles.wash };
+        }
+        return null;
+    };
+    const wash = windows
+        .map((w) => {
+            const from = w.at - w.duration / 2;
+            return currentTime >= from && currentTime < from + w.duration ? transitionStyles(w.type, (currentTime - from) / w.duration).wash : undefined;
+        })
+        .find(Boolean);
 
     const dragging = drag !== null;
     useEffect(() => {
@@ -101,6 +182,12 @@ export function PreviewPanel() {
         const x = el.x + (isDragging ? drag!.dx : 0);
         const y = el.y + (isDragging ? drag!.dy : 0);
         const isSelected = selected.some((s) => s.elementId === el.id);
+        // Entrance animation, matching the renderer (fade 0.25s; pop: quick fade + scale 72% → 100%).
+        const local = currentTime - el.startTime;
+        const motion = el.captionMotion ? captionFrame(el.content, el.captionWords, el.captionMotion, local + el.trimStart, el.duration, el.color, el.accentColor) : null;
+        const fadeIn = el.animation === 'pop' ? Math.min(1, local / 0.09) : el.animation === 'fade' ? Math.min(1, local / 0.25) : 1;
+        const pop = el.animation === 'pop' ? 0.72 + 0.28 * Math.min(1, Math.max(0, local / 0.14)) : 1;
+        const stroke = (el.strokeWidth || 0) > 0 && el.strokeColor && el.strokeColor !== 'transparent' && el.backgroundColor === 'transparent';
         return (
             <div
                 key={el.id}
@@ -108,8 +195,8 @@ export function PreviewPanel() {
                 style={{
                     left: `${50 + (x / canvas.width) * 100}%`,
                     top: `${50 + (y / canvas.height) * 100}%`,
-                    transform: `translate(-50%, -50%) rotate(${el.rotation}deg)`,
-                    opacity: el.opacity,
+                    transform: `translate(-50%, -50%) translateY(${(motion?.y || 0) * scale}px) rotate(${el.rotation}deg) scale(${pop * (motion?.scale || 1)})`,
+                    opacity: el.opacity * Math.max(0, fadeIn) * (motion?.opacity ?? 1),
                     zIndex: 100 + z,
                 }}
                 onPointerDown={(e) => {
@@ -121,7 +208,7 @@ export function PreviewPanel() {
                 <div
                     style={{
                         fontSize: el.fontSize * scale,
-                        fontFamily: el.fontFamily,
+                        fontFamily: previewFont(el.fontFamily),
                         color: el.color,
                         backgroundColor: el.backgroundColor,
                         textAlign: el.textAlign,
@@ -132,9 +219,16 @@ export function PreviewPanel() {
                         whiteSpace: 'pre',
                         lineHeight: 1.15,
                         textShadow: el.backgroundColor === 'transparent' ? `0 ${2 * scale}px ${6 * scale}px rgba(0,0,0,0.6)` : undefined,
+                        ...(stroke ? { WebkitTextStroke: `${(el.strokeWidth || 0) * 2 * scale}px ${el.strokeColor}`, paintOrder: 'stroke fill' } : {}),
                     }}
                 >
-                    {el.content}
+                    {motion ? motion.chunks.map((chunk, i) => (
+                        <span key={i}>
+                            <span style={{ color: chunk.color, opacity: chunk.opacity, textDecoration: chunk.underline ? 'underline' : undefined, textUnderlineOffset: '0.16em' }}>{chunk.text}</span>
+                            {chunk.tail ? <span style={{ visibility: 'hidden' }}>{chunk.tail}</span> : null}
+                            {chunk.breakAfter ? <br /> : i < motion.chunks.length - 1 ? ' ' : ''}
+                        </span>
+                    )) : el.content}
                 </div>
             </div>
         );
@@ -150,6 +244,7 @@ export function PreviewPanel() {
                     style={{ width: box.width, height: box.height, background: backgroundColor }}
                     onPointerDown={() => useTimelineStore.getState().clearSelection()}
                 >
+                    {safeGuides ? <div className="ke-safe-guides"><span>Text safe area · guide</span></div> : null}
                     {empty ? (
                         <div className="ke-preview__empty">
                             <p>Drop media on the timeline to start</p>
@@ -165,31 +260,58 @@ export function PreviewPanel() {
                         const clipTransform = getTransform(element as MediaElement);
                         // Zoom animation renders on the main track only; keep preview and export identical.
                         if (!track.isMain) clipTransform.animation = 'none';
-                        const transform = cssTransform(clipTransform, progress, scale);
+                        const mediaEl = element as MediaElement;
+                        const fx = track.isMain && media.type !== 'audio' ? effectPreview(mediaEl.effects, currentTime - element.startTime, scale) : null;
+                        const tr = track.isMain ? transitionFor(element.id) : null;
+                        const transform = [cssTransform(clipTransform, progress, scale), fx?.transform].filter(Boolean).join(' ') || undefined;
+                        const ext = extend.get(element.id);
+                        // Incoming clips draw above outgoing ones during a transition.
+                        const zIndex = z * 2 + (tr?.incoming ? 1 : 0);
+                        const vig = track.isMain && mediaEl.color?.vignette?.amount ? mediaEl.color.vignette : null;
+                        const overlays = [
+                            ...(fx?.overlays.map((o, i) => <div key={i} className="ke-preview__fx" style={o} />) || []),
+                            ...(vig
+                                ? [<div key="vig" className="ke-preview__fx" style={{ backgroundImage: `url(${vignetteMask(vig, canvas.width / canvas.height)})`, backgroundSize: '100% 100%', mixBlendMode: vig.amount < 0 ? 'multiply' : 'screen' }} />]
+                                : []),
+                        ];
+                        const gradedImage = media.type === 'image' && webgl2Available && mediaEl.color && !isNeutralColor(mediaEl.color);
                         if (media.type === 'image') {
                             return active ? (
-                                <img
-                                    key={element.id}
-                                    src={media.url}
-                                    alt=""
-                                    className="ke-preview__media"
-                                    style={{ zIndex: z, filter: FILTER_PREVIEW_CSS[(element as MediaElement).filter || 'none'], transform }}
-                                    draggable={false}
-                                />
+                                <div key={element.id} className="ke-preview__tx" style={{ zIndex, ...tr?.style }}>
+                                    {gradedImage ? (
+                                        <GradedImage src={media.url} color={mediaEl.color!} style={{ filter: `${previewFilter(mediaEl.filter, mediaEl.grade)}${fx?.filter || ''}`.replace(/^none /, ''), transform }} />
+                                    ) : (
+                                        <img
+                                            src={media.url}
+                                            alt=""
+                                            className="ke-preview__media"
+                                            style={{ filter: `${previewFilter(mediaEl.filter, mediaEl.grade)}${fx?.filter || ''}`.replace(/^none /, ''), transform }}
+                                            draggable={false}
+                                        />
+                                    )}
+                                    {overlays}
+                                </div>
                             ) : null;
                         }
                         return (
-                            <div key={element.id} className="ke-preview__layer" style={{ zIndex: z, transform }}>
-                                <MediaLayer
-                                    kind={media.type === 'audio' ? 'audio' : 'video'}
-                                    src={media.url}
-                                    element={element as MediaElement}
-                                    trackMuted={!!track.muted}
-                                    active={active}
-                                />
+                            <div key={element.id} className="ke-preview__tx" style={{ zIndex, ...(active ? tr?.style : null) }}>
+                                <div className="ke-preview__layer" style={{ transform }}>
+                                    <MediaLayer
+                                        kind={media.type === 'audio' ? 'audio' : 'video'}
+                                        src={media.url}
+                                        element={mediaEl}
+                                        trackMuted={!!track.muted}
+                                        active={active}
+                                        extendHead={ext?.head || 0}
+                                        extendTail={ext?.tail || 0}
+                                        extraFilter={fx?.filter || ''}
+                                    />
+                                </div>
+                                {active ? overlays : null}
                             </div>
                         );
                     })}
+                    {wash ? <div className="ke-preview__fx" style={{ ...wash, zIndex: 99 }} /> : null}
                     <LyricOverlay scale={scale} />
                 </div>
                 <GuideTrackPlayer />
@@ -213,6 +335,7 @@ export function PreviewPanel() {
                     </button>
                 </div>
                 <div className="ke-preview__right">
+                    <button className={`ke-chip ${safeGuides ? 'is-active' : ''}`} aria-pressed={safeGuides} title="Show suggested text-safe margins" onClick={() => setSafeGuides((value) => !value)}>Safe area</button>
                     <button className={`ke-icon-btn ${loop ? 'is-active' : ''}`} title="Loop" onClick={toggleLoop}>
                         <Repeat size={15} />
                     </button>

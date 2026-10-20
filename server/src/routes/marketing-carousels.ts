@@ -2,7 +2,7 @@ import express, { Request } from 'express';
 import admin from 'firebase-admin';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
-import { checkLimit, planRateLimit } from '../middleware/planGate';
+import { checkLimit, consumeUsage, planRateLimit } from '../middleware/planGate';
 import { deleteFile, uploadFile } from '../services/storage.service.js';
 import { aiConfigured } from '../services/marketing/brand-ai.js';
 import { GOALS, normalizeSlide, planCarousel, sourceFromSite } from '../services/marketing/carousel-plan.js';
@@ -33,6 +33,17 @@ const carousels = (req: Request) => workspaceRef(req).collection('carousels');
 const kitDoc = (req: Request) => workspaceRef(req).collection('brandKit').doc('current');
 const storagePath = (req: Request, id: string) => `workspaces/${(req as any).workspaceId}/carousels/${id}`;
 const IMAGERY = ['none', 'free', 'fast', 'best'] as const;
+
+/** AI credits per generated image: paid image models cost far more than a text generation. */
+const IMAGE_CREDITS: Record<string, number> = { none: 0, free: 0, fast: 2, best: 6 };
+
+/** Credits for a new carousel: 1 for the writing, plus each slide image at its tier. */
+function carouselCredits(req: Request): number {
+    const b = req.body || {};
+    const imagery = IMAGERY.includes(b.imagery) ? b.imagery : 'none';
+    const slides = Math.max(4, Math.min(10, Number(b.slideCount) || 7));
+    return 1 + slides * (IMAGE_CREDITS[imagery] || 0);
+}
 // A carousel still "running" after this long was interrupted (e.g. a server restart).
 const STALE_MS = 15 * 60 * 1000;
 
@@ -130,7 +141,7 @@ router.get('/', route(async (req, res) => {
     });
 }));
 
-router.post('/', requireEditor, planRateLimit(), checkLimit('aiCalls'), route(async (req, res) => {
+router.post('/', requireEditor, planRateLimit(), checkLimit('aiCalls', carouselCredits), route(async (req, res) => {
     if (!aiConfigured()) throw fail(503, 'AI is not set up on the server yet. Add OPENROUTER_API_KEY or GEMINI_API_KEY to server/.env.');
     const b = req.body || {};
     const sourceType = ['website', 'topic', 'text'].includes(b.source?.type) ? b.source.type : 'topic';
@@ -258,7 +269,8 @@ router.patch('/:id/slides/:index', requireEditor, route(async (req, res) => {
     res.json({ carousel: publicCarousel(String(req.params.id), { ...data, slides: next }) });
 }));
 
-router.post('/:id/slides/:index/image', requireEditor, planRateLimit(), checkLimit('aiCalls'), route(async (req, res) => {
+// A single new image, charged at its tier once the tier is known (below).
+router.post('/:id/slides/:index/image', requireEditor, planRateLimit(), route(async (req, res) => {
     const { ref, data } = await loadCarousel(req);
     if (data.status !== 'done') throw fail(409, 'Wait until the carousel has finished.');
     const index = Number(req.params.index);
@@ -268,6 +280,8 @@ router.post('/:id/slides/:index/image', requireEditor, planRateLimit(), checkLim
     const prompt = String(req.body?.prompt || current.imagePrompt || current.headline || '').trim().slice(0, 600);
     if (!prompt) throw fail(400, 'Describe the image you want.');
     const tier = IMAGERY.includes(req.body?.tier) && req.body.tier !== 'none' ? req.body.tier : data.settings.imagery !== 'none' ? data.settings.imagery : 'fast';
+    const usage = await consumeUsage((req as any).workspaceId, (req as any).plan || 'starter', 'aiCalls', IMAGE_CREDITS[tier] || 1);
+    if (!usage.ok) return res.status(usage.status).json(usage.body);
     const kit: any = (await kitDoc(req).get()).data() || {};
     const img = await makeImage(req, kit, prompt, tier, data.settings.format, String(req.params.id));
     if (current.imageUrl) deleteFile(current.imageUrl).catch(() => {});

@@ -271,65 +271,11 @@ const tiktok: Fetcher = async (_workspaceId, token, _accountId, periodDays) => {
     }
 };
 
-// ─── LinkedIn ────────────────────────────────────────────────────────────────
-// The connection is a personal profile (w_member_social); LinkedIn only offers share
-// statistics for company pages, so there is nothing to read.
-const linkedin: Fetcher = async (_workspaceId, _token, _accountId, periodDays) =>
-    unavailable('linkedin', periodDays, 'LinkedIn only shares analytics for company pages, and this connection is a personal profile.');
-
-// ─── Pinterest ───────────────────────────────────────────────────────────────
-const pinterest: Fetcher = async (_workspaceId, token, _accountId, periodDays) => {
-    try {
-        const res = await axios.get('https://api.pinterest.com/v5/user_account/analytics', {
-            params: {
-                start_date: isoDate(new Date(Date.now() - Math.min(periodDays, 90) * DAY_MS)),
-                end_date: isoDate(new Date()),
-                metric_types: 'IMPRESSION,ENGAGEMENT,ENGAGEMENT_RATE',
-            },
-            headers: { Authorization: `Bearer ${token}` },
-            timeout: HTTP_TIMEOUT,
-        });
-        const all = res.data?.all || {};
-        const summary = all.summary_metrics || {};
-        const rate = num(summary.ENGAGEMENT_RATE);
-        // Pinterest reports impressions, not reach, so it doesn't feed the reach chart.
-        return okSnapshot('pinterest', periodDays, {
-            impressions: num(summary.IMPRESSION),
-            engagementRate: rate !== null ? rate * 100 : null,
-        });
-    } catch (err) {
-        return unavailable('pinterest', periodDays, describeError('pinterest', err));
-    }
-};
-
-// ─── Threads ─────────────────────────────────────────────────────────────────
-const threads: Fetcher = async (_workspaceId, token, accountId, periodDays) => {
-    try {
-        const until = Math.floor(Date.now() / 1000);
-        const since = until - periodDays * 24 * 60 * 60;
-        const res = await axios.get(`https://graph.threads.net/v1.0/${accountId}/threads_insights`, {
-            params: { metric: 'views,likes,replies,reposts,quotes,followers_count', since, until, access_token: token },
-            timeout: HTTP_TIMEOUT,
-        });
-        const metrics: any[] = res.data?.data || [];
-        const find = (name: string) => metrics.find((m) => m.name === name);
-        const viewValues: any[] = find('views')?.values || [];
-        const byDay = viewValues.map((v) => ({ date: String(v.end_time || '').slice(0, 10), reach: num(v.value), followers: null })).filter((d) => d.date);
-        const views = byDay.length ? sum(byDay.map((d) => d.reach)) : num(find('views')?.total_value?.value);
-        const interactions = ['likes', 'replies', 'reposts', 'quotes'].map((n) => num(find(n)?.total_value?.value));
-        const hasInteractions = interactions.some((v) => v !== null);
-        return okSnapshot('threads', periodDays, {
-            reach: views,
-            engagementRate: hasInteractions && views ? (sum(interactions) / views) * 100 : null,
-            followers: num(find('followers_count')?.total_value?.value),
-            byDay,
-        });
-    } catch (err) {
-        return unavailable('threads', periodDays, describeError('threads', err));
-    }
-};
-
-export const fetchers: Record<string, Fetcher> = { youtube, instagram, tiktok, linkedin, pinterest, threads };
+// ─── Facebook Page ──────────────────────────────────────────────────────────
+// Page insights need read_insights (not requested yet); report the follower count meanwhile.
+const facebook: Fetcher = async (_workspaceId, _token, _accountId, periodDays) =>
+    unavailable('facebook', periodDays, 'Facebook Page insights are not connected yet. Followers show on the Connections page.');
+export const fetchers: Record<string, Fetcher> = { youtube, instagram, tiktok, facebook };
 
 /** Reads one connection document and returns its snapshot (never throws). */
 export async function fetchConnectionAnalytics(workspaceId: string, platform: string, conn: any, periodDays: number): Promise<AnalyticsSnapshot> {

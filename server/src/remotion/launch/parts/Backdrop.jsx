@@ -23,7 +23,7 @@ export function Backdrop({ palette, intensity = 1 }) {
         if (/^#[0-9a-f]{6}$/i.test(c)) return c;
         const m = String(c).match(/rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/);
         if (m) return '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('');
-        return dark ? '#8b5cf6' : '#6d28d9';
+        return dark ? '#ffffff' : '#000000';
     };
     const accent = toHex(palette.accent);
     const unit = Math.max(width, height);

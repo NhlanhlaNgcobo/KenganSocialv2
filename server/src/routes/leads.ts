@@ -32,7 +32,7 @@ const leadsOf = (req: Request) => db.collection('workspaces').doc((req as any).w
 /** Fields a client may change on a lead. */
 const EDITABLE = ['status', 'notes', 'tags', 'displayName', 'username', 'platform', 'followersCount', 'signals', 'industryMatch', 'hasPreviousCollab'];
 const STATUSES = ['prospect', 'contacted', 'negotiating', 'closed', 'lost'];
-const PLATFORMS = ['instagram', 'tiktok', 'youtube', 'linkedin', 'threads', 'pinterest', 'facebook', 'twitter', 'other'];
+const PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube', 'email', 'whatsapp', 'other'];
 
 /** Validates a manually-added lead. Returns { value } or { error }. */
 function sanitizeNewLead(body: any): { value?: Record<string, unknown>; error?: string } {

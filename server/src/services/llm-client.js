@@ -1,9 +1,11 @@
 import { OpenAI } from 'openai';
+import { freeFallbackEnabled, POLLINATIONS_MODEL, pollinationsChatClient } from './pollinations-text.js';
 
 /**
  * One OpenAI-compatible chat client for the whole server.
  * Provider order: OpenRouter (OPENROUTER_API_KEY), then OpenAI (OPENAI_API_KEY), then Gemini
- * (GEMINI_API_KEY, through Google's OpenAI-compatible endpoint). OpenRouter speaks the same API and
+ * (GEMINI_API_KEY, through Google's OpenAI-compatible endpoint), then the free Pollinations
+ * fallback (open models, rate-limited; see pollinations-text.js) unless AI_FREE_FALLBACK=off. OpenRouter speaks the same API and
  * routes to Anthropic, Google, OpenAI and other models.
  *
  * Call sites use CHAT_MODEL instead of a hard-coded model name so the provider can change
@@ -32,6 +34,10 @@ function pickProvider() {
             model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
             client: new OpenAI({ apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/' }),
         };
+    }
+    if (freeFallbackEnabled()) {
+        // Queued and spaced for the free tier's rate limit (see pollinations-text.js).
+        return { name: 'pollinations', model: POLLINATIONS_MODEL, client: pollinationsChatClient() };
     }
     return null;
 }

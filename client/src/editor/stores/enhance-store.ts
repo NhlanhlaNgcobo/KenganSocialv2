@@ -3,7 +3,7 @@
  * which replaces the source on every clip that uses it. Undo restores the original.
  */
 import { create } from 'zustand';
-import { editorApi, pollJob, type EnhanceSummary, type StabilizeSettings } from '../lib/editor-api';
+import { editorApi, pollJob, type CleanupOptions, type EnhanceSummary, type StabilizeSettings } from '../lib/editor-api';
 import { useMediaStore } from './media-store';
 import { useProjectStore } from './project-store';
 import { useTimelineStore } from './timeline-store';
@@ -11,7 +11,41 @@ import { useTimelineStore } from './timeline-store';
 export interface EnhanceOptions extends StabilizeSettings {
     stabilize: boolean;
     autoframe: boolean;
+    cleanup: CleanupOptions;
 }
+
+export const NO_CLEANUP: CleanupOptions = {
+    video: { denoise: 'off', sharpen: 0, deband: false, deflicker: false, autoLevels: false },
+    audio: { noise: 'off', strength: 0.85, hum: 'off', declick: false, clarity: false, deess: false, loudness: 'off' },
+};
+
+/** One-click clean-up recipes. */
+export const CLEANUP_PRESETS: Record<string, { label: string; hint: string; value: CleanupOptions }> = {
+    podcast: {
+        label: 'Podcast / interview',
+        hint: 'Remove room noise and hum, clearer voices, podcast loudness',
+        value: { video: { ...NO_CLEANUP.video, denoise: 'light', sharpen: 0.3 }, audio: { noise: 'voice-laughter', strength: 0.85, hum: '50', declick: true, clarity: true, deess: true, loudness: 'podcast' } },
+    },
+    phone: {
+        label: 'Phone video',
+        hint: 'Less grain and wind/traffic noise, crisper picture, social loudness',
+        value: { video: { ...NO_CLEANUP.video, denoise: 'medium', sharpen: 0.4, autoLevels: true }, audio: { noise: 'voice', strength: 0.9, hum: 'off', declick: false, clarity: true, deess: false, loudness: 'social' } },
+    },
+    lowLight: {
+        label: 'Low light',
+        hint: 'Strong noise reduction, smoother gradients, balanced levels',
+        value: { video: { denoise: 'strong', sharpen: 0.25, deband: true, deflicker: true, autoLevels: true }, audio: { ...NO_CLEANUP.audio } },
+    },
+    music: {
+        label: 'Music & ambience',
+        hint: 'Gentle hiss removal that keeps music intact',
+        value: { video: { ...NO_CLEANUP.video }, audio: { noise: 'fft', strength: 0.5, hum: 'off', declick: true, clarity: false, deess: false, loudness: 'social' } },
+    },
+};
+
+export const hasCleanup = (c: CleanupOptions) =>
+    c.video.denoise !== 'off' || c.video.sharpen > 0 || c.video.deband || c.video.deflicker || c.video.autoLevels ||
+    c.audio.noise !== 'off' || c.audio.hum !== 'off' || c.audio.declick || c.audio.clarity || c.audio.deess || c.audio.loudness !== 'off';
 
 export const STABILIZE_PRESETS: Record<string, Partial<EnhanceOptions>> = {
     gentle: { mode: 'smooth', strength: 30, zoomMode: 'auto', edgeFill: 'zoom', correctRotation: true },
@@ -35,6 +69,8 @@ interface EnhanceState {
 
 function describe(summary: EnhanceSummary | null | undefined, clips: number) {
     const parts: string[] = [];
+    if (summary?.cleanup?.video) parts.push('cleaned up');
+    if (summary?.cleanup?.audio) parts.push('sound cleaned');
     if (summary?.stabilized) {
         const s = summary.stabilizer;
         if (s?.engine === 'vidstab-fallback') parts.push('stabilized (basic engine — the AI video service is offline)');
@@ -51,8 +87,9 @@ function describe(summary: EnhanceSummary | null | undefined, clips: number) {
 
 export const useEnhanceStore = create<EnhanceState>((set, get) => ({
     options: {
-        stabilize: true,
+        stabilize: false,
         autoframe: false,
+        cleanup: NO_CLEANUP,
         mode: 'smooth',
         strength: 60,
         zoomMode: 'auto',
@@ -73,7 +110,10 @@ export const useEnhanceStore = create<EnhanceState>((set, get) => ({
         const { projectKey, ratio } = useProjectStore.getState();
         const media = useMediaStore.getState().getItem(mediaId);
         if (!media || !projectKey) throw new Error('This clip’s media is no longer in the project.');
-        if (!options.stabilize && !options.autoframe) throw new Error('Choose stabilize, auto-frame, or both.');
+        const cleanup = hasCleanup(options.cleanup);
+        const isAudio = media.type === 'audio';
+        if (!options.stabilize && !options.autoframe && !cleanup) throw new Error('Choose at least one enhancement.');
+        if (isAudio && !cleanup) throw new Error('Choose a sound clean-up option.');
 
         get().controller?.abort();
         const controller = new AbortController();
@@ -83,8 +123,9 @@ export const useEnhanceStore = create<EnhanceState>((set, get) => ({
             const uploads = await useMediaStore.getState().ensureUploaded([mediaId]);
             const jobId = await editorApi.startEnhance({
                 sourceUploadId: uploads[mediaId],
+                cleanup: { enabled: cleanup, ...options.cleanup },
                 stabilize: {
-                    enabled: options.stabilize,
+                    enabled: options.stabilize && !isAudio,
                     mode: options.mode,
                     strength: options.strength,
                     zoomMode: options.zoomMode,
@@ -92,14 +133,16 @@ export const useEnhanceStore = create<EnhanceState>((set, get) => ({
                     edgeFill: options.edgeFill,
                     correctRotation: options.correctRotation,
                 },
-                autoframe: { enabled: options.autoframe, ratio },
+                autoframe: { enabled: options.autoframe && !isAudio, ratio },
             });
             const job = await pollJob(
                 () => editorApi.getRenderStatus(jobId),
                 (j) => {
                     // Server progress: stabilization fills 0–60 when both run, auto-frame the rest.
-                    const stabilizing = options.stabilize && (!options.autoframe || (j.progress || 0) < 60);
-                    set({ stage: stabilizing ? 'Stabilizing' : 'Framing', progress: j.progress || 0 });
+                    const p = j.progress || 0;
+                    const heavy = (options.stabilize || options.autoframe) && !isAudio;
+                    const stage = cleanup && (!heavy || p < 25) ? 'Cleaning up' : options.stabilize && (!options.autoframe || p < 60) ? 'Stabilizing' : 'Framing';
+                    set({ stage, progress: p });
                 },
                 (j) => j.status === 'completed',
                 controller.signal
@@ -107,9 +150,9 @@ export const useEnhanceStore = create<EnhanceState>((set, get) => ({
 
             set({ stage: 'Loading result', progress: 100 });
             const blob = await editorApi.downloadRender(job.downloadUrl!);
-            const suffix = [options.stabilize && 'stabilized', options.autoframe && ratio.replace(':', 'x')].filter(Boolean).join(' ');
+            const suffix = [cleanup && 'cleaned', options.stabilize && !isAudio && 'stabilized', options.autoframe && !isAudio && ratio.replace(':', 'x')].filter(Boolean).join(' ');
             const baseName = media.name.replace(/\.[^.]+$/, '');
-            const item = await useMediaStore.getState().addProcessed(blob, `${baseName} (${suffix}).mp4`, projectKey, job.outputUploadId!);
+            const item = await useMediaStore.getState().addProcessed(blob, `${baseName} (${suffix}).${isAudio ? 'm4a' : 'mp4'}`, projectKey, job.outputUploadId!);
             if (!item) throw new Error('Could not load the enhanced clip.');
 
             const count = useTimelineStore.getState().replaceMedia(mediaId, item.id, item.duration, item.name);

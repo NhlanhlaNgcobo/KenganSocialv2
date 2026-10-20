@@ -1,3 +1,12 @@
+/*
+ * Limits are set so every paid plan keeps at least a 50% gross margin even when a customer uses
+ * all of it (see docs/KenganSocial_Launch_Plan_and_Costs.docx, "Pricing"). Costly features have
+ * hard caps; only near-free ones (posts, DMs) are unlimited.
+ *  aiCalls        AI credits: 1 per text generation; AI images cost 2 (fast) or 6 (best) each
+ *  transcribeHrs  hours of audio transcribed (rounded up per video), including clip projects
+ *  clipAnalysis   long-video clip projects
+ *  renders        launch/tutorial videos and AI video processing
+ */
 export const PLAN_LIMITS = {
     starter: {
         posts: 10, exports: 3, connections: 2,
@@ -6,20 +15,30 @@ export const PLAN_LIMITS = {
     },
     nano: {
         posts: 30, exports: 10, connections: 3,
-        dms: 10, transcribeHrs: 5, clipAnalysis: 0,
-        aiCalls: 200, renders: 10, storageGB: 2
+        dms: 10, transcribeHrs: 3, clipAnalysis: 3,
+        aiCalls: 100, renders: 6, storageGB: 2
     },
     creator: {
-        posts: 100, exports: 30, connections: 5,
-        dms: 50, transcribeHrs: 20, clipAnalysis: 20,
-        aiCalls: 1000, renders: 50, storageGB: 10
+        posts: 100, exports: 30, connections: 6,
+        dms: 50, transcribeHrs: 10, clipAnalysis: 12,
+        aiCalls: 250, renders: 25, storageGB: 10
     },
     agency: {
-        posts: -1, exports: -1, connections: -1,
-        dms: -1, transcribeHrs: 50, clipAnalysis: 50,
-        aiCalls: -1, renders: 500, storageGB: 50
+        posts: -1, exports: 150, connections: 25,
+        dms: -1, transcribeHrs: 40, clipAnalysis: 40,
+        aiCalls: 1300, renders: 150, storageGB: 50
     }
 }
+
+/** Longest source video (minutes) a plan can turn into clips. Kept out of PLAN_LIMITS: it is not a monthly counter. */
+export const MAX_SOURCE_MINUTES = { starter: 0, nano: 30, creator: 90, agency: 180 } as const
+
+/** Client brands a workspace can manage in Clients & approvals (-1 = unlimited, 0 = not on this plan).
+ *  Approvals are for Creator Pro, Agency and Enterprise (Enterprise uses the agency tier). */
+export const MAX_CLIENTS = { starter: 0, nano: 0, creator: 5, agency: -1 } as const
+
+/** Plans that include Clients & approvals. */
+export const APPROVAL_PLANS = ['creator', 'agency'] as const
 
 export type Plan = keyof typeof PLAN_LIMITS
 export type PlanFeature = keyof typeof PLAN_LIMITS.starter

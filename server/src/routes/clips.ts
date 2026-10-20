@@ -7,7 +7,9 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { checkLimit, planRateLimit } from '../middleware/planGate';
+import { checkLimit, consumeUsage, planRateLimit, refundUsage } from '../middleware/planGate';
+import { MAX_SOURCE_MINUTES } from '../utils/planLimits';
+import { probe } from '../services/ffmpeg-runner.js';
 import { getUploadPath, storeUpload } from '../services/manual-edit.service.js';
 import { CAPTION_STYLES, CLIP_LENGTHS, createClips, LAYOUTS, normalizeClipRequest, PLATFORMS, RATIOS } from '../services/clips/index.js';
 
@@ -159,6 +161,33 @@ router.get('/options', withWorkspace, (_req: Request, res: Response) => {
     });
 });
 
+/**
+ * Checks a source video against the plan: its length must be within MAX_SOURCE_MINUTES, and its
+ * transcription (rounded up to whole hours) is taken from the monthly transcription allowance.
+ * Returns null when allowed, or an error message.
+ */
+async function chargeSource(sourcePath: string, workspaceId: string, plan: string): Promise<{ status: number; body: any } | null> {
+    let seconds = 0;
+    try {
+        seconds = (await probe(sourcePath)).duration || 0;
+    } catch {
+        return { status: 400, body: { error: 'This file could not be read as a video. Try exporting it again as MP4.' } };
+    }
+    const maxMinutes = (MAX_SOURCE_MINUTES as any)[plan] ?? 0;
+    if (seconds / 60 > maxMinutes) {
+        return {
+            status: 402,
+            body: {
+                error: 'VIDEO_TOO_LONG',
+                message: `This video is ${Math.round(seconds / 60)} minutes long. Your plan turns videos of up to ${maxMinutes} minutes into clips. Trim it or upgrade.`,
+                upgradeUrl: '/settings/billing',
+            },
+        };
+    }
+    const usage = await consumeUsage(workspaceId, plan, 'transcribeHrs', Math.max(1, Math.ceil(seconds / 3600)));
+    return usage.ok ? null : { status: usage.status, body: usage.body };
+}
+
 router.post('/', withWorkspace, planRateLimit(), checkLimit('clipAnalysis'), async (req: Request, res: Response) => {
     const request: any = normalizeClipRequest(req.body);
     const uid = (req as any).uid;
@@ -166,7 +195,15 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('clipAnalysis'), asy
     const plan = (req as any).plan;
 
     const sourcePath = request.sourceUploadId ? getUploadPath(request.sourceUploadId, uid) : null;
-    if (!sourcePath) return res.status(400).json({ error: 'Upload the video first. If you already did, upload it again.' });
+    if (!sourcePath) {
+        await refundUsage(workspaceId, plan, 'clipAnalysis');
+        return res.status(400).json({ error: 'Upload the video first. If you already did, upload it again.' });
+    }
+    const refused = await chargeSource(sourcePath, workspaceId, plan);
+    if (refused) {
+        await refundUsage(workspaceId, plan, 'clipAnalysis');
+        return res.status(refused.status).json(refused.body);
+    }
 
     const id = uuidv4();
     const ref = projects.doc(id);
@@ -243,6 +280,13 @@ router.post('/from-url', withWorkspace, planRateLimit(), checkLimit('clipAnalysi
         fs.mkdirSync(IMPORT_DIR, { recursive: true });
         const { data } = await axios.post(`${PYTHON_URL}/process/download-url`, { url, outputDir: IMPORT_DIR }, { timeout: 45 * 60 * 1000 });
         sourcePath = data.path;
+        const refused = await chargeSource(sourcePath, workspaceId, plan);
+        if (refused) {
+            await refundUsage(workspaceId, plan, 'clipAnalysis');
+            fs.rm(sourcePath, { force: true }, () => {});
+            await ref.update({ status: 'failed', stage: 'Failed', error: refused.body.message || refused.body.error, errorCode: refused.body.error, updatedAt: new Date().toISOString() }).catch(() => {});
+            return;
+        }
         const sourceName = String(data.title || 'YouTube video').slice(0, 150);
         request.sourceName = sourceName;
         storeUpload(uuidv4(), sourcePath, uid);

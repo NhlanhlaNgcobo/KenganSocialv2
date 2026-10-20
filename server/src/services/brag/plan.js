@@ -31,7 +31,7 @@ const CREATIVE_LAWS = `- Short: the whole video is the target duration.
 function buildPrompt(source, tone, format, duration, focus) {
     const t = TONES[tone];
     const shots = source.screenshots?.length || 0;
-    return `You are directing a short launch video for the product below, in the spirit of /brag: "You built it. Now brag."
+    return `You are directing a short launch video for the product below. It is published by the product's own team, so every line speaks for that product (never mention video tools, "bragging" or the making of the video).
 
 PRODUCT SOURCE (${source.url ? `website ${source.url}` : 'described by the user'}):
 - Title: ${source.title || source.ogTitle || ''}
@@ -171,7 +171,7 @@ export async function planVideo(source, { tone, format, duration, focus }) {
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: shot.split(',')[1] } });
     }
     try {
-        return { plan: normalizePlan(await generateJson(parts), source, tone, duration), planner: 'gemini' };
+        return { plan: normalizePlan(await generateJson(parts), source, tone, duration), planner: 'ai' };
     } catch (error) {
         console.warn('[Brag] Planner fell back to site copy:', error.message);
         return { plan: fallbackPlan(source, tone, duration), planner: 'fallback' };

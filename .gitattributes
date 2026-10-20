@@ -1,0 +1,2 @@
+# Noise-suppression models must stay byte-for-byte (no line-ending conversion).
+*.rnnn binary

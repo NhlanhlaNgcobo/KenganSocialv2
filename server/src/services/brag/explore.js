@@ -2,6 +2,7 @@ import puppeteer from 'puppeteer-core';
 import { ensureBrowser } from '@remotion/renderer';
 import { assertPublicUrl } from '../../utils/safe-fetch.js';
 import { dismissBanners, FORMATS, guardPage, VISIBLE_ELEMENTS } from './inspect.js';
+import { COLLECT_BRAND_COLORS } from './brand-colors.js';
 
 /**
  * Tutorial mode: walks a web app the way a new visitor would and records each stop.
@@ -126,6 +127,9 @@ export async function exploreApp(rawUrl, format, onStage = () => {}) {
                 iconUrl: icon?.href || null,
             };
         });
+
+        const brand = await page.evaluate(COLLECT_BRAND_COLORS).catch(() => null);
+        if (brand) identity.colors = { ...identity.colors, ...brand };
 
         const visited = new Set([origin.origin + origin.pathname.replace(/\/$/, '')]);
         const pages = [];

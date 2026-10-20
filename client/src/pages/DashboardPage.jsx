@@ -94,7 +94,7 @@ export default function DashboardPage() {
 
     // Clips needs AI clip analysis, which the free and entry plans don't include (the server enforces this too).
     const clipsLocked = (PLAN_LIMITS[plan] || PLAN_LIMITS.starter).clipAnalysis === 0;
-    const clipsPlanName = PLAN_DISPLAY_NAMES.creator;
+    const clipsPlanName = PLAN_DISPLAY_NAMES.nano;
     const activeAccounts = connections.filter((c) => c.status === 'active');
     const setupSteps = [
         { label: 'Connect a social account', detail: 'So posts publish for you.', done: activeAccounts.length > 0, action: '/dashboard/connections' },
@@ -298,7 +298,7 @@ export default function DashboardPage() {
                         <>
                             <span className="muted">No accounts connected yet.</span>
                             <Link to="/dashboard/connections" className="home-link">
-                                <Link2 size={14} /> Connect TikTok, Instagram, YouTube or LinkedIn
+                                <Link2 size={14} /> Connect Instagram, Facebook, TikTok or YouTube
                             </Link>
                         </>
                     )}

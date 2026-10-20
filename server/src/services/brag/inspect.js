@@ -3,6 +3,7 @@ import net from 'net';
 import puppeteer from 'puppeteer-core';
 import { ensureBrowser } from '@remotion/renderer';
 import { assertPublicUrl, isPublicAddress, safeGet } from '../../utils/safe-fetch.js';
+import { COLLECT_BRAND_COLORS } from './brand-colors.js';
 
 /**
  * Step 1 of the launch-video pipeline (after /brag's "Inspect"): gather the real copy,
@@ -143,6 +144,10 @@ async function capture(url, format) {
             };
         });
 
+        // Full brand sample (CSS variables, CTAs, header, logo), richer than the single button above.
+        const brand = await page.evaluate(COLLECT_BRAND_COLORS).catch(() => null);
+        if (brand) info.colors = { ...info.colors, ...brand };
+
         const screenshots = [];
         const shotElements = [];
         const viewportH = page.viewport().height;
@@ -232,16 +237,19 @@ export async function inspectWebsite(rawUrl, format, onStage = () => {}) {
         console.warn('[Brag] Screenshot capture failed:', error.message);
     }
 
-    const [ogImage, icon] = await Promise.all([fetchImage(parsed.ogImage), fetchImage(parsed.icon)]);
+    const [ogImage, icon, logo] = await Promise.all([fetchImage(parsed.ogImage), fetchImage(parsed.icon), fetchImage(rendered?.colors?.logoUrl)]);
     return {
         ...parsed,
         headings: rendered?.headings?.length ? rendered.headings : parsed.headings,
         ctas: [...new Set(rendered?.ctas?.length ? rendered.ctas : parsed.ctas)],
-        colors: rendered?.colors || { background: null, text: null, heading: null, accent: parsed.themeColor || null },
+        colors: rendered?.colors
+            ? { ...rendered.colors, candidates: [...(rendered.colors.candidates || []), ...(parsed.themeColor ? [{ color: parsed.themeColor, weight: 30, source: 'theme-color' }] : [])] }
+            : { background: null, text: null, heading: null, accent: parsed.themeColor || null },
         fonts: rendered?.fonts || null,
         screenshots: rendered?.screenshots || [],
         shotElements: rendered?.shotElements || [],
         ogImageData: ogImage,
         iconData: icon,
+        logoData: logo,
     };
 }

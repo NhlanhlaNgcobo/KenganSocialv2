@@ -5,6 +5,8 @@
 import { create } from 'zustand';
 import { CAPTION_STYLES, DEFAULT_TEXT, TIMELINE } from '../constants';
 import { generateId, getElementEnd, getElementLength } from '../lib/time';
+import { CAPTION_TEMPLATE_MAP, captionLook, captionText } from '../lib/caption-templates';
+import { useProjectStore } from './project-store';
 import type {
     CreateTimelineElement,
     MediaElement,
@@ -17,6 +19,18 @@ import type {
 } from '../types';
 
 const HISTORY_LIMIT = 100;
+// Metadata is attached to immutable track snapshots without changing the existing history API.
+const projectHistory = new WeakMap<TimelineTrack[], { ratio: ReturnType<typeof useProjectStore.getState>['ratio']; backgroundColor: string; projectKey: string | null }>();
+function rememberProject(tracks: TimelineTrack[]) {
+    const { ratio, backgroundColor, projectKey } = useProjectStore.getState();
+    projectHistory.set(tracks, { ratio, backgroundColor, projectKey });
+}
+function restoreProject(tracks: TimelineTrack[]) {
+    const settings = projectHistory.get(tracks);
+    if (settings && settings.projectKey === useProjectStore.getState().projectKey) {
+        useProjectStore.setState({ ratio: settings.ratio, backgroundColor: settings.backgroundColor });
+    }
+}
 export const LYRIC_TRACK_NAME = 'Lyrics';
 
 const TRACK_NAMES: Record<TrackType, string> = {
@@ -40,6 +54,28 @@ function createTrack(type: TrackType, isMain = false): TimelineTrack {
 export function sortTracks(tracks: TimelineTrack[]): TimelineTrack[] {
     const rank = (t: TimelineTrack) => (t.type === 'text' ? 0 : t.type === 'audio' ? 3 : t.isMain ? 2 : 1);
     return [...tracks].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * The main track is magnetic (as in CapCut): its clips always sit back to back from 0:00, so
+ * cuts line up for transitions and deleting or trimming a clip closes the gap. Order follows
+ * each clip's centre, so a clip dragged onto another lands before or after it by position.
+ */
+function compactMain(track: TimelineTrack): TimelineTrack {
+    if (!track.isMain || !track.elements.length) return track;
+    const ordered = [...track.elements].sort((a, b) => a.startTime + getElementLength(a) / 2 - (b.startTime + getElementLength(b) / 2));
+    let cursor = 0;
+    let changed = false;
+    const elements = ordered.map((el) => {
+        const startTime = Math.round(cursor * 1000) / 1000;
+        cursor += getElementLength(el);
+        if (Math.abs(el.startTime - startTime) > 1e-4) {
+            changed = true;
+            return { ...el, startTime };
+        }
+        return el;
+    });
+    return changed || ordered.some((el, i) => el !== track.elements[i]) ? { ...track, elements } : track;
 }
 
 function ensureMainTrack(tracks: TimelineTrack[]): TimelineTrack[] {
@@ -131,10 +167,17 @@ interface TimelineState {
     // insertion helpers
     addMediaAtTime: (item: MediaItem, time: number, trackId?: string) => boolean;
     addTextAtTime: (time: number, partial?: Partial<TextElement>, trackId?: string) => boolean;
-    addCaptions: (words: { text: string; start: number; end: number }[], style: keyof typeof CAPTION_STYLES) => number;
+    addCaptions: (words: { text: string; start: number; end: number }[], style: keyof typeof CAPTION_STYLES, canvasHeight?: number) => number;
     /** Puts lyric lines on a single "Lyrics" text track, replacing any previous one. Returns the count. */
     replaceLyricTrack: (lines: (Partial<TextElement> & { content: string; startTime: number; duration: number })[]) => number;
     replaceMainTrackSegments: (mediaId: string, segments: { start: number; end: number; label?: string }[], mediaDuration: number) => void;
+    /**
+     * Applies a generated edit (AI Edit) as one undo step: replaces the main track, and replaces
+     * earlier caption and AI title tracks with the given text tracks. Other tracks are kept.
+     */
+    applyGeneratedEdit: (main: MediaElement[], textTracks: { name: string; elements: TextElement[] }[]) => void;
+    /** Moves video and image clips from overlay tracks onto the main track (in time order). Returns how many moved. */
+    moveOverlaysToMain: () => number;
     removeElementsForMedia: (mediaId: string) => void;
     replaceMedia: (oldMediaId: string, newMediaId: string, newDuration: number, newName: string) => number;
 
@@ -145,7 +188,7 @@ interface TimelineState {
 }
 
 export const useTimelineStore = create<TimelineState>((set, get) => {
-    const writeTracks = (tracks: TimelineTrack[]) => set({ tracks: sortTracks(ensureMainTrack(tracks)) });
+    const writeTracks = (tracks: TimelineTrack[]) => set({ tracks: sortTracks(ensureMainTrack(tracks).map(compactMain)) });
 
     const mapElement = (trackId: string, elementId: string, fn: (el: TimelineElement) => TimelineElement) =>
         get().tracks.map((track) =>
@@ -173,15 +216,19 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
         history: [],
         future: [],
 
-        pushHistory: () =>
+        pushHistory: () => {
+            rememberProject(get().tracks);
             set((state) => ({
                 history: [...state.history, state.tracks].slice(-HISTORY_LIMIT),
                 future: [],
-            })),
+            }));
+        },
         undo: () =>
             set((state) => {
                 if (!state.history.length) return state;
                 const previous = state.history[state.history.length - 1];
+                rememberProject(state.tracks);
+                restoreProject(previous);
                 return {
                     tracks: previous,
                     history: state.history.slice(0, -1),
@@ -193,6 +240,8 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
             set((state) => {
                 if (!state.future.length) return state;
                 const [next, ...rest] = state.future;
+                rememberProject(state.tracks);
+                restoreProject(next);
                 return {
                     tracks: next,
                     history: [...state.history, state.tracks],
@@ -201,7 +250,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
                 };
             }),
 
-        loadTracks: (tracks) => set({ tracks: sortTracks(ensureMainTrack(tracks)), history: [], future: [], selected: [] }),
+        loadTracks: (tracks) => set({ tracks: sortTracks(ensureMainTrack(tracks).map(compactMain)), history: [], future: [], selected: [] }),
         clearTimeline: () => set({ tracks: [createTrack('media', true)], history: [], future: [], selected: [] }),
 
         toggleSnapping: () => set((s) => ({ snappingEnabled: !s.snappingEnabled })),
@@ -311,7 +360,8 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
             const { element } = found;
             const startTime = Math.max(0, newStartTime);
             if (toTrack.type !== found.track.type) return false;
-            if (overlaps(toTrack, startTime, getElementLength(element), element.id)) return false;
+            // The magnetic main track reorders instead of refusing overlaps.
+            if (!toTrack.isMain && overlaps(toTrack, startTime, getElementLength(element), element.id)) return false;
 
             get().pushHistory();
             const moved = { ...element, startTime } as TimelineElement;
@@ -425,6 +475,41 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
             const duration = item.type === 'image' ? TIMELINE.DEFAULT_IMAGE_DURATION : item.duration || TIMELINE.DEFAULT_IMAGE_DURATION;
             const startTime = Math.max(0, time);
             const { tracks } = get();
+            const main = tracks.find((t) => t.isMain);
+
+            // Video and images go onto the magnetic main track (unless dropped on another track):
+            // inserted at the nearest cut to the playhead, later clips move along.
+            if (trackType === 'media' && main && (!trackId || trackId === main.id)) {
+                const clips = [...main.elements].sort((a, b) => a.startTime - b.startTime);
+                const end = clips.reduce((e, c) => Math.max(e, getElementEnd(c)), 0);
+                let insertAt = end;
+                for (const c of clips) {
+                    if (startTime < getElementEnd(c)) {
+                        insertAt = startTime < c.startTime + getElementLength(c) / 2 ? c.startTime : getElementEnd(c);
+                        break;
+                    }
+                }
+                get().pushHistory();
+                const id = generateId('clip');
+                const element: MediaElement = {
+                    id,
+                    type: 'media',
+                    mediaId: item.id,
+                    name: item.name,
+                    duration,
+                    startTime: insertAt,
+                    trimStart: 0,
+                    trimEnd: 0,
+                    muted: false,
+                    volume: 1,
+                    speed: 1,
+                    filter: 'none',
+                };
+                const shifted = main.elements.map((e) => (e.startTime >= insertAt - 1e-3 ? { ...e, startTime: e.startTime + duration } : e));
+                writeTracks(get().tracks.map((t) => (t.id === main.id ? { ...t, elements: [...shifted, element] } : t)));
+                set({ selected: [{ trackId: main.id, elementId: id }] });
+                return true;
+            }
 
             let targetId: string | null = null;
             const preferred = trackId ? tracks.find((t) => t.id === trackId && t.type === trackType) : undefined;
@@ -461,23 +546,26 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
             return !!get().addElementToTrack(target, element);
         },
 
-        addCaptions: (words, style) => {
-            const phrases = groupWords(words);
+        addCaptions: (words, style, canvasHeight = 1920) => {
+            const template = CAPTION_TEMPLATE_MAP[style] || CAPTION_TEMPLATE_MAP.bold;
+            const phrases = groupWords(words, template.words);
             if (!phrases.length) return 0;
             get().pushHistory();
-            const preset = CAPTION_STYLES[style] || CAPTION_STYLES.bold;
             const captionTrack: TimelineTrack = {
                 ...createTrack('text'),
                 name: 'Captions',
-                elements: phrases.map((p) => ({
+                elements: phrases.map((p, i) => ({
                     ...DEFAULT_TEXT,
-                    ...preset,
+                    ...captionLook(template.id, i, p.text, canvasHeight),
                     id: generateId('cap'),
                     name: p.text.slice(0, 24),
-                    content: p.text,
+                    content: captionText(template.id, p.text),
+                    rawContent: p.text,
+                    captionWords: words.filter((w) => w.start >= p.start && w.start < p.end).map((w) => ({
+                        text: w.text, start: w.start - p.start, end: Math.min(p.end, w.end) - p.start,
+                    })),
                     startTime: p.start,
                     duration: Math.max(0.2, p.end - p.start),
-                    y: 520,
                     isCaption: true,
                 })) as TextElement[],
             };
@@ -532,6 +620,31 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
                 });
             writeTracks(get().tracks.map((t) => (t.isMain ? { ...t, elements } : t)));
             set({ selected: [] });
+        },
+
+        applyGeneratedEdit: (main, textTracks) => {
+            get().pushHistory();
+            const names = new Set(textTracks.map((t) => t.name));
+            const isCaptionTrack = (t: TimelineTrack) => t.type === 'text' && t.elements.length > 0 && t.elements.every((e) => e.type === 'text' && e.isCaption);
+            const kept = get()
+                .tracks.filter((t) => !(t.type === 'text' && (names.has(t.name) || isCaptionTrack(t))))
+                .map((t) => (t.isMain ? { ...t, elements: main } : t));
+            const added = textTracks.filter((t) => t.elements.length).map((t) => ({ ...createTrack('text'), name: t.name, elements: t.elements }));
+            writeTracks([...added, ...kept]);
+            set({ selected: [] });
+        },
+
+        moveOverlaysToMain: () => {
+            const tracks = get().tracks;
+            const main = tracks.find((t) => t.isMain);
+            const overlay = tracks.filter((t) => t.type === 'media' && !t.isMain).flatMap((t) => t.elements);
+            if (!main || !overlay.length) return 0;
+            get().pushHistory();
+            // Overlay clips keep their time order and go after any clip they started after.
+            const merged = [...main.elements, ...overlay].sort((a, b) => a.startTime - b.startTime).map((e, i) => ({ ...e, startTime: i }));
+            writeTracks(tracks.filter((t) => !(t.type === 'media' && !t.isMain)).map((t) => (t.isMain ? { ...t, elements: merged as TimelineElement[] } : t)));
+            set({ selected: [] });
+            return overlay.length;
         },
 
         removeElementsForMedia: (mediaId) => {

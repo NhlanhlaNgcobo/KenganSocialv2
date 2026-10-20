@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { APPROVAL_PLANS } from '../../utils/planLimits';
 import { useTheme } from '../../context/ThemeContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import {
+    BadgeCheck,
     BarChart3,
     Calendar,
     ChevronLeft,
@@ -51,6 +53,7 @@ const NAV_GROUPS = [
     {
         title: 'Publish',
         items: [
+            { label: 'Clients & approvals', icon: BadgeCheck, path: '/dashboard/clients', plans: APPROVAL_PLANS, tag: 'PRO' },
             { label: 'Calendar', icon: Calendar, path: '/dashboard/scheduler' },
             { label: 'New post', icon: FileVideo, path: '/dashboard/content' },
             { label: 'Trending ideas', icon: Flame, path: '/dashboard/trending' },
@@ -77,7 +80,7 @@ const NAV_GROUPS = [
 
 export default function Sidebar() {
     const [collapsed, setCollapsed] = useState(false);
-    const { user, profile, logout } = useAuth();
+    const { user, profile, logout, plan } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const photo = profile?.photoURL || user?.photoURL;
     const name = profile?.displayName || user?.displayName || 'Account';
@@ -142,6 +145,7 @@ export default function Sidebar() {
                             >
                                 <item.icon size={17} strokeWidth={1.8} />
                                 {!collapsed && <span>{item.label}</span>}
+                                {!collapsed && item.plans && !item.plans.includes(plan || 'starter') ? <span className="sidebar__tag">{item.tag}</span> : null}
                             </NavLink>
                         ))}
                     </div>

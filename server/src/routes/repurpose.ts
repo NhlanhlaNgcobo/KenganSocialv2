@@ -1,15 +1,19 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { checkLimit, planRateLimit } from '../middleware/planGate';
-import { fetchArticle, fetchYouTubeText, isYouTubeUrl } from '../services/repurpose/extract.js';
+import { checkLimit, consumeUsage, planRateLimit } from '../middleware/planGate';
+import { MAX_SOURCE_MINUTES } from '../utils/planLimits';
+import { probe } from '../services/ffmpeg-runner.js';
+import { getUploadPath } from '../services/manual-edit.service.js';
+import { fetchArticle, fetchYouTubeText, isYouTubeUrl, transcribeUpload } from '../services/repurpose/extract.js';
 import { generateDrafts, PLATFORMS, TONES } from '../services/repurpose/generate.js';
 
 /**
  * Repurpose: one source (article link, pasted text or a clip transcript) → native
  * posts per platform. Scheduling uses the existing /api/schedule endpoints.
  *  GET  /api/repurpose/options
- *  POST /api/repurpose   { source: { type: 'url'|'text', url?, text?, title? }, platforms, tone, audience?, cta?, rightsConfirmed? }
+ *  POST /api/repurpose   { source: { type: 'url'|'text'|'upload', url?, text?, uploadId?, title? }, platforms, tone, audience?, cta?, rightsConfirmed? }
+ * An uploaded video (uploadId from /api/video/manual-edit/upload) is transcribed: the fallback when YouTube blocks a link.
  * A YouTube video link is read from its captions (or transcribed) and needs rightsConfirmed: true.
  */
 const router = express.Router();
@@ -42,6 +46,20 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('aiCalls'), async (r
             title = video.title || title;
             content = [video.description ? `Video description: ${String(video.description).slice(0, 600)}` : '', video.text].filter(Boolean).join('\n\n');
             origin = { url: text(source.url, 600), siteName: video.channel || 'YouTube', kind: 'youtube', textSource: video.source };
+        } else if (source.type === 'upload') {
+            const filePath = typeof source.uploadId === 'string' ? getUploadPath(source.uploadId, (req as any).uid) : null;
+            if (!filePath) return res.status(400).json({ error: 'Upload the video first. If you already did, upload it again.' });
+            const plan = (req as any).plan;
+            const seconds = (await probe(filePath).catch(() => ({ duration: 0 }))).duration || 0;
+            const maxMinutes = (MAX_SOURCE_MINUTES as any)[plan] ?? 0;
+            if (seconds / 60 > Math.max(maxMinutes, 10)) {
+                return res.status(402).json({ error: `This video is ${Math.round(seconds / 60)} minutes long. Your plan transcribes videos of up to ${Math.max(maxMinutes, 10)} minutes here.` });
+            }
+            const usage = await consumeUsage((req as any).workspaceId, plan, 'transcribeHrs', Math.max(1, Math.ceil(seconds / 3600)));
+            if (!usage.ok) return res.status(usage.status).json(usage.body);
+            content = await transcribeUpload(filePath, { plan, workspaceId: (req as any).workspaceId });
+            title = title || text(source.name, 150) || 'Video';
+            origin = { url: '', siteName: 'Uploaded video', kind: 'upload', textSource: 'transcription' };
         } else if (source.type === 'url') {
             const article = await fetchArticle(text(source.url, 600));
             title = article.title || title;
@@ -55,9 +73,13 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('aiCalls'), async (r
         const result = await generateDrafts({ title, text: content, platforms, tone, audience: text(body.audience, 120), cta: text(body.cta, 160) });
         res.json({ success: true, title, origin, ...result });
     } catch (error: any) {
+        // No AI provider configured is a setup problem, not a temporary outage: say so.
+        if (/No AI provider is configured/i.test(error.message || '')) {
+            return res.status(503).json({ error: 'AI is not set up on the server yet. Add OPENROUTER_API_KEY or GEMINI_API_KEY to server/.env.' });
+        }
         const status = error.status || 500;
         if (status >= 500) console.error('[Repurpose] Failed:', error.message);
-        res.status(status).json({ error: status >= 500 ? 'The writer is unavailable right now. Try again in a minute.' : error.message });
+        res.status(status).json({ error: status >= 500 ? 'The writer is unavailable right now. Try again in a minute.' : error.message, ...(error.code ? { code: error.code } : {}) });
     }
 });
 

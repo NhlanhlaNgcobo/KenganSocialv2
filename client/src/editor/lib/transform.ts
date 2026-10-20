@@ -1,3 +1,4 @@
+import { cameraEndpoints } from './camera-motion.js';
 import type { ClipTransform, MediaElement } from '../types';
 
 export const DEFAULT_TRANSFORM: ClipTransform = {
@@ -21,6 +22,8 @@ export function isIdentity(t: ClipTransform): boolean {
 
 /** Start and end zoom of a clip, including its Ken Burns animation. */
 export function scaleRange(t: ClipTransform): [number, number] {
+    const motion = cameraEndpoints(t);
+    if (motion) return [motion.scaleStart, motion.scaleEnd];
     const extra = 1 + Math.max(0, t.animationAmount);
     if (t.animation === 'zoom-in') return [t.scale, t.scale * extra];
     if (t.animation === 'zoom-out') return [t.scale * extra, t.scale];
@@ -37,7 +40,11 @@ export function cssTransform(t: ClipTransform, progress: number, pxScale: number
     if (isIdentity(t)) return undefined;
     const [s0, s1] = scaleRange(t);
     const s = s0 + (s1 - s0) * Math.min(1, Math.max(0, progress));
-    return `rotate(${t.rotation}deg) translate(${t.x * pxScale}px, ${t.y * pxScale}px) scale(${s}) scale(${t.flipH ? -1 : 1}, ${t.flipV ? -1 : 1})`;
+    const motion = cameraEndpoints(t);
+    const p = Math.min(1, Math.max(0, progress));
+    const x = motion ? motion.x + (motion.xEnd - motion.x) * p : t.x;
+    const y = motion ? motion.y + (motion.yEnd - motion.y) * p : t.y;
+    return `rotate(${t.rotation}deg) translate(${x * pxScale}px, ${y * pxScale}px) scale(${s}) scale(${t.flipH ? -1 : 1}, ${t.flipV ? -1 : 1})`;
 }
 
 /** Zoom that makes a clip cover the whole canvas (no letterbox bars), relative to the fitted size. */

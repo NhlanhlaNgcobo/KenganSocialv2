@@ -6,6 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg libglib2.0-0 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Deno: yt-dlp needs a JavaScript runtime to solve YouTube's player challenges (YouTube import).
+COPY --from=denoland/deno:bin-2.1.4 /deno /usr/local/bin/deno
+
 WORKDIR /app
 
 COPY requirements.txt .

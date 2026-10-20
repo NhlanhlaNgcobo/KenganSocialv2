@@ -19,7 +19,7 @@ interface MediaState {
     items: MediaItem[];
     isImporting: boolean;
     importErrors: string[];
-    addFiles: (files: File[], projectKey: string) => Promise<MediaItem[]>;
+    addFiles: (files: File[], projectKey: string, options?: { signal?: AbortSignal; isCurrent?: () => boolean }) => Promise<MediaItem[]>;
     removeItem: (id: string, projectKey: string) => void;
     restore: (metas: StoredMediaMeta[], projectKey: string) => Promise<void>;
     reset: () => void;
@@ -36,7 +36,7 @@ export const useMediaStore = create<MediaState>((set, get) => ({
     isImporting: false,
     importErrors: [],
 
-    addFiles: async (files, projectKey) => {
+    addFiles: async (files, projectKey, options) => {
         set({ isImporting: true, importErrors: [] });
         const added: MediaItem[] = [];
         const errors: string[] = [];
@@ -72,6 +72,14 @@ export const useMediaStore = create<MediaState>((set, get) => ({
                 URL.revokeObjectURL(url);
                 errors.push(`${file.name}: ${(error as Error).message}`);
             }
+        }
+        if (options?.signal?.aborted || (options?.isCurrent && !options.isCurrent())) {
+            for (const item of added) {
+                URL.revokeObjectURL(item.url);
+                await editorStorage.deleteMedia(mediaKey(projectKey, item.id));
+            }
+            set({ isImporting: false });
+            throw new Error('Cancelled');
         }
         set((state) => ({ items: [...state.items, ...added], isImporting: false, importErrors: errors }));
         return added;

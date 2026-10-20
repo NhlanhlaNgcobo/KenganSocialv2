@@ -88,7 +88,15 @@ export async function processManualEdit(req, res) {
             userId: req.user.uid,
             status: 'processing',
             progress: 0,
-            editConfig,
+            // A summary only: full configs can hold LUT tables and nested curve points, which
+            // Firestore cannot store (nested arrays, 1 MB documents).
+            editSummary: {
+                version: editConfig.version || 1,
+                exportFormat: editConfig.exportFormat || null,
+                duration: Number(editConfig.duration) || null,
+                clips: Array.isArray(editConfig.main) ? editConfig.main.length : Array.isArray(editConfig.clips) ? editConfig.clips.length : 0,
+                texts: Array.isArray(editConfig.text) ? editConfig.text.length : 0,
+            },
             createdAt: new Date().toISOString(),
         });
 

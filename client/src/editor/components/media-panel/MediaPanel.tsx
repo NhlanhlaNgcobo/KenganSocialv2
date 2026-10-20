@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
-import { Captions, Clapperboard, Film, LayoutTemplate, MicVocal, Music, Settings2, Sparkles, Type } from 'lucide-react';
+import { Aperture, ArrowLeftRight, Captions, Clapperboard, Film, LayoutTemplate, MicVocal, Music, Settings2, Sparkles, Type } from 'lucide-react';
+import { EffectsView, TransitionsView } from './FxViews';
 import { useUiStore, type PanelTab } from '../../stores/ui-store';
 import { AiView } from './AiView';
 import { CaptionsView } from './CaptionsView';
@@ -19,7 +20,9 @@ const TABS: { id: PanelTab; label: string; icon: typeof Film }[] = [
     { id: 'stock', label: 'Stock', icon: Clapperboard },
     { id: 'text', label: 'Text', icon: Type },
     { id: 'captions', label: 'Captions', icon: Captions },
-    { id: 'ai', label: 'AI Edit', icon: Sparkles },
+    { id: 'effects', label: 'Effects', icon: Aperture },
+    { id: 'transitions', label: 'Transitions', icon: ArrowLeftRight },
+    { id: 'ai', label: 'AI tools', icon: Sparkles },
     { id: 'settings', label: 'Settings', icon: Settings2 },
 ];
 
@@ -31,6 +34,8 @@ const VIEWS: Record<PanelTab, ComponentType> = {
     stock: StockView,
     text: TextView,
     captions: CaptionsView,
+    effects: EffectsView,
+    transitions: TransitionsView,
     ai: AiView,
     settings: SettingsView,
 };
@@ -55,7 +60,7 @@ export function MediaPanel() {
                     </button>
                 ))}
             </nav>
-            <div className="ke-media-panel__view">
+            <div className="ke-media-panel__view" key={activeTab}>
                 <View />
             </div>
         </div>

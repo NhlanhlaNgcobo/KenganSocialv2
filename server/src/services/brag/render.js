@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { bundle } from '@remotion/bundler';
 import { renderMedia, renderStill, selectComposition } from '@remotion/renderer';
+import { brandPalette } from './brand-colors.js';
 
 /** Step 3 of the launch-video pipeline: render the storyboard with Remotion. */
 
@@ -22,55 +23,6 @@ function getBundle() {
         });
     }
     return bundlePromise;
-}
-
-/** Rough perceived lightness 0..1 for hex, rgb() and oklch() colours; null if unknown. */
-export function lightness(color) {
-    const c = String(color || '').trim().toLowerCase();
-    let m = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
-    if (m) {
-        const hex = m[1].length === 3 ? m[1].split('').map((x) => x + x).join('') : m[1];
-        const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    }
-    m = c.match(/^rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)/);
-    if (m) return (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255;
-    m = c.match(/^oklch\(\s*([\d.]+)(%?)/);
-    if (m) return Number(m[1]) / (m[2] ? 100 : 1);
-    return null;
-}
-
-/** HSL-style saturation 0..1 for hex and rgb() colours; null if unknown. */
-export function saturation(color) {
-    const c = String(color || '').trim().toLowerCase();
-    let rgb = null;
-    const hex = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
-    if (hex) {
-        const h = hex[1].length === 3 ? hex[1].split('').map((x) => x + x).join('') : hex[1];
-        rgb = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
-    }
-    const fn = c.match(/^rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)/);
-    if (fn) rgb = [fn[1], fn[2], fn[3]].map((v) => Number(v) / 255);
-    if (!rgb) return null;
-    const max = Math.max(...rgb);
-    const min = Math.min(...rgb);
-    const l = (max + min) / 2;
-    return max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
-}
-
-const isTransparent =(c) => !c || /^rgba\([^)]*,\s*0\)$/.test(c) || c === 'transparent' || /\/\s*0\)$/.test(c);
-
-/** Builds a palette from the site's own colours, falling back to Kengan defaults. */
-export function buildPalette(colors = {}) {
-    const bg = isTransparent(colors.background) ? '#ffffff' : colors.background;
-    const bgL = lightness(bg) ?? 1;
-    const fg = !isTransparent(colors.text) && Math.abs((lightness(colors.text) ?? (bgL > 0.5 ? 0 : 1)) - bgL) > 0.35 ? colors.text : bgL > 0.5 ? '#111114' : '#ffffff';
-    let accent = [colors.accent, colors.heading].find((c) => !isTransparent(c) && c !== bg && Math.abs((lightness(c) ?? 0.5) - bgL) > 0.15);
-    if (!accent) accent = '#8b5cf6';
-    // Black-and-white brands look grey and flat on video: give them a dark stage and one vivid accent.
-    if ((saturation(accent) ?? 0) < 0.18) return { bg: '#0b0a10', fg: '#ffffff', accent: '#8b5cf6', accentText: '#ffffff' };
-    const accentText = (lightness(accent) ?? 0) > 0.6 ? '#111114' : '#ffffff';
-    return { bg, fg, accent, accentText };
 }
 
 /** Captured viewport shape (width / height) per format: launch capture (inspect.js) and tutorial explore (explore.js). */
@@ -105,11 +57,13 @@ export async function renderLaunchVideo({ plan, source, format, music, sfx = {},
                   const target = shot && s.type !== 'hook' && s.type !== 'outro' ? pickTarget(source.shotElements?.[s.screenshot], s.type) : null;
                   return { ...s, screenshotData: shot, target };
               });
+    const palette = await brandPalette(source);
+    console.log('[Brag] Brand palette:', JSON.stringify({ ...palette, sources: palette.sources.slice(0, 4) }));
     const inputProps = {
         format,
         kind,
         tone: plan.tone,
-        palette: buildPalette(source.colors),
+        palette,
         fontFamily: (source.fonts?.heading || source.fonts?.body || 'Inter').split(',')[0].replace(/["']/g, '').trim() || 'Inter',
         productName: plan.productName,
         host,

@@ -1,16 +1,22 @@
+import { CAMERA_MOTIONS } from '../../lib/camera-motion.js';
 import { AlignCenter, AlignLeft, AlignRight, Bold, Eye, EyeOff, Italic, Loader2, Volume2, VolumeX, Wand2 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
-import { STABILIZE_PRESETS, useEnhanceStore } from '../../stores/enhance-store';
+import { CLEANUP_PRESETS, hasCleanup, NO_CLEANUP, STABILIZE_PRESETS, useEnhanceStore } from '../../stores/enhance-store';
+import type { CleanupOptions } from '../../lib/editor-api';
 import { getCanvasSize } from '../../stores/project-store';
 import { DEFAULT_TRANSFORM, fillScale, getTransform, isIdentity } from '../../lib/transform';
 import { useUiStore } from '../../stores/ui-store';
-import { FILTERS, FONT_FAMILIES, SPEED_PRESETS } from '../../constants';
+import { FONT_FAMILIES, LOOK_LABELS, SPEED_PRESETS } from '../../constants';
+import { canTransition, DEFAULT_TRANSITION_SECONDS, EFFECTS, TRANSITION_GROUPS, TRANSITIONS } from '../../lib/fx';
+import { ColorPanel, colorFromLegacy } from './ColorPanel';
+import { LOOK_NAMES } from '../../lib/color-pipeline.js';
 import { formatTimecode, getElementLength } from '../../lib/time';
 import { useMediaStore } from '../../stores/media-store';
 import { usePlaybackStore } from '../../stores/playback-store';
 import { useProjectStore } from '../../stores/project-store';
 import { useTimelineStore } from '../../stores/timeline-store';
-import type { ClipTransform, MediaElement, TextElement, TimelineTrack } from '../../types';
+import type { ClipEffect, ClipTransform, EffectType, MediaElement, TextAnimation, TextElement, TimelineTrack, TransitionType } from '../../types';
+import { CAPTION_MOTIONS, TEXT_ANIMATIONS, captionTokens } from '../../lib/caption-motion.js';
 
 /** Edits made while dragging a slider or typing are grouped into one undo step. */
 const beginEdit = () => useTimelineStore.getState().pushHistory();
@@ -41,7 +47,7 @@ function TextProperties({ track, el }: { track: TimelineTrack; el: TextElement }
         <>
             <section className="ke-props-section">
                 <h4>Text</h4>
-                <textarea className="ke-input ke-textarea" rows={3} value={el.content} onFocus={beginEdit} onChange={(e) => update({ content: e.target.value, name: e.target.value.slice(0, 24) || 'Text' })} />
+                <textarea className="ke-input ke-textarea" rows={3} value={el.content} onFocus={beginEdit} onChange={(e) => update({ content: e.target.value, rawContent: e.target.value, name: e.target.value.slice(0, 24) || 'Text' })} />
             </section>
             <section className="ke-props-section">
                 <h4>Style</h4>
@@ -95,6 +101,59 @@ function TextProperties({ track, el }: { track: TimelineTrack; el: TextElement }
                 <Row label="Opacity">
                     <Slider value={el.opacity} min={0} max={1} step={0.01} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => update({ opacity: v })} />
                 </Row>
+                <Row label="Outline">
+                    <div className="ke-inline">
+                        <input
+                            type="color"
+                            className="ke-color"
+                            value={el.strokeColor && el.strokeColor.startsWith('#') ? el.strokeColor : '#000000'}
+                            onPointerDown={beginEdit}
+                            onChange={(e) => update({ strokeColor: e.target.value, strokeWidth: el.strokeWidth || Math.max(2, Math.round(el.fontSize * 0.08)) })}
+                        />
+                        <button className={`ke-chip ${!el.strokeWidth ? 'is-active' : ''}`} onClick={() => commit({ strokeWidth: 0 })}>
+                            None
+                        </button>
+                    </div>
+                </Row>
+                {el.strokeWidth ? (
+                    <Row label="Outline width">
+                        <Slider value={el.strokeWidth} min={1} max={24} step={1} format={(v) => `${v}`} onChange={(v) => update({ strokeWidth: v })} />
+                    </Row>
+                ) : null}
+                <Row label="Animation">
+                    <div className="ke-seg ke-seg--text">
+                        {(['none', 'fade', 'pop'] as TextAnimation[]).map((a) => (
+                            <button key={a} className={(el.animation || 'none') === a ? 'is-active' : ''} onClick={() => commit({ animation: a })}>
+                                {a === 'none' ? 'None' : a === 'fade' ? 'Fade' : 'Pop'}
+                            </button>
+                        ))}
+                    </div>
+                </Row>
+                {!el.isCaption ? <Row label="Title motion"><select className="ke-select" value={el.captionMotion || ''} onChange={(e) => commit({ captionMotion: e.target.value || undefined, animation: 'none' })}><option value="">None</option>{TEXT_ANIMATIONS.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</select></Row> : null}
+                {el.isCaption ? <>
+                    <Row label="Word motion">
+                        <select className="ke-select" value={el.captionMotion || ''} onChange={(e) => commit({ captionMotion: e.target.value || undefined, animation: 'none' })}>
+                            <option value="">None</option>
+                            {CAPTION_MOTIONS.map((mode) => <option key={mode} value={mode}>{mode.replaceAll('-', ' ')}</option>)}
+                        </select>
+                    </Row>
+                    <Row label="Accent">
+                        <input type="color" className="ke-color" aria-label="Caption accent colour" value={el.accentColor || '#a3e635'} onFocus={beginEdit} onChange={(e) => update({ accentColor: e.target.value })} />
+                    </Row>
+                    <details className="ke-word-timing">
+                        <summary>Word timing · seconds</summary>
+                        <p className="ke-note">Times are relative to the start of this caption, before trimming.</p>
+                        {captionTokens(el.content, el.captionWords, el.duration).map((word, i, words) => <div className="ke-word-timing__row" key={i}>
+                            <span>{word.text}</span>
+                            {(['start', 'end'] as const).map((edge) => <input key={edge} type="number" className="ke-input" min={0} max={el.duration} step={0.01}
+                                aria-label={`${word.text} ${edge} time`} value={Number(word[edge].toFixed(2))} onFocus={beginEdit}
+                                onChange={(e) => {
+                                    const value = Math.max(0, Math.min(el.duration, Number(e.target.value) || 0));
+                                    update({ captionWords: words.map((w, n) => n === i ? { ...w, [edge]: edge === 'start' ? Math.min(value, w.end) : Math.max(value, w.start) } : w) });
+                                }} />)}
+                        </div>)}
+                    </details>
+                </> : null}
             </section>
             <section className="ke-props-section">
                 <h4>Transform</h4>
@@ -110,13 +169,110 @@ function TextProperties({ track, el }: { track: TimelineTrack; el: TextElement }
                 <button className="ke-btn ke-btn--sm" onClick={() => commit({ x: 0, y: 0, rotation: 0 })}>
                     Reset position
                 </button>
-                <p className="ke-note">Rotation is shown in preview only; exports keep text upright.</p>
             </section>
         </>
     );
 }
 
-function EnhanceSection({ mediaId }: { mediaId: string }) {
+function CleanupControls({ cleanup, setCleanup, busy, audioOnly }: { cleanup: CleanupOptions; setCleanup: (c: CleanupOptions) => void; busy: boolean; audioOnly: boolean }) {
+    const v = cleanup.video;
+    const a = cleanup.audio;
+    const setV = (p: Partial<CleanupOptions['video']>) => setCleanup({ ...cleanup, video: { ...v, ...p } });
+    const setA = (p: Partial<CleanupOptions['audio']>) => setCleanup({ ...cleanup, audio: { ...a, ...p } });
+    const matches = (preset: CleanupOptions) => JSON.stringify(preset) === JSON.stringify(cleanup);
+    return (
+        <div className="ke-subpanel">
+            <div className="ke-chip-row">
+                {Object.entries(CLEANUP_PRESETS)
+                    .filter(([, preset]) => !audioOnly || preset.value.audio.noise !== 'off')
+                    .map(([key, preset]) => (
+                        <button key={key} className={`ke-chip ${matches(preset.value) ? 'is-active' : ''}`} disabled={busy} title={preset.hint} onClick={() => setCleanup(preset.value)}>
+                            {preset.label}
+                        </button>
+                    ))}
+                {hasCleanup(cleanup) ? (
+                    <button className="ke-chip" disabled={busy} onClick={() => setCleanup(NO_CLEANUP)}>
+                        Clear
+                    </button>
+                ) : null}
+            </div>
+            {!audioOnly ? (
+                <>
+                    <h5 className="ke-subhead">Picture</h5>
+                    <Row label="Denoise">
+                        <div className="ke-seg ke-seg--text">
+                            {(['off', 'light', 'medium', 'strong'] as const).map((d) => (
+                                <button key={d} className={v.denoise === d ? 'is-active' : ''} disabled={busy} onClick={() => setV({ denoise: d })}>
+                                    {d === 'off' ? 'Off' : d[0].toUpperCase() + d.slice(1)}
+                                </button>
+                            ))}
+                        </div>
+                    </Row>
+                    <Row label="Sharpen">
+                        <div className="ke-slider">
+                            <input type="range" min={0} max={1} step={0.05} value={v.sharpen} disabled={busy} onChange={(e) => setV({ sharpen: Number(e.target.value) })} />
+                            <span className="ke-mono">{Math.round(v.sharpen * 100)}%</span>
+                        </div>
+                    </Row>
+                    <label className="ke-check">
+                        <input type="checkbox" checked={v.autoLevels} disabled={busy} onChange={(e) => setV({ autoLevels: e.target.checked })} /> Auto levels (fix flat, washed-out footage)
+                    </label>
+                    <label className="ke-check">
+                        <input type="checkbox" checked={v.deband} disabled={busy} onChange={(e) => setV({ deband: e.target.checked })} /> Smooth colour banding (skies, gradients)
+                    </label>
+                    <label className="ke-check">
+                        <input type="checkbox" checked={v.deflicker} disabled={busy} onChange={(e) => setV({ deflicker: e.target.checked })} /> Remove flicker (lights, timelapse)
+                    </label>
+                </>
+            ) : null}
+            <h5 className="ke-subhead">Sound</h5>
+            <Row label="Noise">
+                <select className="ke-select" value={a.noise} disabled={busy} onChange={(e) => setA({ noise: e.target.value as CleanupOptions['audio']['noise'] })}>
+                    <option value="off">Off</option>
+                    <option value="voice">Voice (AI, RNNoise)</option>
+                    <option value="voice-laughter">Voice + laughter (AI)</option>
+                    <option value="general">General sound (AI)</option>
+                    <option value="fft">Steady hiss (spectral)</option>
+                </select>
+            </Row>
+            {a.noise !== 'off' ? (
+                <Row label="Strength">
+                    <div className="ke-slider">
+                        <input type="range" min={0.1} max={1} step={0.05} value={a.strength} disabled={busy} onChange={(e) => setA({ strength: Number(e.target.value) })} />
+                        <span className="ke-mono">{Math.round(a.strength * 100)}%</span>
+                    </div>
+                </Row>
+            ) : null}
+            <Row label="Hum">
+                <div className="ke-seg ke-seg--text">
+                    {(['off', '50', '60'] as const).map((h) => (
+                        <button key={h} className={a.hum === h ? 'is-active' : ''} disabled={busy} onClick={() => setA({ hum: h })} title={h === '50' ? 'Mains hum in South Africa, Europe, Africa' : h === '60' ? 'Mains hum in the Americas' : ''}>
+                            {h === 'off' ? 'Off' : `${h} Hz`}
+                        </button>
+                    ))}
+                </div>
+            </Row>
+            <Row label="Loudness">
+                <select className="ke-select" value={a.loudness} disabled={busy} onChange={(e) => setA({ loudness: e.target.value as CleanupOptions['audio']['loudness'] })}>
+                    <option value="off">Leave as is</option>
+                    <option value="social">Social video (-14 LUFS)</option>
+                    <option value="podcast">Podcast (-16 LUFS)</option>
+                </select>
+            </Row>
+            <label className="ke-check">
+                <input type="checkbox" checked={a.clarity} disabled={busy} onChange={(e) => setA({ clarity: e.target.checked })} /> Voice clarity (cut rumble, lift presence, even out levels)
+            </label>
+            <label className="ke-check">
+                <input type="checkbox" checked={a.deess} disabled={busy} onChange={(e) => setA({ deess: e.target.checked })} /> Soften harsh “s” sounds
+            </label>
+            <label className="ke-check">
+                <input type="checkbox" checked={a.declick} disabled={busy} onChange={(e) => setA({ declick: e.target.checked })} /> Remove clicks and pops
+            </label>
+        </div>
+    );
+}
+
+function EnhanceSection({ mediaId, audioOnly = false }: { mediaId: string; audioOnly?: boolean }) {
     const { plan } = useAuth();
     const { options, setOptions, run, cancel, runningMediaId, stage, progress, error } = useEnhanceStore();
     const ratio = useProjectStore((s) => s.ratio);
@@ -134,7 +290,11 @@ function EnhanceSection({ mediaId }: { mediaId: string }) {
 
     return (
         <section className="ke-props-section">
-            <h4>Enhance</h4>
+            <h4>{audioOnly ? 'Clean up sound' : 'Enhance & clean up'}</h4>
+            <CleanupControls cleanup={options.cleanup} setCleanup={(cleanup) => setOptions({ cleanup })} busy={busy} audioOnly={audioOnly} />
+            {!audioOnly ? (
+                <>
+            <h5 className="ke-subhead">Camera</h5>
             <label className="ke-check">
                 <input type="checkbox" checked={options.stabilize} disabled={busy} onChange={(e) => setOptions({ stabilize: e.target.checked })} />
                 Stabilize shaky footage
@@ -219,6 +379,8 @@ function EnhanceSection({ mediaId }: { mediaId: string }) {
                 <input type="checkbox" checked={options.autoframe} disabled={busy} onChange={(e) => setOptions({ autoframe: e.target.checked })} />
                 Auto-frame to {ratio} (follows faces and motion)
             </label>
+                </>
+            ) : null}
 
             {busy && runningMediaId === mediaId ? (
                 <div className="ke-progress-card">
@@ -234,11 +396,15 @@ function EnhanceSection({ mediaId }: { mediaId: string }) {
                     </div>
                 </div>
             ) : (
-                <button className="ke-btn ke-btn--primary ke-btn--sm" onClick={apply} disabled={busy || !allowed || (!options.stabilize && !options.autoframe)}>
+                <button
+                    className="ke-btn ke-btn--primary ke-btn--sm"
+                    onClick={apply}
+                    disabled={busy || !allowed || (audioOnly ? !hasCleanup(options.cleanup) : !options.stabilize && !options.autoframe && !hasCleanup(options.cleanup))}
+                >
                     <Wand2 size={13} /> Apply
                 </button>
             )}
-            {!allowed ? <p className="ke-note">Stabilize and auto-frame need the Nano plan or higher.</p> : null}
+            {!allowed ? <p className="ke-note">Enhance and clean-up need the Nano plan or higher.</p> : null}
             {error && !busy ? <div className="ke-alert ke-alert--error">{error}</div> : null}
             <p className="ke-note">Creates a new version of this video and swaps it in on every clip that uses it (Ctrl+Z to undo).</p>
         </section>
@@ -294,6 +460,7 @@ function TransformSection({ track, el }: { track: TimelineTrack; el: MediaElemen
                             <option value="none">No animation</option>
                             <option value="zoom-in">Slow zoom in</option>
                             <option value="zoom-out">Slow zoom out</option>
+                            {CAMERA_MOTIONS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                         </select>
                     </Row>
                     {t.animation !== 'none' ? (
@@ -304,6 +471,105 @@ function TransformSection({ track, el }: { track: TimelineTrack; el: MediaElemen
                 </>
             ) : (
                 <p className="ke-note">Zoom animation is available on the main track. On this track, zoom below 100% makes a picture-in-picture.</p>
+            )}
+        </section>
+    );
+}
+
+function EffectsSection({ el, commit, update }: { el: MediaElement; commit: (p: Partial<MediaElement>) => void; update: (p: Partial<MediaElement>) => void }) {
+    const effects = el.effects || [];
+    const has = (type: EffectType) => effects.some((e) => e.type === type);
+    const toggle = (type: EffectType) => {
+        if (!has(type) && effects.length >= 6) return useUiStore.getState().notify('Remove an effect before adding another. The limit is six per clip.', 'error');
+        commit({ effects: has(type) ? effects.filter((e) => e.type !== type) : [...effects, { type, amount: 0.5 }] });
+    };
+    const setAmount = (type: EffectType, amount: number) => update({ effects: effects.map((e): ClipEffect => (e.type === type ? { ...e, amount } : e)) });
+    return (
+        <section className="ke-props-section">
+            <h4>Effects</h4>
+            <div className="ke-chip-row">
+                {EFFECTS.map((fx) => (
+                    <button key={fx.type} className={`ke-chip ${has(fx.type) ? 'is-active' : ''}`} onClick={() => toggle(fx.type)} title={fx.description}>
+                        {fx.label}
+                    </button>
+                ))}
+            </div>
+            {effects.map((e, index) => {
+                const info = EFFECTS.find((f) => f.type === e.type);
+                return (
+                    <div key={e.type} className="ke-effect-controls">
+                        <Row label={info?.label || e.type}>
+                            <Slider value={e.amount} min={0} max={1} step={0.02} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => setAmount(e.type, v)} />
+                        </Row>
+                        <div className="ke-inline">
+                            <button className="ke-chip" aria-pressed={e.enabled !== false} onClick={() => commit({ effects: effects.map((fx, n) => n === index ? { ...fx, enabled: fx.enabled === false } : fx) })}>{e.enabled === false ? 'Bypassed' : 'Enabled'}</button>
+                            <button className="ke-chip" disabled={index === 0} aria-label={`Move ${info?.label} earlier`} onClick={() => { const next = [...effects]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; commit({ effects: next }); }}>↑</button>
+                            <button className="ke-chip" disabled={index === effects.length - 1} aria-label={`Move ${info?.label} later`} onClick={() => { const next = [...effects]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; commit({ effects: next }); }}>↓</button>
+                            <button className="ke-chip" onClick={() => commit({ effects: effects.filter((_, n) => n !== index) })}>Remove</button>
+                        </div>
+                    </div>
+                );
+            })}
+            {effects.some((e) => EFFECTS.find((f) => f.type === e.type)?.exportOnly) ? <p className="ke-note">Export preview only: {effects.filter((e) => EFFECTS.find((f) => f.type === e.type)?.exportOnly).map((e) => EFFECTS.find((f) => f.type === e.type)?.label).join(', ')}.</p> : null}
+            <p className="ke-note">Effects render on main-track clips. Up to 6 per clip.</p>
+        </section>
+    );
+}
+
+function TransitionSection({ track, el }: { track: TimelineTrack; el: MediaElement }) {
+    const clips = (track.elements.filter((e) => e.type === 'media') as MediaElement[]).sort((a, b) => a.startTime - b.startTime);
+    const prev = clips[clips.indexOf(el) - 1];
+    const commit = (partial: Partial<MediaElement>) => useTimelineStore.getState().updateElement(track.id, el.id, partial);
+    const update = (partial: Partial<MediaElement>) => useTimelineStore.getState().updateElement(track.id, el.id, partial, false);
+    const current = el.transitionIn;
+    const setType = (type: TransitionType | null) => commit({ transitionIn: type ? { type, duration: current?.duration || DEFAULT_TRANSITION_SECONDS } : null });
+    const applyAll = () => {
+        if (!current) return;
+        const timeline = useTimelineStore.getState();
+        timeline.pushHistory();
+        clips.forEach((c, i) => i > 0 && canTransition(clips[i - 1], c) && timeline.updateElement(track.id, c.id, { transitionIn: current }, false));
+    };
+    const next = clips[clips.indexOf(el) + 1];
+    if (!prev) {
+        return next ? (
+            <section className="ke-props-section">
+                <h4>Transition in</h4>
+                <p className="ke-note">This is the first clip. Select the next clip (or use the Transitions tab) to set the transition between them.</p>
+            </section>
+        ) : null;
+    }
+    const joined = canTransition(prev, el);
+    return (
+        <section className="ke-props-section">
+            <h4>Transition in</h4>
+            {!joined ? (
+                <p className="ke-note">Move this clip so it starts where the previous clip ends to add a transition.</p>
+            ) : (
+                <>
+                    <select className="ke-select" value={current?.type || ''} onChange={(e) => setType((e.target.value as TransitionType) || null)}>
+                        <option value="">None (hard cut)</option>
+                        {TRANSITION_GROUPS.map((group) => (
+                            <optgroup key={group} label={group}>
+                                {TRANSITIONS.filter((t) => t.group === group).map((t) => (
+                                    <option key={t.type} value={t.type}>
+                                        {t.label}
+                                    </option>
+                                ))}
+                            </optgroup>
+                        ))}
+                    </select>
+                    {current ? (
+                        <>
+                            <Row label="Duration">
+                                <Slider value={current.duration} min={0.2} max={2} step={0.1} format={(v) => `${v.toFixed(1)}s`} onChange={(v) => update({ transitionIn: { ...current, duration: v } })} />
+                            </Row>
+                            <button className="ke-btn ke-btn--sm" onClick={applyAll}>
+                                Use on every cut
+                            </button>
+                        </>
+                    ) : null}
+                    <p className="ke-note">Centred on the cut; your timeline length stays the same.</p>
+                </>
             )}
         </section>
     );
@@ -361,20 +627,36 @@ function MediaProperties({ track, el }: { track: TimelineTrack; el: MediaElement
 
             {hasPicture ? <TransformSection track={track} el={el} /> : null}
 
-            {media?.type === 'video' ? <EnhanceSection mediaId={el.mediaId} /> : null}
+            {media?.type === 'video' || media?.type === 'audio' ? <EnhanceSection mediaId={el.mediaId} audioOnly={media.type === 'audio'} /> : null}
 
-            {hasPicture ? (
+            {track.isMain && hasPicture ? <TransitionSection track={track} el={el} /> : null}
+
+            {hasPicture && el.filter && el.filter !== 'none' ? (
                 <section className="ke-props-section">
-                    <h4>Filter</h4>
-                    <div className="ke-chip-row">
-                        {FILTERS.map((f) => (
-                            <button key={f} className={`ke-chip ${(el.filter || 'none') === f ? 'is-active' : ''}`} onClick={() => commit({ filter: f })}>
-                                {f}
-                            </button>
-                        ))}
+                    <h4>Legacy look</h4>
+                    <p className="ke-note">
+                        This clip uses the older “{LOOK_LABELS[el.filter]}” filter. Switch to the colour panel’s look for exact preview and intensity control.
+                    </p>
+                    <div className="ke-inline">
+                        <button
+                            className="ke-btn ke-btn--sm"
+                            onClick={() => {
+                                const base = el.color || colorFromLegacy(el.grade);
+                                commit({ filter: 'none', grade: undefined, color: { ...base, creative: { ...base.creative, look: LOOK_NAMES[el.filter] ? el.filter : null } } });
+                            }}
+                        >
+                            Convert
+                        </button>
+                        <button className="ke-btn ke-btn--sm" onClick={() => commit({ filter: 'none' })}>
+                            Remove
+                        </button>
                     </div>
                 </section>
             ) : null}
+
+            {hasPicture ? <ColorPanel track={track} el={el} /> : null}
+
+            {track.isMain && hasPicture ? <EffectsSection el={el} commit={commit} update={update} /> : null}
         </>
     );
 }

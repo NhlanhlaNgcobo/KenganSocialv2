@@ -38,7 +38,7 @@ interface Lead {
 
 const COLUMNS = ['prospect', 'contacted', 'negotiating', 'closed', 'lost'];
 
-const PLATFORM_OPTIONS = ['instagram', 'tiktok', 'youtube', 'linkedin', 'threads', 'pinterest', 'other'];
+const PLATFORM_OPTIONS = ['instagram', 'facebook', 'tiktok', 'youtube', 'email', 'whatsapp', 'other'];
 
 const EMPTY_NEW_LEAD = { username: '', platform: 'instagram', displayName: '', followersCount: '', notes: '' };
 
@@ -46,9 +46,7 @@ const PROFILE_URLS: Record<string, (u: string) => string> = {
     instagram: (u) => `https://www.instagram.com/${u}/`,
     tiktok: (u) => `https://www.tiktok.com/@${u}`,
     youtube: (u) => `https://www.youtube.com/@${u}`,
-    linkedin: (u) => `https://www.linkedin.com/in/${u}/`,
-    threads: (u) => `https://www.threads.net/@${u}`,
-    pinterest: (u) => `https://www.pinterest.com/${u}/`,
+    facebook: (u) => `https://www.facebook.com/${u}`,
 };
 
 /** Public profile link built from the stored username, or null for unknown platforms. */

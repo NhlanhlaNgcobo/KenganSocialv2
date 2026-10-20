@@ -29,6 +29,7 @@ from firebase_admin import credentials, firestore, storage
 from pydantic import BaseModel
 
 from autoframe import parse_ratio, plan_crop_path
+from style_analysis import analyze_footage, analyze_reference
 from stabilizer import StabilizeOptions, stabilize_video
 
 try:
@@ -1310,6 +1311,33 @@ async def autoframe(req: AutoframeRequest):
             raise HTTPException(422, detail={"error": "AUTOFRAME_FAILED", "message": str(exc)})
 
 
+class StyleAnalysisRequest(BaseModel):
+    videoPath: str
+
+
+@app.post("/process/analyze-style")
+async def analyze_style(req: StyleAnalysisRequest):
+    """AI Edit: measures how a reference video is edited (pacing, grade, captions, hook).
+    videoPath is a server-side file supplied by the Node API."""
+    video_path = Path(req.videoPath)
+    if not video_path.is_file():
+        raise HTTPException(400, detail={"error": "VIDEO_NOT_FOUND", "message": "Reference video is not available to the video service."})
+    async with job_semaphore:
+        duration = await asyncio.to_thread(get_video_duration, video_path)
+        boundaries = await asyncio.to_thread(detect_scene_boundaries, video_path, duration)
+        return await asyncio.to_thread(analyze_reference, video_path, boundaries)
+
+
+@app.post("/process/analyze-footage")
+async def analyze_footage_endpoint(req: StyleAnalysisRequest):
+    """AI Edit: colour statistics and a face track (with mouth activity) for raw footage."""
+    video_path = Path(req.videoPath)
+    if not video_path.is_file():
+        raise HTTPException(400, detail={"error": "VIDEO_NOT_FOUND", "message": "Footage is not available to the video service."})
+    async with job_semaphore:
+        return await asyncio.to_thread(analyze_footage, video_path)
+
+
 class StabilizeRequest(BaseModel):
     inputPath: str
     outputPath: str
@@ -1379,10 +1407,85 @@ class DownloadUrlRequest(BaseModel):
     maxHeight: int = 1080
 
 
+def _ytdlp_base(**extra) -> Dict[str, Any]:
+    """yt-dlp options shared by every YouTube call. YouTube now requires a JavaScript runtime to
+    solve its player challenges (without one, downloads fail with 403 or "format not available"),
+    so use Deno or Node when installed. Needs the yt-dlp-ejs package (pip install "yt-dlp[default]")."""
+    opts: Dict[str, Any] = {"noplaylist": True, "quiet": True, "no_warnings": True, "noprogress": True}
+    runtimes = {name: {} for name in ("deno", "node") if shutil.which(name)}
+    if runtimes:
+        opts["js_runtimes"] = runtimes
+    # YouTube blocks many requests from data-centre IPs ("confirm you're not a bot"). Each of these
+    # makes downloads succeed more often; all are optional and set in python-service/.env:
+    #  - YTDLP_PLAYER_CLIENTS: YouTube app clients to try, in order (some are blocked less)
+    #  - YTDLP_COOKIES_FILE:   cookies.txt exported from a signed-in browser (a dedicated account)
+    #  - YTDLP_PROXY:          residential/rotating proxy URL (http://user:pass@host:port)
+    #  - PO tokens: install the bgutil-ytdlp-pot-provider plugin and run its server; yt-dlp uses it automatically.
+    clients = [c.strip() for c in os.getenv("YTDLP_PLAYER_CLIENTS", "default,tv,web_safari,mweb").split(",") if c.strip()]
+    opts["extractor_args"] = {"youtube": {"player_client": clients}}
+    cookies = os.getenv("YTDLP_COOKIES_FILE")
+    if cookies and Path(cookies).is_file():
+        opts["cookiefile"] = cookies
+    proxy = os.getenv("YTDLP_PROXY")
+    if proxy:
+        opts["proxy"] = proxy
+    opts["retries"] = 3
+    opts["extractor_retries"] = 2
+    return {**opts, **extra}
+
+
+YOUTUBE_BLOCK = re.compile(r"not a bot|sign in to confirm|cookies|HTTP Error 429|Too Many Requests|HTTP Error 403|blocked|login required", re.I)
+
+
+def _video_id(url: str) -> Optional[str]:
+    m = re.search(r"(?:v=|youtu\.be/|shorts/|live/|embed/)([A-Za-z0-9_-]{11})", url)
+    return m.group(1) if m else None
+
+
+def _transcript_api_text(url: str) -> Optional[Dict[str, Any]]:
+    """Fallback for captions when yt-dlp is blocked: youtube-transcript-api (MIT), a different
+    YouTube endpoint. Uses YTDLP_PROXY too when set."""
+    video_id = _video_id(url)
+    if not video_id:
+        return None
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+    except ImportError:
+        return None
+    kwargs: Dict[str, Any] = {}
+    proxy = os.getenv("YTDLP_PROXY")
+    if proxy:
+        try:
+            from youtube_transcript_api.proxies import GenericProxyConfig
+            kwargs["proxy_config"] = GenericProxyConfig(http_url=proxy, https_url=proxy)
+        except Exception:
+            pass
+    api = YouTubeTranscriptApi(**kwargs)
+    try:
+        listing = api.list(video_id)
+        transcript = None
+        for finder in (listing.find_manually_created_transcript, listing.find_generated_transcript):
+            try:
+                transcript = finder(["en", "en-US", "en-GB", "af", "zu", "xh"])
+                break
+            except Exception:
+                continue
+        if transcript is None:
+            transcript = next(iter(listing))
+        fetched = transcript.fetch()
+        text = re.sub(r"\s+", " ", " ".join(snippet.text for snippet in fetched)).strip()
+        if len(text) < 80:
+            return None
+        return {"title": "YouTube video", "channel": None, "durationSec": None, "description": "", "videoId": video_id, "text": text[:20000], "language": transcript.language_code, "source": "captions-fallback"}
+    except Exception as exc:
+        log.warning("youtube-transcript-api fallback failed for %s: %s", video_id, exc)
+        return None
+
+
 def _download_youtube(url: str, output_dir: Path, max_height: int) -> Dict[str, Any]:
     import yt_dlp  # imported lazily: only this endpoint needs it
 
-    base = {"noplaylist": True, "quiet": True, "no_warnings": True, "noprogress": True}
+    base = _ytdlp_base()
     with yt_dlp.YoutubeDL(base) as ydl:
         info = ydl.extract_info(url, download=False)
     if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
@@ -1436,6 +1539,73 @@ async def download_url(req: DownloadUrlRequest):
             raise HTTPException(422, detail={"error": "IMPORT_FAILED", "message": message[:300] or "The video could not be downloaded."})
 
 
+# Style references for AI Edit: short public videos from the main short-form platforms. They are
+# measured (pacing, grade, captions) and deleted; nothing is republished.
+REFERENCE_URL = re.compile(
+    r"^https?://(?:[a-z0-9-]+\.)*(?:youtube\.com|youtu\.be|tiktok\.com|instagram\.com|facebook\.com|fb\.watch)/",
+    re.IGNORECASE,
+)
+MAX_REFERENCE_SECONDS = int(os.getenv("MAX_REFERENCE_SECONDS", "600"))
+
+
+def _download_reference(url: str, output_dir: Path) -> Dict[str, Any]:
+    import yt_dlp
+
+    with yt_dlp.YoutubeDL(_ytdlp_base()) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if info.get("_type") == "playlist":
+        raise ValueError("Paste a link to one video, not a playlist or profile.")
+    if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
+        raise ValueError("Live streams can't be used as a style reference.")
+    duration = float(info.get("duration") or 0)
+    if duration and duration > MAX_REFERENCE_SECONDS:
+        raise ValueError(f"Style references can be up to {MAX_REFERENCE_SECONDS // 60} minutes long. Pick a shorter example of the style.")
+    stem = f"ref_{re.sub(r'[^A-Za-z0-9_-]', '', str(info.get('id') or 'video'))[:40]}_{int(time.time())}"
+    opts = _ytdlp_base(
+        format="bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/bv*[height<=720]+ba/b[height<=720]/b",
+        merge_output_format="mp4",
+        outtmpl=str(output_dir / f"{stem}.%(ext)s"),
+        max_filesize=600 * 1024 ** 2,
+    )
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        ydl.download([url])
+    files = [p for p in sorted(output_dir.glob(f"{stem}.*"), key=lambda p: p.stat().st_size, reverse=True) if p.suffix.lower() in (".mp4", ".mkv", ".webm", ".mov")]
+    if not files:
+        raise ValueError("The video could not be downloaded.")
+    return {
+        "path": str(files[0]),
+        "title": info.get("title") or info.get("description", "")[:80] or "Reference video",
+        "durationSec": duration or None,
+        "platform": (info.get("extractor_key") or info.get("extractor") or "").lower(),
+        "uploader": info.get("uploader") or info.get("channel"),
+    }
+
+
+class DownloadReferenceRequest(BaseModel):
+    url: str
+    outputDir: str
+
+
+@app.post("/process/download-reference")
+async def download_reference(req: DownloadReferenceRequest):
+    """Downloads a style reference (YouTube, TikTok, Instagram or Facebook video) for AI Edit."""
+    url = req.url.strip()
+    if not REFERENCE_URL.match(url):
+        raise HTTPException(400, detail={"error": "UNSUPPORTED_URL", "message": "Paste a YouTube, TikTok, Instagram or Facebook video link."})
+    output_dir = Path(req.outputDir)
+    if not output_dir.is_dir():
+        raise HTTPException(400, detail={"error": "OUTPUT_DIR_MISSING", "message": "Output folder is not available to the video service."})
+    async with job_semaphore:
+        try:
+            return await asyncio.to_thread(_download_reference, url, output_dir)
+        except ValueError as exc:
+            raise HTTPException(422, detail={"error": "IMPORT_REJECTED", "message": str(exc)})
+        except Exception as exc:
+            message = re.sub(r"^ERROR:\s*(\[[^\]]+\]\s*)?", "", str(exc)).strip()
+            log.warning("Reference download failed for %s: %s", url, message)
+            raise HTTPException(422, detail={"error": "IMPORT_FAILED", "message": message[:300] or "The video could not be downloaded."})
+
+
 class YoutubeTranscriptRequest(BaseModel):
     url: str
     plan: str = "creator"
@@ -1479,7 +1649,7 @@ def _youtube_transcript(url: str, plan: str, allow_transcription: bool) -> Dict[
     import urllib.request
     import yt_dlp
 
-    base = {"noplaylist": True, "quiet": True, "no_warnings": True, "noprogress": True, "skip_download": True}
+    base = _ytdlp_base(skip_download=True)
     with yt_dlp.YoutubeDL(base) as ydl:
         info = ydl.extract_info(url, download=False)
     if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
@@ -1542,7 +1712,12 @@ async def youtube_transcript(req: YoutubeTranscriptRequest):
         except Exception as exc:
             message = re.sub(r"^ERROR:\s*(\[[^\]]+\]\s*)?([A-Za-z0-9_-]{11}:\s*)?", "", str(exc)).strip()
             log.warning("YouTube transcript failed for %s: %s", url, message)
-            raise HTTPException(422, detail={"error": "TRANSCRIPT_FAILED", "message": message[:300] or "The video could not be read."})
+            # Second route to the captions before giving up.
+            fallback = await asyncio.to_thread(_transcript_api_text, url)
+            if fallback:
+                return fallback
+            code = "YOUTUBE_BLOCKED" if YOUTUBE_BLOCK.search(message) else "TRANSCRIPT_FAILED"
+            raise HTTPException(422, detail={"error": code, "message": message[:300] or "The video could not be read."})
 
 
 @app.get("/health")

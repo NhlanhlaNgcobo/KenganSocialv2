@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useAiEditStore } from '../stores/ai-edit-store';
 import { TIMELINE } from '../constants';
 import { usePlaybackStore } from '../stores/playback-store';
 import { useProjectStore } from '../stores/project-store';
@@ -31,7 +32,7 @@ function isTyping(target: EventTarget | null) {
 export function useEditorShortcuts() {
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
-            if (isTyping(e.target) || useUiStore.getState().exportOpen) return;
+            if (isTyping(e.target) || useUiStore.getState().exportOpen || useAiEditStore.getState().open) return;
             const mod = e.ctrlKey || e.metaKey;
             const playback = usePlaybackStore.getState();
             const timeline = useTimelineStore.getState();

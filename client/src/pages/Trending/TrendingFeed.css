@@ -1,118 +1,99 @@
-.trending-feed-container {
+/* Trending ideas: full-width page with a filter toolbar and a responsive card grid. */
+.trending-page {
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    overflow: hidden;
+    gap: 16px;
+    width: 100%;
+    min-width: 0;
 }
 
-/* ── STICKY FILTER BAR ── */
-.filter-bar {
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    background: var(--bg-elevated);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-    border-bottom: 1px solid var(--border-primary);
-    padding: 12px 16px;
+.trending-page .page-head {
+    margin-bottom: 4px;
+}
+
+/* ── Toolbar ── */
+.tf-toolbar {
     display: flex;
     flex-direction: column;
+    gap: 14px;
+    padding: 16px 18px;
+}
+
+.tf-toolbar__row {
+    display: flex;
+    align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
-.niche-selector,
-.platform-selector {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    /* for scrollbar */
-}
-
-.niche-selector::-webkit-scrollbar,
-.platform-selector::-webkit-scrollbar {
-    height: 0;
-}
-
-.niche-label {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    font-weight: 600;
-    margin-right: 4px;
-    display: flex;
-    align-items: center;
-}
-
-.trending-feed-container .pill {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-primary);
-    color: var(--text-muted);
-    padding: 6px 14px;
-    border-radius: 20px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s;
-}
-
-.trending-feed-container .pill.active {
-    background: var(--accent-primary);
-    color: var(--accent-contrast);
-    border-color: var(--accent-primary);
-}
-
-.refresh-row {
-    display: flex;
+.tf-toolbar__row--split {
     justify-content: space-between;
-    align-items: center;
+}
+
+/* The platform switcher scrolls sideways on narrow screens instead of widening the page. */
+.tf-toolbar .segmented {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.tf-toolbar .segmented button {
+    flex-shrink: 0;
+}
+
+.tf-toolbar,
+.tf-toolbar__row,
+.tf-grid {
+    min-width: 0;
+}
+
+.tf-toolbar__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.tf-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.tf-chips .chip {
+    cursor: pointer;
+    text-transform: capitalize;
+}
+
+.tf-custom {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.tf-custom .input {
+    width: 230px;
+    height: 34px;
+}
+
+.tf-custom .btn {
+    height: 34px;
 }
 
 .time-ago {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     color: var(--text-muted);
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 }
 
-.tf-icon-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.2s;
-}
-
-.tf-icon-btn:hover:not(:disabled) {
-    color: var(--text-primary);
-}
-
-.tf-icon-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.tf-icon-btn.bookmark {
-    padding: 8px;
-    background: var(--bg-hover);
-    border-radius: 8px;
-}
-
-.tf-icon-btn.bookmark.active {
-    color: var(--accent-text);
-}
-
-/* Banners inside the deck share the card width */
+/* ── Banners ── */
 .tf-banner {
-    width: 100%;
-    max-width: 480px;
-    margin-bottom: 0;
+    margin: 0;
 }
 
 .tf-notice {
@@ -132,62 +113,71 @@
     margin-top: 2px;
 }
 
-/* ── CARD DECK (Mobile-first vertical scroll) ── */
-.card-deck {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
+/* ── Grid ── */
+.tf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
     gap: 16px;
-    align-items: center;
-    /* Center cards on wide screens */
+    align-items: stretch;
 }
 
 .trend-card {
-    width: 100%;
-    max-width: 480px;
-    /* Mobile width constraint for larger screens */
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-primary);
-    border-radius: 12px;
-    padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    padding: 18px;
+    background: var(--glass-sheen), var(--bg-card);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--glass-edge), var(--shadow-sm);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+    min-width: 0;
 }
 
-/* Header */
+.trend-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-accent);
+    box-shadow: var(--glass-edge), var(--shadow-md);
+}
+
+.trend-card--skeleton {
+    min-height: 280px;
+    background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-hover) 50%, var(--bg-tertiary) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.trend-card--skeleton:hover {
+    transform: none;
+}
+
 .trend-card__header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
 }
 
 .platform-badge {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--text-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
     background: var(--bg-tertiary);
-    padding: 4px 8px;
-    border-radius: 4px;
-}
-
-.trend-card__meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    border: 1px solid var(--border-primary);
+    padding: 3px 9px;
+    border-radius: var(--radius-full);
 }
 
 .trend-card .difficulty {
     font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
-    padding: 2px 6px;
-    border-radius: 4px;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border-radius: var(--radius-full);
 }
 
 .trend-card .difficulty.easy {
@@ -205,70 +195,29 @@
     background: var(--error-bg);
 }
 
-.score-dots {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-}
-
-.trend-card .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--border-strong);
-}
-
-.trend-card .dot.active {
-    background: var(--warning);
-}
-
-.score-text {
-    margin-left: 6px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--warning);
-    display: flex;
-    align-items: center;
-    gap: 2px;
-}
-
-.score-label {
-    margin-left: 6px;
-    font-size: 0.65rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-}
-
-/* Body */
-.trend-card__body {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
 .trend-title {
     margin: 0;
-    font-size: 1.1rem;
-    font-weight: 700;
-    line-height: 1.3;
+    font-size: 1.05rem;
+    font-weight: 650;
+    line-height: 1.35;
+    color: var(--text-primary);
 }
 
 .hook-chip {
-    background: var(--warning-bg);
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: var(--accent-soft);
+    border: 1px solid var(--border-accent);
     color: var(--text-primary);
-    padding: 8px 12px;
-    border-radius: 6px;
+    padding: 9px 12px;
+    border-radius: var(--radius-md);
     font-size: 0.85rem;
+    line-height: 1.45;
     display: flex;
     align-items: flex-start;
     gap: 8px;
 }
 
 .hook-chip__icon {
-    color: var(--warning);
+    color: var(--accent-text);
     flex-shrink: 0;
     margin-top: 2px;
 }
@@ -279,9 +228,13 @@
 
 .caption-preview {
     margin: 0;
-    font-size: 0.9rem;
-    color: var(--text-muted);
-    font-style: italic;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .hashtag-row {
@@ -292,26 +245,128 @@
 
 .hashtag {
     font-size: 0.75rem;
-    color: var(--accent-primary);
+    color: var(--accent-text);
     background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 3px 8px;
+    border-radius: var(--radius-full);
 }
 
-/* Footer */
+/* Footer sits at the bottom so cards in a row line up. */
 .trend-card__footer {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-primary);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: 8px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-primary);
+    gap: 10px;
 }
 
-.loading-indicator,
+.score {
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 3px;
+    min-width: 0;
+}
+
+.score__bar {
+    grid-column: 1 / -1;
+    width: 96px;
+    height: 5px;
+    border-radius: 99px;
+    background: var(--bg-tertiary);
+    overflow: hidden;
+}
+
+.score__bar > div {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--warning), var(--accent-primary));
+}
+
+.score__text {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.score__label {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+
+.trend-card__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tf-icon-btn {
+    background: transparent;
+    border: 1px solid var(--border-primary);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tf-icon-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+}
+
+.tf-icon-btn.bookmark.active {
+    color: var(--accent-text);
+    border-color: var(--border-accent);
+    background: var(--accent-soft);
+}
+
 .no-cards {
     text-align: center;
-    padding: 32px;
+    padding: 40px 20px;
     color: var(--text-muted);
     font-size: 0.9rem;
+}
+
+@media (max-width: 760px) {
+    .tf-custom {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .tf-custom .input {
+        min-width: 0;
+    }
+
+    /* Six platform tabs are wider than a phone: the switcher takes the row's width (its content
+       no longer widens the page) and scrolls sideways. */
+    .tf-toolbar .segmented {
+        contain: inline-size;
+        flex: 1 1 100%;
+    }
+
+    .tf-custom .input {
+        flex: 1;
+        /* Inputs have a built-in minimum width; let this one shrink to the space left. */
+        width: 0;
+    }
+
+    .tf-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .trending-page .page-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }

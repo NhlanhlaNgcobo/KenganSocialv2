@@ -1,4 +1,4 @@
-import { Instagram, Music2, SlidersHorizontal, Youtube } from 'lucide-react';
+import { Facebook, Instagram, Music2, SlidersHorizontal, Youtube } from 'lucide-react';
 
 /**
  * Options shared by every long video → shorts entry point (Clips, Repurpose).
@@ -10,6 +10,7 @@ export const SHORT_PLATFORMS = [
     { id: 'tiktok', label: 'TikTok', icon: Music2, hint: '9:16, captions kept above the TikTok caption bar', maxLength: 'long', calendar: 'tiktok' },
     { id: 'shorts', label: 'YouTube Shorts', icon: Youtube, hint: '9:16, up to 60 seconds', maxLength: 'medium', calendar: 'youtube' },
     { id: 'reels', label: 'Instagram Reels', icon: Instagram, hint: '9:16, captions kept clear of the Reels buttons', maxLength: 'long', calendar: 'instagram' },
+    { id: 'facebook', label: 'Facebook Reels', icon: Facebook, hint: '9:16, up to 90 seconds', maxLength: 'long', calendar: 'facebook' },
     { id: 'custom', label: 'Other format', icon: SlidersHorizontal, hint: 'Pick the shape yourself (square, landscape)', maxLength: 'long' },
 ];
 

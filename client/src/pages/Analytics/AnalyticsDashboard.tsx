@@ -59,14 +59,11 @@ interface AnalyticsData {
     };
 }
 
-// TikTok cyan and Threads grey are too pale on white, so they resolve per theme (see AnalyticsDashboard.css).
+// TikTok cyan is too pale on white, so it resolves per theme (see AnalyticsDashboard.css).
 const PLATFORM_COLORS: Record<string, string> = {
     youtube: '#ff4e45',
     instagram: '#e4405f',
     tiktok: 'var(--analytics-tiktok)',
-    linkedin: '#3b8ed8',
-    pinterest: '#e60023',
-    threads: 'var(--analytics-threads)',
     facebook: '#4f8ef7',
 };
 const PERIODS = [

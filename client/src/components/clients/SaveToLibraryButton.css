@@ -1,0 +1,18 @@
+.stl {
+  display: inline-flex;
+}
+
+.stl-modal {
+  max-width: 420px;
+}
+
+.stl-note {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.stl-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--error);
+}

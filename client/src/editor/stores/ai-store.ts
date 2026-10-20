@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { applyKeepSegments, DEFAULT_AUTO_EDIT, mapWordsToTimeline, runAnalysis, type AnalysisMode, type AutoEditOptions } from '../lib/ai';
 import { CAPTION_STYLES } from '../constants';
 import { useTimelineStore } from './timeline-store';
+import { getCanvasSize, useProjectStore } from './project-store';
 
 export interface ViralClip {
     startSec: number;
@@ -58,7 +59,7 @@ export const useAiStore = create<AiState>((set, get) => ({
 
             if (mode === 'subtitles') {
                 const words = mapWordsToTimeline(sourceMediaId, job.transcription?.words || []);
-                const count = useTimelineStore.getState().addCaptions(words, captionStyle);
+                const count = useTimelineStore.getState().addCaptions(words, captionStyle, getCanvasSize(useProjectStore.getState().ratio).height);
                 summary = count ? `Added ${count} captions.` : 'No speech was detected in this clip.';
             }
             if (job.viralClips?.length) set({ viralClips: job.viralClips });

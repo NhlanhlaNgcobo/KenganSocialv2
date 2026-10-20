@@ -40,25 +40,11 @@ const PLATFORMS = [
         desc: 'Short-form video & trends',
     },
     {
-        id: 'linkedin',
-        name: 'LinkedIn',
-        emoji: '💼',
-        bg: '#0A66C2',
-        desc: 'Professional posts & articles',
-    },
-    {
-        id: 'pinterest',
-        name: 'Pinterest',
-        emoji: '📌',
-        bg: '#E60023',
-        desc: 'Pins, boards & idea content',
-    },
-    {
-        id: 'threads',
-        name: 'Threads',
-        emoji: '🧵',
-        bg: '#000000',
-        desc: 'Text posts & conversations',
+        id: 'facebook',
+        name: 'Facebook',
+        emoji: '👍',
+        bg: '#1877F2',
+        desc: 'Page posts, Reels & comments',
     },
 ];
 

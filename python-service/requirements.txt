@@ -18,5 +18,7 @@ numpy
 scipy
 pydantic
 python-dotenv==1.0.1
-# YouTube link import for Clips; keep current (YouTube changes often): pip install -U yt-dlp
-yt-dlp
+# YouTube link import for Clips; keep current (YouTube changes often): pip install -U "yt-dlp[default]".
+# [default] adds yt-dlp-ejs; a JS runtime (Deno or Node) must also be installed (see Dockerfile).
+yt-dlp[default]
+youtube-transcript-api>=1.2,<2

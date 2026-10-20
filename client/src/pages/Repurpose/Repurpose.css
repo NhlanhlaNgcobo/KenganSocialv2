@@ -236,3 +236,26 @@
   font-size: 0.78rem;
   color: var(--text-muted);
 }
+
+.repurpose-fallback {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-accent);
+    background: var(--accent-soft);
+}
+
+.repurpose-fallback p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.repurpose-fallback__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}

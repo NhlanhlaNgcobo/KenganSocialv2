@@ -1,0 +1,15 @@
+import type { CaptionTemplate } from './caption-templates';
+
+const base = { fontFamily: 'Poppins', fontSize: 64, fontWeight: 'bold' as const, color: '#ffffff', backgroundColor: 'transparent', strokeColor: '#121212', strokeWidth: 3, animation: 'none' as const };
+export const TREND_CAPTIONS: CaptionTemplate[] = [
+    { id: 'ks-caption-pulse-word', name: 'Pulse Word', description: 'Three-word lines with a spoken-word accent and a small pulse.', words: 3, y: 0.68, style: { ...base, captionMotion: 'pulse-word', accentColor: '#c4f35b' } },
+    { id: 'ks-caption-marker-sweep', name: 'Marker Sweep', description: 'A coloured underline follows each spoken word.', words: 4, y: 0.72, style: { ...base, fontSize: 58, captionMotion: 'marker-sweep', accentColor: '#facc15', backgroundColor: '#151515', strokeWidth: 0 } },
+    { id: 'ks-caption-kinetic-stack', name: 'Kinetic Stack', description: 'Words build into three short lines as the phrase is spoken.', words: 6, y: 0.57, uppercase: true, style: { ...base, fontFamily: 'Anton', fontSize: 78, captionMotion: 'kinetic-stack', accentColor: '#ffb86b' } },
+    { id: 'ks-caption-quiet-reveal', name: 'Quiet Reveal', description: 'An editorial sentence reveals word by word with a soft entrance.', words: 5, y: 0.77, style: { ...base, fontSize: 48, fontWeight: 'normal', fontFamily: 'Georgia', captionMotion: 'quiet-reveal' } },
+    { id: 'ks-caption-receipt-proof', name: 'Receipt Proof', description: 'Amounts and statistics stand out in a clean receipt-style card.', words: 5, y: 0.68, style: { ...base, fontSize: 54, fontFamily: 'Courier New', color: '#f5f5f4', backgroundColor: '#1c1917', strokeWidth: 0, captionMotion: 'receipt-proof', accentColor: '#86efac' } },
+    { id: 'ks-caption-dialogue-cards', name: 'Dialogue Cards', description: 'Alternating ivory and lavender cards slide into place.', words: 5, y: 0.73, alternate: ['#faf5ff', '#e9d5ff'], style: { ...base, fontSize: 54, backgroundColor: '#292038', strokeWidth: 0, captionMotion: 'dialogue-cards' } },
+    { id: 'ks-caption-type-on-note', name: 'Type-on Note', description: 'Characters actually type on, paced to the transcript.', words: 4, y: 0.7, style: { ...base, fontSize: 50, fontFamily: 'Courier New', backgroundColor: '#24201b', strokeWidth: 0, color: '#fff3d8', captionMotion: 'type-on-note' } },
+    { id: 'ks-caption-bounce-pair', name: 'Bounce Pair', description: 'Two words land on their timestamps with a restrained spring.', words: 2, y: 0.62, uppercase: true, style: { ...base, fontFamily: 'Anton', fontSize: 88, strokeWidth: 5, captionMotion: 'bounce-pair', accentColor: '#f9a8d4' } },
+    { id: 'ks-caption-focus-keyword', name: 'Focus Keyword', description: 'The current word takes an electric accent with a subtle punch.', words: 4, y: 0.64, style: { ...base, fontSize: 70, captionMotion: 'focus-keyword', accentColor: '#67e8f9' } },
+    { id: 'ks-caption-underline-flow', name: 'Underline Flow', description: 'Stable, readable text with a moving spoken-word underline.', words: 5, y: 0.76, style: { ...base, fontSize: 52, fontWeight: 'normal', captionMotion: 'underline-flow', accentColor: '#ffffff' } },
+];

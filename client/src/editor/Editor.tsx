@@ -8,6 +8,7 @@ import { Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useEditorStore as useHandoffStore } from '../stores/editorStore';
 import { EditorHeader } from './components/EditorHeader';
+import { AiEditStudio } from './components/ai-edit/AiEditStudio';
 import { ExportDialog } from './components/ExportDialog';
 import { MediaPanel } from './components/media-panel/MediaPanel';
 import { PreviewPanel } from './components/preview/PreviewPanel';
@@ -19,7 +20,7 @@ import { getElementEnd } from './lib/time';
 import { useAiStore } from './stores/ai-store';
 import { useMediaStore } from './stores/media-store';
 import { usePlaybackStore } from './stores/playback-store';
-import { startAutosave, useProjectStore } from './stores/project-store';
+import { getCanvasSize, startAutosave, useProjectStore } from './stores/project-store';
 import { useTimelineStore } from './stores/timeline-store';
 import { useUiStore } from './stores/ui-store';
 import './editor.css';
@@ -40,7 +41,8 @@ async function consumeHandoff(projectKey: string) {
     if (words?.length) {
         useTimelineStore.getState().addCaptions(
             words.map((w) => ({ text: w.text, start: w.start / 1000, end: w.end / 1000 })),
-            useAiStore.getState().captionStyle
+            useAiStore.getState().captionStyle,
+            getCanvasSize(useProjectStore.getState().ratio).height
         );
     }
     if (viralClips?.length) {
@@ -124,6 +126,7 @@ export default function Editor() {
                 </Panel>
             </PanelGroup>
             <ExportDialog />
+            <AiEditStudio />
             <Toast />
         </div>
     );

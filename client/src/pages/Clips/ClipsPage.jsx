@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { ArrowLeft, CalendarPlus, Check, Copy, Download, Film, Loader2, Lock, Play, RotateCcw, Scissors, Trash2, Upload, Wand2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import ShortsSettings from '../../components/clips/ShortsSettings';
+import SaveToLibraryButton from '../../components/clients/SaveToLibraryButton';
 import { DEFAULT_SHORTS_OPTIONS, LAYOUTS, SHORT_PLATFORMS, shortsRequest } from '../../components/clips/shorts-options';
 import { clipsApi, formatTime, uploadVideo } from '../../lib/clips-api';
 import { useEditorStore } from '../../stores/editorStore';
@@ -140,7 +141,7 @@ function NewProject({ onCreated, onOpen }) {
                 <div className="clips-locked surface">
                     <Lock size={16} />
                     <div>
-                        <strong>Clips is part of the {PLAN_DISPLAY_NAMES.creator} plan and up.</strong>
+                        <strong>Clips is part of the {PLAN_DISPLAY_NAMES.nano} plan and up.</strong>
                         <p className="muted">Your current plan doesn't include AI clip finding. Upgrade to turn long videos into ranked, captioned clips.</p>
                     </div>
                     <Link to="/dashboard/billing" className="btn btn-primary btn-sm">
@@ -511,6 +512,7 @@ function ClipCard({ clip, ratio, platform }) {
                     <button className="btn btn-secondary btn-sm" onClick={edit} disabled={!!busy}>
                         {busy === 'edit' ? <Loader2 size={14} className="spin" /> : <Scissors size={14} />} Edit
                     </button>
+                    <SaveToLibraryButton downloadUrl={clip.downloadUrl} title={clip.title} caption={clip.caption || ''} />
                     <button className="btn btn-ghost btn-sm" onClick={download} disabled={!!busy} aria-label="Download">
                         {busy === 'download' ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
                     </button>

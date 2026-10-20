@@ -1,3 +1,4 @@
+import { cameraEndpoints } from './camera-motion.js';
 /**
  * Turns the timeline into the server renderer's v2 edit config and runs the job.
  */
@@ -22,7 +23,7 @@ function exportTransform(el: MediaElement, isMain: boolean) {
     if (!isMain) t.animation = 'none'; // zoom animation renders on the main track only
     if (isIdentity(t)) return null;
     const [scaleStart, scaleEnd] = scaleRange(t);
-    return { scaleStart, scaleEnd, x: t.x, y: t.y, rotation: t.rotation, flipH: t.flipH, flipV: t.flipV };
+    return { scaleStart, scaleEnd, x: t.x, y: t.y, ...cameraEndpoints(t), rotation: t.rotation, flipH: t.flipH, flipV: t.flipV };
 }
 
 function sourceWindow(el: MediaElement) {
@@ -45,7 +46,12 @@ export function buildEditConfig(uploadIds: Record<string, string>) {
             speed: el.speed || 1,
             volume: el.muted || trackMuted ? 0 : el.volume ?? 1,
             filter: el.filter || 'none',
+            grade: el.grade || null,
             transform: exportTransform(el, isMain),
+            // Effects and transitions render on the main track only (preview matches).
+            effects: isMain ? el.effects || [] : [],
+            color: el.color || null,
+            transitionIn: isMain ? el.transitionIn || null : null,
         };
     };
 
@@ -80,11 +86,30 @@ export function buildEditConfig(uploadIds: Record<string, string>) {
                 x: el.x,
                 y: el.y,
                 opacity: el.opacity,
+                rotation: el.rotation || 0,
+                strokeColor: el.strokeColor || 'transparent',
+                strokeWidth: el.strokeWidth || 0,
+                animation: el.animation || 'none',
+                captionMotion: el.captionMotion,
+                captionWords: el.captionWords,
+                captionOffset: el.trimStart,
+                captionDuration: el.duration,
+                accentColor: el.accentColor,
             }))
         );
 
+    // Imported LUTs used by any clip (creative look 'lut:<id>').
+    const usedLuts: Record<string, { size: number; data: number[] }> = {};
+    const allLuts = useProjectStore.getState().luts;
+    for (const t of tracks)
+        for (const el of t.elements) {
+            const look = el.type === 'media' ? el.color?.creative?.look : null;
+            if (look?.startsWith('lut:') && allLuts[look.slice(4)]) usedLuts[look.slice(4)] = { size: allLuts[look.slice(4)].size, data: allLuts[look.slice(4)].data };
+        }
+
     return {
         version: 2,
+        luts: usedLuts,
         exportFormat: EXPORT_FORMATS[ratio],
         fps,
         backgroundColor,

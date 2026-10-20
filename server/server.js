@@ -37,6 +37,9 @@ import musicRoutes from './src/routes/music.ts';
 import clipsRoutes from './src/routes/clips.ts';
 import repurposeRoutes from './src/routes/repurpose.ts';
 import marketingRoutes from './src/routes/marketing.ts';
+import agencyRoutes from './src/routes/agency.ts';
+import reviewRoutes from './src/routes/review.ts';
+import aiEditRoutes from './src/routes/ai-edit.ts';
 import audiomackRoutes from './src/routes/audiomack.ts';
 import lyricsRoutes from './src/routes/lyrics.ts';
 import { startAnalyticsCron } from './src/jobs/analytics.cron.ts';
@@ -145,6 +148,11 @@ app.use('/api/music', musicRoutes);
 app.use('/api/clips', clipsRoutes);
 app.use('/api/repurpose', repurposeRoutes);
 app.use('/api/marketing', marketingRoutes);
+app.use('/api/agency', agencyRoutes);
+// AI Edit: edit footage in the style of a reference video.
+app.use('/api/ai-edit', aiEditRoutes);
+// Public: client review links (access is the link token, no account).
+app.use('/api/review', reviewRoutes);
 app.use('/api/audiomack', audiomackRoutes);
 app.use('/api/lyrics', lyricsRoutes);
 

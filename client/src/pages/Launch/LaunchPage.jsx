@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, Clapperboard, Copy, Download, Globe, GraduationCap, Loader2, Music2, PenLine, RotateCcw, Scissors } from 'lucide-react';
 import { apiClient } from '../../lib/api';
 import MusicPicker from '../../components/music/MusicPicker';
+import SaveToLibraryButton from '../../components/clients/SaveToLibraryButton';
 import { useEditorStore } from '../../stores/editorStore';
 import './Launch.css';
 
@@ -37,7 +38,7 @@ const TONES = [
 ];
 
 const FORMATS = [
-    { id: 'landscape', label: '16:9', hint: 'YouTube, X, LinkedIn' },
+    { id: 'landscape', label: '16:9', hint: 'YouTube and Facebook' },
     { id: 'vertical', label: '9:16', hint: 'TikTok, Reels, Shorts' },
     { id: 'square', label: '1:1', hint: 'Instagram feed' },
 ];
@@ -368,6 +369,7 @@ export default function LaunchPage() {
                             <div className="launch-actions">
                                 <button className="btn btn-primary" onClick={download}><Download size={16} /> Download MP4</button>
                                 <button className="btn btn-secondary" onClick={openInEditor}><Scissors size={16} /> Open in editor</button>
+                                <SaveToLibraryButton className="btn btn-secondary" downloadUrl={job.downloadUrl} title={job.plan?.productName ? `${job.plan.productName} ${tutorial ? 'tutorial' : 'launch video'}` : 'Launch video'} caption={job.shareCopy || ''} />
                                 <button className="btn btn-ghost" onClick={() => start()}><RotateCcw size={16} /> Re-roll</button>
                             </div>
 

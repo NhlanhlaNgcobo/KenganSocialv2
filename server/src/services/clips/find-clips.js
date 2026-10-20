@@ -28,7 +28,7 @@ function buildPrompt({ transcript, duration, count, min, max, prompt }) {
 Below is the timestamped transcript of a ${formatTimestamp(duration)} video. Each line is "[start-end] sentence", in seconds.
 
 Choose up to ${count} clips. Rules:
-- Each clip is ${min}–${max} seconds long and stands alone: a stranger understands it without the rest of the video.
+- Each clip is ${min}–${max} seconds long (end minus start is at least ${min}; usually several sentences, never a single line) and stands alone: a stranger understands it without the rest of the video.
 - Start on the first word of a sentence that grabs attention in the first 2 seconds (a bold claim, a question, a surprising fact, a strong opinion, the start of a story). Never start mid-thought.
 - End on the last word of a sentence that completes the thought or lands the punchline.
 - Prefer moments with emotion, a clear takeaway, a story, humour or a contrarian point. Skip intros, sponsor reads, small talk and housekeeping.
@@ -41,7 +41,8 @@ Score every clip 0–100 on:
 - trend: how well the topic fits what performs on short-form social right now
 
 Return ONLY JSON:
-{"clips":[{"start":12.3,"end":41.0,"title":"short punchy title, max 60 characters","hook":"the opening line as on-screen text, max 80 characters","caption":"post caption for the clip, 1–2 sentences plus 2–4 relevant hashtags","why":"one sentence on why this clip will perform","scores":{"hook":0,"flow":0,"value":0,"trend":0}}]}
+{"clips":[{"start":12.3,"end":41.0,"title":"short punchy title, max 60 characters","hook":"the opening line as on-screen text, max 80 characters","caption":"post caption for the clip, 1–2 sentences plus 2–4 relevant hashtags","why":"one sentence on why this clip will perform","scores":{"hook":82,"flow":71,"value":64,"trend":58}}]}
+(The scores above are only an example: score each clip on its own merits.)
 
 TRANSCRIPT:
 ${transcript}`;
@@ -63,6 +64,14 @@ function snap(clip, sentences, duration, min, max) {
     // A little air so words are not clipped.
     start = Math.max(0, start - 0.15);
     end = Math.min(duration, end + 0.35);
+
+    // Too short (smaller models often pick a single line): run on to the end of the sentence that
+    // reaches the minimum length, so a strong opening still becomes a complete clip.
+    if (end - start < min) {
+        const target = Math.min(duration, start + min);
+        const closing = sentences.find((s) => s.end >= target && s.end <= start + max);
+        end = closing ? Math.min(duration, closing.end + 0.35) : target;
+    }
 
     const length = end - start;
     if (length < min * 0.6) return null;
@@ -168,8 +177,9 @@ function findWithSignals({ words, signalClips, duration, count, min, max }) {
  * @param {string} [opts.prompt]      optional "find moments about…" request
  * @returns {Promise<{clips: Array, finder: 'ai'|'signals', note: string|null}>}
  */
-export async function findClips({ words, duration, signalClips, count, length, prompt }) {
-    const { min, max } = CLIP_LENGTHS[length] || CLIP_LENGTHS.short;
+export async function findClips({ words, duration, signalClips, count, length, prompt, range = null }) {
+    // `range` ({ min, max } seconds) overrides the preset lengths (AI Edit's target durations).
+    const { min, max } = range || CLIP_LENGTHS[length] || CLIP_LENGTHS.short;
     const effectiveMax = Math.min(max, duration);
     const effectiveMin = Math.min(min, Math.max(5, duration * 0.5));
     const sentences = buildSentences(words);
@@ -179,6 +189,7 @@ export async function findClips({ words, duration, signalClips, count, length, p
         try {
             const clips = await findWithModel({ words, sentences, duration, count, min: effectiveMin, max: effectiveMax, prompt });
             if (clips.length) return { clips, finder: 'ai', note: null };
+            if (!prompt) console.warn('[Clips] Model clip finder returned no usable clips, using signal analysis.');
             if (prompt) return { clips: [], finder: 'ai', note: `No moments matched "${prompt}".` };
         } catch (error) {
             console.warn('[Clips] Model clip finder failed, using signal analysis:', error.message);

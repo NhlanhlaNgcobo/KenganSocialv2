@@ -2,6 +2,7 @@ import { getStorage } from '../config/firebase.js';
 import { v4 as uuidv4 } from 'uuid';
 import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import fs from 'fs/promises';
+import { createReadStream } from 'fs';
 import path from 'path';
 
 /**
@@ -187,6 +188,46 @@ export async function uploadFile(buffer, destination, mimeType) {
         return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
     } catch (error) {
         console.error('[Storage Service] Upload error:', error);
+        throw new Error('Failed to upload file to storage');
+    }
+}
+
+/**
+ * Upload a file from disk without loading it into memory (large videos).
+ * @param {string} filePath  local file to upload
+ * @param {string} destination  folder in storage (e.g. 'workspaces/<id>/library/<assetId>')
+ * @param {string} mimeType
+ * @returns {Promise<string>} the stored file's URL (same form as uploadFile)
+ */
+export async function uploadLocalFile(filePath, destination, mimeType) {
+    const fileExtension = EXTENSIONS[mimeType] || (mimeType.split('/')[1] || 'bin').replace(/[^a-z0-9]/gi, '');
+    const fileName = `${destination}/${uuidv4()}.${fileExtension}`;
+    const driver = getStorageDriver();
+    try {
+        if (driver === 'local') {
+            const fullPath = resolveLocalPath(fileName);
+            await fs.mkdir(path.dirname(fullPath), { recursive: true });
+            await fs.copyFile(filePath, fullPath);
+            return `${localPublicBase()}/${fileName}`;
+        }
+
+        if (driver === 's3') {
+            const { size } = await fs.stat(filePath);
+            await getS3().send(new PutObjectCommand({
+                Bucket: process.env.S3_BUCKET,
+                Key: fileName,
+                Body: createReadStream(filePath),
+                ContentLength: size,
+                ContentType: mimeType,
+            }));
+            return `${s3PublicBase()}/${fileName}`;
+        }
+
+        const bucket = await resolveWritableBucket();
+        await bucket.upload(filePath, { destination: fileName, metadata: { contentType: mimeType }, public: true, resumable: true });
+        return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    } catch (error) {
+        console.error('[Storage Service] File upload error:', error);
         throw new Error('Failed to upload file to storage');
     }
 }

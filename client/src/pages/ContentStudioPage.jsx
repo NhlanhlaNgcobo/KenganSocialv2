@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     Upload, Video, Type, Sparkles, Calendar, X,
-    Smartphone, Instagram, Facebook, Linkedin, Twitter, Youtube,
+    Smartphone, Instagram, Facebook, Youtube,
     Loader2, Check, AlertCircle, FileText, Download, Play,
     Palette, Monitor, Scissors, Zap, Eye, Layers, Target
 } from 'lucide-react';
@@ -14,12 +14,10 @@ import './ContentStudio.css';
 
 const PLATFORMS = [
     { id: 'instagram', icon: Instagram, color: '#E4405F' },
-    // TikTok and X marks are monochrome, so they follow the theme's text colour.
-    { id: 'tiktok', icon: Smartphone, color: 'var(--text-primary)' },
     { id: 'facebook', icon: Facebook, color: '#1877F2' },
-    { id: 'linkedin', icon: Linkedin, color: '#0A66C2' },
+    // The TikTok mark is monochrome, so it follows the theme's text colour.
+    { id: 'tiktok', icon: Smartphone, color: 'var(--text-primary)' },
     { id: 'youtube', icon: Youtube, color: '#FF0000' },
-    { id: 'twitter', icon: Twitter, color: 'var(--text-primary)' },
 ];
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';

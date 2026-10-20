@@ -17,7 +17,15 @@ interface StoredProject {
     backgroundColor: string;
     tracks: TimelineTrack[];
     media: StoredMediaMeta[];
+    luts?: Record<string, ImportedLut>;
     updatedAt: number;
+}
+
+/** A .cube LUT imported into the project (Creative › Look › Import). data: r,g,b with r fastest. */
+export interface ImportedLut {
+    name: string;
+    size: number;
+    data: number[];
 }
 
 interface ProjectState {
@@ -28,6 +36,9 @@ interface ProjectState {
     backgroundColor: string;
     status: 'idle' | 'loading' | 'ready';
     lastSavedAt: number | null;
+    luts: Record<string, ImportedLut>;
+    addLut: (lut: ImportedLut) => string;
+    removeLut: (id: string) => void;
     load: (projectKey: string) => Promise<void>;
     save: () => Promise<void>;
     newProject: () => Promise<void>;
@@ -44,6 +55,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     backgroundColor: '#000000',
     status: 'idle',
     lastSavedAt: null,
+    luts: {},
+    addLut: (lut) => {
+        const id = `lut${Date.now().toString(36)}`;
+        set((s) => ({ luts: { ...s.luts, [id]: lut } }));
+        return id;
+    },
+    removeLut: (id) =>
+        set((s) => {
+            const next = { ...s.luts };
+            delete next[id];
+            return { luts: next };
+        }),
 
     load: async (projectKey) => {
         set({ status: 'loading', projectKey });
@@ -65,11 +88,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
                 fps: stored.fps || DEFAULT_FPS,
                 backgroundColor: stored.backgroundColor || '#000000',
                 lastSavedAt: stored.updatedAt || null,
+                luts: stored.luts || {},
             });
         } else {
             useMediaStore.getState().reset();
             useTimelineStore.getState().clearTimeline();
-            set({ name: 'Untitled project', ratio: '9:16', fps: DEFAULT_FPS, backgroundColor: '#000000', lastSavedAt: null });
+            set({ name: 'Untitled project', ratio: '9:16', fps: DEFAULT_FPS, backgroundColor: '#000000', lastSavedAt: null, luts: {} });
         }
         set({ status: 'ready' });
     },
@@ -85,6 +109,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             backgroundColor,
             tracks: useTimelineStore.getState().tracks,
             media: useMediaStore.getState().items.map(({ id, name: n, type }) => ({ id, name: n, type })),
+            luts: get().luts,
             updatedAt: Date.now(),
         };
         await editorStorage.saveProject(projectKey, data);
@@ -117,6 +142,7 @@ export function startAutosave(delayMs = 800): () => void {
     const unsubs = [
         useTimelineStore.subscribe((s, prev) => s.tracks !== prev.tracks && schedule()),
         useMediaStore.subscribe((s, prev) => s.items.length !== prev.items.length && schedule()),
+        useProjectStore.subscribe((s, prev) => s.luts !== prev.luts && schedule()),
         useProjectStore.subscribe((s, prev) => {
             if (s.name !== prev.name || s.ratio !== prev.ratio || s.backgroundColor !== prev.backgroundColor) schedule();
         }),

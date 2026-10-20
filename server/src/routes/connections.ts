@@ -54,29 +54,17 @@ const OAUTH_CONFIG = {
         clientSecret: () => env('TIKTOK_CLIENT_SECRET'),
         redirectUri: () => `${REDIRECT_BASE}/api/connections/tiktok/callback`,
     },
-    linkedin: {
-        authUrl: 'https://www.linkedin.com/oauth/v2/authorization',
-        tokenUrl: 'https://www.linkedin.com/oauth/v2/accessToken',
-        scopes: ['w_member_social', 'r_basicprofile', 'r_liteprofile', 'offline_access'],
-        clientId: () => env('LINKEDIN_CLIENT_ID'),
-        clientSecret: () => env('LINKEDIN_CLIENT_SECRET'),
-        redirectUri: () => `${REDIRECT_BASE}/api/connections/linkedin/callback`,
-    },
-    pinterest: {
-        authUrl: 'https://www.pinterest.com/oauth/',
-        tokenUrl: 'https://api.pinterest.com/v5/oauth/token',
-        scopes: ['boards:read', 'boards:write', 'pins:read', 'pins:write'],
-        clientId: () => env('PINTEREST_APP_ID'),
-        clientSecret: () => env('PINTEREST_APP_SECRET'),
-        redirectUri: () => `${REDIRECT_BASE}/api/connections/pinterest/callback`,
-    },
-    threads: {
-        authUrl: 'https://www.threads.net/oauth/authorize',
-        tokenUrl: 'https://graph.threads.net/oauth/access_token',
-        scopes: ['threads_basic', 'threads_content_publish', 'threads_manage_insights'],
-        clientId: () => env('THREADS_APP_ID'),
-        clientSecret: () => env('THREADS_APP_SECRET'),
-        redirectUri: () => `${REDIRECT_BASE}/api/connections/threads/callback`,
+    facebook: {
+        authUrl: 'https://www.facebook.com/v19.0/dialog/oauth',
+        tokenUrl: 'https://graph.facebook.com/v19.0/oauth/access_token',
+        scopes: [
+            // Publish to the Page, read and answer its comments, Messenger DMs, webhooks.
+            'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_manage_metadata',
+            'pages_manage_engagement', 'pages_read_user_content', 'pages_messaging', 'business_management',
+        ],
+        clientId: () => env('FACEBOOK_APP_ID'),
+        clientSecret: () => env('FACEBOOK_APP_SECRET'),
+        redirectUri: () => `${REDIRECT_BASE}/api/connections/facebook/callback`,
     },
 };
 
@@ -525,146 +513,60 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//   LINKEDIN CALLBACK
+//   FACEBOOK PAGE CALLBACK  (same Meta app as Instagram)
+//   Connects the first Page the person manages; its Page token does not expire.
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/linkedin/callback', async (req: Request, res: Response) => {
+router.get('/facebook/callback', async (req: Request, res: Response) => {
+    const back = (q: string) => res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?${q}`);
     try {
         const { code, state } = req.query as Record<string, string>;
         const { workspaceId } = verifyState(state);
-        const cfg = OAUTH_CONFIG.linkedin;
+        const cfg = OAUTH_CONFIG.facebook;
 
-        const tokenRes = await axios.post(cfg.tokenUrl, new URLSearchParams({
-            grant_type: 'authorization_code',
-            code,
-            redirect_uri: cfg.redirectUri(),
-            client_id: cfg.clientId(),
-            client_secret: cfg.clientSecret(),
-        }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-
-        const { access_token, expires_in } = tokenRes.data;
-
-        // Get profile
-        const profileRes = await axios.get('https://api.linkedin.com/v2/me', {
-            params: {
-                projection: '(id,firstName,lastName,profilePicture(displayImage~:playableStreams))',
-            },
-            headers: { Authorization: `Bearer ${access_token}` },
+        const tokenRes = await axios.get(cfg.tokenUrl, {
+            params: { client_id: cfg.clientId(), client_secret: cfg.clientSecret(), redirect_uri: cfg.redirectUri(), code },
         });
+        let userToken = tokenRes.data.access_token;
+        // A long-lived user token makes the Page tokens below permanent.
+        try {
+            const longRes = await axios.get(cfg.tokenUrl, {
+                params: { grant_type: 'fb_exchange_token', client_id: cfg.clientId(), client_secret: cfg.clientSecret(), fb_exchange_token: userToken },
+            });
+            if (longRes.data?.access_token) userToken = longRes.data.access_token;
+        } catch (err: any) {
+            console.warn('[Facebook callback] Long-lived token exchange failed:', err.response?.data?.error?.message || err.message);
+        }
 
-        const p = profileRes.data;
-        const firstName = p.firstName?.localized?.en_US ?? '';
-        const lastName = p.lastName?.localized?.en_US ?? '';
-        const avatar = p.profilePicture?.['displayImage~']?.elements?.[0]?.identifiers?.[0]?.identifier ?? null;
+        const pagesRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
+            params: { access_token: userToken, fields: 'id,name,access_token,followers_count,fan_count,picture{url}' },
+        });
+        const page = (pagesRes.data?.data || [])[0];
+        if (!page?.access_token) return back('error=facebook&reason=no_page');
 
-        await saveConnection(workspaceId, 'linkedin', {
-            accessToken: access_token,
-            tokenExpiry: Date.now() + expires_in * 1000,
-            accountId: p.id,
-            accountName: `${firstName} ${lastName}`.trim(),
-            accountAvatar: avatar,
+        // Comments, posts and Messenger DMs arrive on the Meta webhook (needs pages_manage_metadata).
+        try {
+            await axios.post(`https://graph.facebook.com/v19.0/${page.id}/subscribed_apps`, null, {
+                params: { subscribed_fields: 'feed,messages', access_token: page.access_token },
+            });
+        } catch (err: any) {
+            console.warn('[Facebook callback] Page webhook subscription failed:', err.response?.data?.error?.message || err.message);
+        }
+
+        await saveConnection(workspaceId, 'facebook', {
+            accessToken: page.access_token, // Page token: what posting and replies use
+            refreshToken: userToken,
+            tokenExpiry: Date.now() + 10 * 365 * 86400 * 1000, // Page tokens from a long-lived user token don't expire
+            accountId: page.id,
+            accountName: page.name,
+            followersCount: page.followers_count ?? page.fan_count ?? 0,
+            accountAvatar: page.picture?.data?.url || undefined,
             scope: cfg.scopes,
-            meta: { personId: p.id, firstName, lastName, profilePicture: avatar },
+            meta: { pageId: page.id, pageName: page.name, pageCount: (pagesRes.data?.data || []).length },
         });
-
-        res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?connected=linkedin`);
+        back('connected=facebook');
     } catch (err) {
-        console.error('[LinkedIn callback]', err);
-        res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?error=linkedin`);
-    }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-//   PINTEREST CALLBACK
-// ─────────────────────────────────────────────────────────────────────────────
-router.get('/pinterest/callback', async (req: Request, res: Response) => {
-    try {
-        const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = verifyState(state);
-        const cfg = OAUTH_CONFIG.pinterest;
-
-        const tokenRes = await axios.post(cfg.tokenUrl,
-            new URLSearchParams({
-                grant_type: 'authorization_code',
-                code,
-                redirect_uri: cfg.redirectUri(),
-            }),
-            {
-                auth: { username: cfg.clientId(), password: cfg.clientSecret() },
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            }
-        );
-
-        const { access_token, refresh_token, expires_in } = tokenRes.data;
-
-        const userRes = await axios.get('https://api.pinterest.com/v5/user_account', {
-            headers: { Authorization: `Bearer ${access_token}` },
-        });
-
-        const user = userRes.data;
-
-        await saveConnection(workspaceId, 'pinterest', {
-            accessToken: access_token,
-            refreshToken: refresh_token,
-            tokenExpiry: Date.now() + (expires_in ?? 86400) * 1000,
-            accountId: user.username,
-            accountName: user.username,
-            accountAvatar: user.profile_image,
-            followersCount: user.follower_count ?? 0,
-            scope: cfg.scopes,
-            meta: { username: user.username, website: user.website_url },
-        });
-
-        res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?connected=pinterest`);
-    } catch (err) {
-        console.error('[Pinterest callback]', err);
-        res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?error=pinterest`);
-    }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-//   THREADS CALLBACK  (Meta — same app as Instagram)
-// ─────────────────────────────────────────────────────────────────────────────
-router.get('/threads/callback', async (req: Request, res: Response) => {
-    try {
-        const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = verifyState(state);
-        const cfg = OAUTH_CONFIG.threads;
-
-        const tokenRes = await axios.post(cfg.tokenUrl, new URLSearchParams({
-            client_id: cfg.clientId(),
-            client_secret: cfg.clientSecret(),
-            code,
-            grant_type: 'authorization_code',
-            redirect_uri: cfg.redirectUri(),
-        }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-
-        const { access_token, expires_in } = tokenRes.data;
-
-        const meRes = await axios.get('https://graph.threads.net/me', {
-            params: { fields: 'id,username,name,threads_profile_picture_url', access_token },
-        });
-
-        const me = meRes.data;
-
-        await saveConnection(workspaceId, 'threads', {
-            accessToken: access_token,
-            refreshToken: access_token, // Meta tokens are self-refreshing
-            tokenExpiry: Date.now() + (expires_in ?? 5184000) * 1000,
-            accountId: me.id,
-            accountName: me.name ?? me.username,
-            accountAvatar: me.threads_profile_picture_url,
-            scope: cfg.scopes,
-            meta: {
-                threads_user_id: me.id,
-                username: me.username,
-                profile_picture_url: me.threads_profile_picture_url,
-            },
-        });
-
-        res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?connected=threads`);
-    } catch (err) {
-        console.error('[Threads callback]', err);
-        res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?error=threads`);
+        console.error('[Facebook callback]', err);
+        back('error=facebook');
     }
 });
 
@@ -921,7 +823,10 @@ async function refreshPlatformToken(workspaceId: string, platform: Platform): Pr
         newAccessToken = t.access_token;
         newRefreshToken = t.refresh_token ?? refreshToken;
         expiresIn = t.expires_in ?? 3600;
-    } else if (platform === 'instagram' || platform === 'threads') {
+    } else if (platform === 'facebook') {
+        // Page tokens don't expire; nothing to refresh.
+        return data.tokenExpiry ?? null;
+    } else if (platform === 'instagram') {
         // Meta exchange long-lived token for new long-lived token
         const res = await axios.get(cfg.tokenUrl, {
             params: {
@@ -934,28 +839,8 @@ async function refreshPlatformToken(workspaceId: string, platform: Platform): Pr
         newAccessToken = res.data.access_token;
         newRefreshToken = res.data.access_token; // Meta tokens are self-refreshing
         expiresIn = res.data.expires_in ?? 5184000;
-    } else if (platform === 'pinterest') {
-        const res = await axios.post(cfg.tokenUrl, new URLSearchParams({
-            grant_type: 'refresh_token',
-            refresh_token: refreshToken,
-        }), {
-            auth: { username: cfg.clientId(), password: cfg.clientSecret() },
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-        });
-        newAccessToken = res.data.access_token;
-        newRefreshToken = res.data.refresh_token ?? refreshToken;
-        expiresIn = res.data.expires_in ?? 86400;
     } else {
-        // LinkedIn — standard refresh flow
-        const res = await axios.post(cfg.tokenUrl, new URLSearchParams({
-            grant_type: 'refresh_token',
-            refresh_token: refreshToken,
-            client_id: cfg.clientId(),
-            client_secret: cfg.clientSecret(),
-        }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-        newAccessToken = res.data.access_token;
-        newRefreshToken = res.data.refresh_token ?? refreshToken;
-        expiresIn = res.data.expires_in ?? 3600;
+        throw new Error(`Token refresh is not supported for ${platform}`);
     }
 
     const tokenExpiry = Date.now() + expiresIn * 1000;

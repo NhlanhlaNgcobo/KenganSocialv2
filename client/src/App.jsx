@@ -45,6 +45,8 @@ import LaunchPage from './pages/Launch/LaunchPage';
 import ClipsPage from './pages/Clips/ClipsPage';
 import RepurposePage from './pages/Repurpose/RepurposePage';
 import MarketingPage from './pages/Marketing/MarketingPage';
+import ClientsPage from './pages/Clients/ClientsPage';
+import ReviewPage from './pages/Review/ReviewPage';
 
 function App() {
   return (
@@ -63,6 +65,8 @@ function App() {
 
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              {/* Client review links: public, no account needed */}
+              <Route path="/review/:token" element={<ReviewPage />} />
 
               {/* Onboarding — requires auth, shown before dashboard */}
               <Route path="/onboarding" element={
@@ -104,6 +108,7 @@ function App() {
                 <Route path="clips" element={<ClipsPage />} />
                 <Route path="repurpose" element={<RepurposePage />} />
                 <Route path="marketing" element={<MarketingPage />} />
+                <Route path="clients" element={<ClientsPage />} />
                 {/* Video editor moved to /editor for full-screen layout */}
               </Route>
 

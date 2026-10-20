@@ -7,9 +7,7 @@ import admin from 'firebase-admin';
 import { publishToYouTube } from '../services/publishers/youtube';
 import { publishToInstagram } from '../services/publishers/instagram';
 import { publishToTikTok } from '../services/publishers/tiktok';
-import { publishToLinkedIn } from '../services/publishers/linkedin';
-import { publishToPinterest } from '../services/publishers/pinterest';
-import { publishToThreads } from '../services/publishers/threads';
+import { publishToFacebook } from '../services/publishers/facebook';
 
 // Reusing token decryption from existing logic if available, or fetch direct
 import { decrypt } from '../utils/tokenEncryption';
@@ -111,27 +109,13 @@ async function publishMultiplexer(platform: string, workspaceId: string, options
                 videoUrl: options.mediaUrl,
                 title: options.caption || '',
             });
-        case 'linkedin':
-            return publishToLinkedIn({
+        case 'facebook':
+            return publishToFacebook({
                 accessToken,
-                authorId: connRaw.accountId,
-                videoUrl: options.mediaUrl,
-                text: options.caption,
-            });
-        case 'pinterest':
-            return publishToPinterest({
-                accessToken,
-                boardId: options.boardId, // User must supply this in platformOptions
-                videoUrl: options.mediaUrl,
-                title: options.title || options.caption.substring(0, 100),
-                description: options.caption,
-            });
-        case 'threads':
-            return publishToThreads({
-                accessToken,
-                threadsUserId: connRaw.accountId,
-                videoUrl: options.mediaUrl,
-                text: options.caption,
+                pageId: connRaw.accountId,
+                mediaUrl: options.mediaUrl,
+                caption: options.caption,
+                title: options.title,
             });
         default:
             throw new Error(`Unsupported platform: ${platform}`);

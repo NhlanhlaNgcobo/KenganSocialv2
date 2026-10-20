@@ -46,7 +46,21 @@ export interface StabilizeSettings {
     correctRotation: boolean;
 }
 
+export interface CleanupOptions {
+    video: { denoise: 'off' | 'light' | 'medium' | 'strong'; sharpen: number; deband: boolean; deflicker: boolean; autoLevels: boolean };
+    audio: {
+        noise: 'off' | 'voice' | 'voice-laughter' | 'general' | 'fft';
+        strength: number;
+        hum: 'off' | '50' | '60';
+        declick: boolean;
+        clarity: boolean;
+        deess: boolean;
+        loudness: 'off' | 'social' | 'podcast';
+    };
+}
+
 export interface EnhanceSummary {
+    cleanup?: { video: boolean; audio: boolean } | null;
     stabilized: boolean;
     stabilizer?: (Partial<StabilizeSettings> & { engine: 'l1' | 'vidstab-fallback'; zoomApplied?: number; shots?: number }) | null;
     autoframe: null | { applied: boolean; reason?: string; ratio?: string; width?: number; height?: number; shots?: number; faceCoverage?: number };
@@ -56,6 +70,7 @@ export interface EnhanceRequest {
     sourceUploadId: string;
     stabilize: { enabled: boolean } & StabilizeSettings;
     autoframe: { enabled: boolean; ratio: string };
+    cleanup?: { enabled: boolean } & CleanupOptions;
 }
 
 export interface AnalysisJob {

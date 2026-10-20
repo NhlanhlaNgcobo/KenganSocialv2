@@ -30,7 +30,31 @@ export async function fetchYouTubeText(rawUrl, plan = 'creator') {
     } catch (error) {
         if (error.code === 'ECONNREFUSED') throw Object.assign(new Error('The video service is not running, so YouTube links cannot be read right now.'), { status: 503 });
         const detail = error.response?.data?.detail;
+        // YouTube refuses many server requests; the page then offers uploading the video instead.
+        if (detail?.error === 'YOUTUBE_BLOCKED') {
+            throw Object.assign(new Error('YouTube blocked reading this video from our server. Upload the video file instead (or paste its transcript) and we will do the rest.'), { status: 422, code: 'YOUTUBE_BLOCKED' });
+        }
         throw Object.assign(new Error(detail?.message || 'That YouTube video could not be read.'), { status: error.response?.status === 400 ? 400 : 422 });
+    }
+}
+
+/** Text spoken in an uploaded video or audio file (transcribed by the video service). */
+export async function transcribeUpload(filePath, { plan = 'creator', workspaceId = null } = {}) {
+    try {
+        const { data } = await axios.post(
+            `${PYTHON_URL}/process/transcribe`,
+            { videoUrl: filePath, jobId: `repurpose_${Date.now().toString(36)}`, workspaceId, plan },
+            { timeout: 2 * 60 * 60 * 1000 }
+        );
+        const words = (data?.words || []).map((w) => String(w.text ?? w.word ?? '').trim()).filter(Boolean);
+        const text = words.join(' ').replace(/\s+([,.!?;:])/g, '$1').trim();
+        if (text.length < 80) throw Object.assign(new Error('Little or no speech was found in this video.'), { status: 422 });
+        return text.slice(0, MAX_CHARS);
+    } catch (error) {
+        if (error.status) throw error;
+        if (error.code === 'ECONNREFUSED') throw Object.assign(new Error('The video service is not running, so videos cannot be transcribed right now.'), { status: 503 });
+        const detail = error.response?.data?.detail;
+        throw Object.assign(new Error(detail?.message || 'The video could not be transcribed.'), { status: 422 });
     }
 }
 

@@ -17,7 +17,7 @@ const TERMS_CONTENT = {
 
 "AI Credits" means the virtual currency used within the Platform to access AI-powered features, where 1 AI Credit equals 1 AI DM response, 1 caption generation, or approximately 250 tokens.
 
-"API" means Application Programming Interface, being the technical interface through which the Platform connects to third-party social media platforms including TikTok, Instagram, YouTube, LinkedIn, Pinterest, and Threads.
+"API" means Application Programming Interface, being the technical interface through which the Platform connects to third-party social media platforms: Instagram, Facebook, TikTok and YouTube.
 
 "Content" means any text, images, videos, audio, data, or other materials created, uploaded, or generated through the Platform.
 
@@ -40,7 +40,7 @@ const TERMS_CONTENT = {
             heading: '2. Description of Services',
             content: `KenganSocial is a multi-channel AI automation platform designed for influencers, marketers, and agencies managing multiple social media accounts. The Platform provides:
 
-— Multi-account management across TikTok, Instagram, YouTube, LinkedIn, Pinterest, and Threads
+— Multi-account management across Instagram, Facebook, TikTok and YouTube
 — AI-powered automated direct message (DM) responses and lead handling
 — AI-generated content scripting and caption creation
 — Short-form video editing with auto-captioning and viral clip detection

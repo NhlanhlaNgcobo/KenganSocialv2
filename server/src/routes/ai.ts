@@ -13,9 +13,7 @@ const PLATFORM_PROMPTS: Record<string, string> = {
     INSTAGRAM: `Start with a scroll-stopping first line that hooks the audience (no hashtags in line 1). Use double line breaks between short paragraphs. Tell a vulnerable story or give high educational value. End with a specific Call to Action (CTA). Add a blank line, then 15 hashtags: 5 high-volume (>1M), 5 medium (100k-1M), 5 niche (<100k). Total max 2200 chars.`,
     TIKTOK: `Max 150 characters. Format: [Hook — MUST create intense curiosity or FOMO in exactly the first 3 words] + [A very short value/caption] + [3-5 trending hashtags only].`,
     YOUTUBE: `SEO-optimized title (max 60 chars, FRONT-LOAD the main keyword). Description: The first 2 lines must be the most compelling (appear before 'Show More'). Include a 'Tags:' comma-separated array, a '[Chapter Placeholder]' list, and a subscribe CTA. Max 5000 chars. Return clearly labeled sections: TITLE, DESCRIPTION, TAGS.`,
-    LINKEDIN: `Start with a bold insight or a shocking statistic opener. Use very short paragraphs (1-2 lines). Max 5 relevant hashtags at the end. End with a thought-provoking question to drive comments. Max 1300 chars.`,
-    PINTEREST: `100-500 characters. Include the main keyword in the very first sentence. Write for high search intent. Embed 5 relevant keywords naturally into the sentences.`,
-    THREADS: `Highly conversational, unfiltered, and raw. Present a strong opinion or a 'hot take' related to the transcript. Max 500 characters. DO NOT use hashtags.`
+    FACEBOOK: `80-250 words, friendly and story-led so it is easy to share. Open with a relatable first line. Short paragraphs. End with a question or a clear call to action. At most 2 hashtags.`
 };
 
 async function generateCaption(platform: string, transcript: string | undefined, niche: string | undefined, tone: string) {
@@ -38,7 +36,7 @@ ${transcript?.substring(0, 3000)}` }
     // Extract trailing hashtags safely if requested
     let hashtags: string[] = [];
     const hashMatch = content.match(/#[a-zA-Z0-9_]+/g);
-    if (hashMatch && platform.toUpperCase() !== 'THREADS') {
+    if (hashMatch) {
         hashtags = hashMatch;
     }
 

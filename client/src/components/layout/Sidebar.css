@@ -275,3 +275,16 @@
         align-items: center;
     }
 }
+
+/* Marks features not on the current plan (the page explains the upgrade). */
+.sidebar__tag {
+    margin-left: auto;
+    padding: 1px 6px;
+    border-radius: 99px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--accent-text);
+    background: var(--accent-soft);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+}
