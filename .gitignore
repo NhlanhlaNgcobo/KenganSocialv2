@@ -72,3 +72,6 @@ server/*secret*.txt
 # Google OAuth client files (keep keys in .env only)
 client_secret*.json
 **/client_secret*.json
+
+# Vercel CLI project link
+.vercel
