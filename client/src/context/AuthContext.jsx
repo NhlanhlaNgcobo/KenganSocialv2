@@ -36,7 +36,8 @@ export function AuthProvider({ children }) {
     const [profile, setProfile] = useState(null);
     const [workspace, setWorkspace] = useState(null);
     const [plan, setPlan] = useState('starter');
-    const [loading, setLoading] = useState(true);
+    // Without Firebase there is no session to wait for.
+    const [loading, setLoading] = useState(Boolean(isFirebaseConfigured && auth));
 
     /** Applies a session payload from /auth/me or POST /auth/profile (both return the same shape). */
     const applySession = useCallback((data) => {
@@ -66,10 +67,7 @@ export function AuthProvider({ children }) {
     }, [applySession]);
 
     useEffect(() => {
-        if (!isFirebaseConfigured || !auth) {
-            setLoading(false);
-            return;
-        }
+        if (!isFirebaseConfigured || !auth) return;
 
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser);
@@ -196,6 +194,7 @@ export function AuthProvider({ children }) {
     );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- the hook belongs with its provider
 export function useAuth() {
     const context = useContext(AuthContext);
     if (!context) {

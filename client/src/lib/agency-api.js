@@ -1,7 +1,7 @@
 /**
  * Clients & approvals API. Team routes: /api/agency (signed in). Client review page: /api/review (public).
  */
-import { apiClient } from './api';
+import { apiClient, apiFetch } from './api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -67,7 +67,7 @@ export const agencyApi = {
 
 /** Public review page calls: no sign-in, the token in the link is the access. */
 async function publicCall(path, options = {}) {
-    const response = await fetch(`${API_URL}/review/${path}`, {
+    const response = await apiFetch(`${API_URL}/review/${path}`, {
         method: options.method || 'GET',
         headers: options.body ? { 'Content-Type': 'application/json' } : {},
         body: options.body ? JSON.stringify(options.body) : undefined,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
-import { apiClient } from '../../lib/api';
+import { apiClient, apiFetch } from '../../lib/api';
 
 const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 import { Search, Download, UploadCloud, Plus, User, FileText, Send, MoreHorizontal, Loader2, X } from 'lucide-react';
@@ -160,7 +160,7 @@ export default function LeadsBoard() {
         setActionError('');
         setExporting(true);
         try {
-            const res = await fetch(`${API_URL}${leadsPath}/export`, {
+            const res = await apiFetch(`${API_URL}${leadsPath}/export`, {
                 headers: { Authorization: `Bearer ${await user.getIdToken()}`, 'x-workspace-id': currentWorkspace?.id || '' },
             });
             if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Export failed (${res.status})`);

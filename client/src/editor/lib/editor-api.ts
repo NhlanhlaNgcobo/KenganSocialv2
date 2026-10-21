@@ -1,7 +1,7 @@
 /**
  * Server calls used by the editor. UI components never call fetch directly.
  */
-import { apiClient } from '../../lib/api';
+import { apiClient, apiFetch } from '../../lib/api';
 
 const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -108,7 +108,7 @@ export const editorApi = {
 
     async downloadRender(downloadUrl: string): Promise<Blob> {
         const root = API_URL.replace(/\/api$/, '');
-        const response = await fetch(`${root}${downloadUrl}`, { headers: await authHeaders() });
+        const response = await apiFetch(`${root}${downloadUrl}`, { headers: await authHeaders() });
         if (!response.ok) throw new Error(`Download failed (${response.status})`);
         return response.blob();
     },
@@ -137,7 +137,7 @@ export const editorApi = {
     /** Downloads a stock asset through the server (fileUrl comes from searchAssets). */
     async downloadAsset(fileUrl: string): Promise<Blob> {
         const root = API_URL.replace(/\/api$/, '');
-        const response = await fetch(`${root}${fileUrl}`, { headers: await authHeaders() });
+        const response = await apiFetch(`${root}${fileUrl}`, { headers: await authHeaders() });
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             throw new Error(body.error || `Download failed (${response.status})`);

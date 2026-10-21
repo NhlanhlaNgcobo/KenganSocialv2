@@ -16,17 +16,6 @@ const HOP_SEC = HOP / ANALYSIS_RATE;
 export const BEAT_ANALYSIS_VERSION = 1;
 const MAX_SECONDS = 600;
 
-function smooth(values, radius) {
-    const out = new Float32Array(values.length);
-    let sum = 0;
-    for (let i = 0; i < values.length; i += 1) {
-        sum += values[i];
-        if (i > 2 * radius) sum -= values[i - 2 * radius - 1];
-        out[Math.max(0, i - radius)] = sum / Math.min(i + 1, 2 * radius + 1);
-    }
-    return out;
-}
-
 const FFT_SIZE = 512; // 46 ms window, 21.5 Hz bins
 // Bands (in bins): kick, low-mid/snare body, mid, highs. Each counts equally, so off-beat hi-hats
 // (many high bins) can't outvote the kick and snare.

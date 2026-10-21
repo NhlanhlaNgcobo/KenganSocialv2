@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, Clapperboard, Copy, Download, Globe, GraduationCap, Loader2, Music2, PenLine, RotateCcw, Scissors } from 'lucide-react';
-import { apiClient } from '../../lib/api';
+import { apiClient, apiFetch } from '../../lib/api';
 import MusicPicker from '../../components/music/MusicPicker';
 import SaveToLibraryButton from '../../components/clients/SaveToLibraryButton';
 import { useEditorStore } from '../../stores/editorStore';
@@ -52,7 +52,7 @@ async function authorizedBlob(url) {
     const { auth } = await import('../../lib/firebase');
     const token = await auth?.currentUser?.getIdToken();
     const workspaceId = localStorage.getItem('kengan_current_workspace_id');
-    const response = await fetch(`${API_ROOT}${url}`, {
+    const response = await apiFetch(`${API_ROOT}${url}`, {
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(workspaceId ? { 'x-workspace-id': workspaceId } : {}) },
     });
     if (!response.ok) throw new Error(`Download failed (${response.status})`);

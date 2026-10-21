@@ -1,5 +1,7 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+export const NETWORK_ERROR = "Can't reach KenganSocial right now. Check your internet connection and try again in a moment.";
+
 /** Sentences for error codes the server returns without a human-readable message. */
 const ERROR_SENTENCES = {
     FEATURE_LOCKED: "This feature isn't included in your plan. Upgrade in Billing to use it.",
@@ -25,6 +27,23 @@ export function buildApiError(errorData, status) {
     error.status = status;
     error.data = errorData;
     return error;
+}
+
+/**
+ * fetch() for calls to the API. When the request never reaches the server (offline, server down,
+ * blocked) the browser only says "Failed to fetch"; this throws a sentence the UI can show instead,
+ * with code 'NETWORK_ERROR'. A cancelled request keeps its own error.
+ */
+export async function apiFetch(url, init) {
+    try {
+        return await fetch(url, init);
+    } catch (cause) {
+        if (cause?.name === 'AbortError') throw cause;
+        const error = new Error(NETWORK_ERROR);
+        error.code = 'NETWORK_ERROR';
+        error.cause = cause;
+        throw error;
+    }
 }
 
 /**
@@ -59,7 +78,7 @@ export async function apiClient(endpoint, options = {}) {
             ? JSON.stringify(options.body)
             : options.body;
 
-    const response = await fetch(`${API_URL}${normalizedEndpoint}`, {
+    const response = await apiFetch(`${API_URL}${normalizedEndpoint}`, {
         ...options,
         body: requestBody,
         headers,

@@ -1,7 +1,7 @@
 /**
  * Clips API: long video → ranked short clips. Server: /api/clips.
  */
-import { apiClient } from './api';
+import { apiClient, apiFetch } from './api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const API_ROOT = API_URL.replace(/\/api$/, '');
@@ -49,7 +49,7 @@ export const clipsApi = {
     get: (id) => apiClient(`/clips/${encodeURIComponent(id)}`),
     remove: (id) => apiClient(`/clips/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     async download(downloadUrl) {
-        const response = await fetch(`${API_ROOT}${downloadUrl}`, { headers: await authHeaders() });
+        const response = await apiFetch(`${API_ROOT}${downloadUrl}`, { headers: await authHeaders() });
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             if (response.status === 401) throw new Error('Your session has expired. Sign in again to download this clip.');

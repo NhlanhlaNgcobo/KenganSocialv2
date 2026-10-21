@@ -2,7 +2,7 @@
  * Songs with vocals by independent artists (ccMixter + Openverse, CC BY / CC0 only), served by /api/music/songs.
  * Used by the video editor, autocut templates and launch videos.
  */
-import { apiClient } from './api';
+import { apiClient, apiFetch } from './api';
 
 const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -95,7 +95,7 @@ export const musicApi = {
 
     async download(track: Pick<Song, 'fileUrl'>): Promise<Blob> {
         const root = API_URL.replace(/\/api$/, '');
-        const response = await fetch(`${root}${track.fileUrl}`, { headers: await authHeaders() });
+        const response = await apiFetch(`${root}${track.fileUrl}`, { headers: await authHeaders() });
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             throw new Error(body.error || `Download failed (${response.status})`);

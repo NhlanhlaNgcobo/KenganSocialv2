@@ -73,6 +73,7 @@ export function WorkspaceProvider({ children }) {
     );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- the hook belongs with its provider
 export function useWorkspace() {
     const context = useContext(WorkspaceContext);
     if (!context) {

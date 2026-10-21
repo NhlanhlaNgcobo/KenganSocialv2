@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../context/WorkspaceContext';
-import { apiClient, buildApiError } from '../lib/api';
+import { apiClient, apiFetch, buildApiError } from '../lib/api';
 import { useEditorStore } from '../stores/editorStore';
 import './ContentStudio.css';
 
@@ -65,7 +65,7 @@ async function uploadForAnalysis(file, fields, onProgress) {
 
 /** Rendered files are behind auth, so they are fetched with the token and shown from a blob. */
 async function fetchRenderedBlob(downloadUrl) {
-    const response = await fetch(`${API_ROOT}${downloadUrl}`, { headers: await authHeaders() });
+    const response = await apiFetch(`${API_ROOT}${downloadUrl}`, { headers: await authHeaders() });
     if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.message || `The rendered video couldn't be loaded (${response.status}). Render it again.`);

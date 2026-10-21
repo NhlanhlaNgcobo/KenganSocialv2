@@ -23,12 +23,14 @@ function Linked({ text }) {
 export default function LegalPage({ docSlug = 'terms' }) {
     const navigate = useNavigate();
     const doc = LEGAL_DOCS.find((d) => d.slug === docSlug) || LEGAL_DOCS[0];
-    const [activeSection, setActiveSection] = useState(null);
+    // The highlighted section belongs to the document it was picked in, so it resets on a new one.
+    const [picked, setPicked] = useState({ slug: null, id: null });
+    const activeSection = picked.slug === doc.slug ? picked.id : null;
+    const setActiveSection = (id) => setPicked({ slug: doc.slug, id });
 
     useEffect(() => {
         document.title = `${doc.title} | ${COMPANY.product}`;
         window.scrollTo(0, 0);
-        setActiveSection(null);
     }, [doc]);
 
     const scrollToSection = (id) => {

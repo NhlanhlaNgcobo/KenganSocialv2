@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { auth } from '../../lib/firebase';
+import { apiFetch } from '../../lib/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -17,7 +18,7 @@ export default function PrivacyDataSection() {
         setMessage(null);
         try {
             const token = await auth.currentUser?.getIdToken();
-            const res = await fetch(`${API_URL}/privacy/export`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+            const res = await apiFetch(`${API_URL}/privacy/export`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
             if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Your data could not be exported.');
             const url = URL.createObjectURL(await res.blob());
             const a = document.createElement('a');
