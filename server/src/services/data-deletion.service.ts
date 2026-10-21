@@ -20,12 +20,12 @@ import { findConnections } from './connection-lookup';
 const workspaceRef = (workspaceId: string) => db.collection('workspaces').doc(workspaceId);
 
 /** Collections under workspaces/{id} holding data fetched from a platform, tagged with `platform`. */
-const PLATFORM_DATA_COLLECTIONS = ['dmQueue'];
+const PLATFORM_DATA_COLLECTIONS = ['dmQueue', 'inboxComments', 'dmThreads', 'dmOptOuts', 'adsActivity'];
 
 /** Top-level collections whose documents carry the `workspaceId` they belong to. */
 const WORKSPACE_KEYED_COLLECTIONS = ['scheduled_posts', 'render_jobs', 'manual_edit_jobs', 'video_analyses', 'notifications', 'ai_usage_logs', 'clip_projects', 'review_links'];
 
-const META_PLATFORMS = new Set(['instagram', 'facebook']);
+const META_PLATFORMS = new Set(['instagram', 'facebook', 'meta_ads']);
 
 async function deleteQuery(query: FirebaseFirestore.Query): Promise<number> {
     let removed = 0;
@@ -93,9 +93,12 @@ export async function deleteConnection(workspaceId: string, platform: string, { 
 
     let revoked = false;
     if (revoke) {
-        // Instagram and Facebook can share one Facebook login; revoking it would also cut off the other.
-        const sibling = META_PLATFORMS.has(platform) ? await workspaceRef(workspaceId).collection('connections').doc(platform === 'instagram' ? 'facebook' : 'instagram').get() : null;
-        const shared = sibling?.exists && conn.metaUserId && sibling.data()?.metaUserId === conn.metaUserId;
+        // Instagram, Facebook and Meta Ads can share one Facebook login; revoking it would also cut off the others.
+        let shared = false;
+        if (META_PLATFORMS.has(platform) && conn.metaUserId) {
+            const siblings = await Promise.all([...META_PLATFORMS].filter((p) => p !== platform).map((p) => workspaceRef(workspaceId).collection('connections').doc(p).get()));
+            shared = siblings.some((s) => s.exists && s.data()?.metaUserId === conn.metaUserId);
+        }
         if (!shared) revoked = await revokePlatformAccess(platform, conn);
     }
 
@@ -103,6 +106,7 @@ export async function deleteConnection(workspaceId: string, platform: string, { 
     for (const name of PLATFORM_DATA_COLLECTIONS) {
         itemsRemoved += await deleteQuery(workspaceRef(workspaceId).collection(name).where('platform', '==', platform));
     }
+    if (META_PLATFORMS.has(platform)) await workspaceRef(workspaceId).collection('metaPending').doc(platform).delete();
     await ref.delete();
     console.log(`[Deletion] ${platform} disconnected from workspace ${workspaceId} (revoked: ${revoked}, items removed: ${itemsRemoved})`);
     return { existed: true, revoked, itemsRemoved };

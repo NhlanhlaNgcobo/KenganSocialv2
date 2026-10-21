@@ -52,12 +52,18 @@ What to expect: uploads appear on your channel. Testing-mode tokens expire after
 **Before you start**: your Instagram account must be a **Professional** account (Creator or Business) and linked to a **Facebook Page** you manage. In Instagram: Settings → Account type and tools → Switch to professional account. Then link it under Page settings → Linked accounts.
 
 1. Go to [developers.facebook.com](https://developers.facebook.com) → **My Apps → Create App**. Choose use case **Other**, app type **Business**, and name it "KenganSocial".
-2. Add the product **Facebook Login for Business** (or **Facebook Login**). Under its **Settings**:
-   - Valid OAuth Redirect URIs: `<SERVER>/api/connections/instagram/callback`
-3. Add the product **Instagram** (Instagram API with Facebook Login).
-4. **App settings → Basic**: copy the **App ID** and **App Secret**. Add a privacy policy URL (`http://localhost:5173/privacy` is fine while testing).
-5. **App roles → Roles**: your Facebook account is already Admin. Add anyone else who will test as Tester.
-6. In `server/.env`:
+2. Add the product **Facebook Login for Business** (or **Facebook Login**). Under its **Settings**, add all three Valid OAuth Redirect URIs:
+   - `<SERVER>/api/connections/instagram/callback`
+   - `<SERVER>/api/connections/facebook/callback`
+   - `<SERVER>/api/connections/meta_ads/callback`
+3. Add the products **Instagram** (Instagram API with Facebook Login), **Messenger** and **Marketing API**.
+4. **Webhooks** (products menu): callback URL `<SERVER>/api/webhooks/meta`, verify token = `META_VERIFY_TOKEN`. Subscribe:
+   - object **Instagram**: `messages`, `comments`
+   - object **Page**: `feed`, `messages`
+   Connecting an account subscribes its Page automatically (`/{page-id}/subscribed_apps`).
+5. **App settings → Basic**: copy the **App ID** and **App Secret**. Add a privacy policy URL (`http://localhost:5173/privacy` is fine while testing).
+6. **App roles → Roles**: your Facebook account is already Admin. Add anyone else who will test as Tester.
+7. In `server/.env`:
    ```
    FACEBOOK_APP_ID=...
    FACEBOOK_APP_SECRET=...
@@ -65,7 +71,27 @@ What to expect: uploads appear on your channel. Testing-mode tokens expire after
    META_VERIFY_TOKEN=any-random-string-you-choose
    ```
 
-The app requests `instagram_basic`, `instagram_content_publish`, `instagram_manage_insights`, `pages_show_list`, `pages_read_engagement`, `pages_manage_posts` and `business_management`. In development mode, Meta grants these to app roles without review.
+In development mode, Meta grants every permission to app roles without review. For App Review, request exactly these (the scopes in `server/src/routes/connections.ts`; the in-app explanations are in `client/src/content/platform-permissions.js`):
+
+| Permission | Requested by | What KenganSocial does with it (show this in the screencast) |
+| --- | --- | --- |
+| `instagram_basic` | Instagram | Shows the connected account's username, picture and followers on Connections. |
+| `instagram_content_publish` | Instagram | Publishes a scheduled Reel from the Calendar. |
+| `instagram_manage_insights` | Instagram | Reach, interactions and followers on Analytics. |
+| `instagram_manage_comments` | Instagram | Comments tab in the Inbox: public reply and private reply; comment keyword automations. |
+| `instagram_manage_messages` | Instagram | Inbox: reply to DMs (approval queue) and DM keyword automations, within 24 hours. |
+| `pages_show_list` | Instagram, Facebook | Lists your Pages to find the linked Instagram account / pick a Page. |
+| `pages_read_engagement` | Instagram, Facebook | Reads the Page and its posts' engagement for Analytics. |
+| `pages_manage_metadata` | Instagram, Facebook | Subscribes the Page to webhooks for new comments and messages. |
+| `business_management` | Instagram, Facebook | Finds Pages and Instagram accounts owned through Business Manager. |
+| `pages_manage_posts` | Facebook | Publishes a scheduled post to the Page. |
+| `pages_read_user_content` | Facebook | Shows comments on the Page's posts in the Inbox. |
+| `pages_manage_engagement` | Facebook | Replies to Page comments from the Inbox and automations. |
+| `pages_messaging` | Facebook | Answers Messenger messages from the Inbox and automations, within 24 hours. |
+| `ads_read` | Meta Ads | Meta Ads page: campaigns with spend, reach, clicks and results. |
+| `ads_management` | Meta Ads | Meta Ads page: pause, resume and change a campaign's daily budget when the user clicks it. |
+
+Messaging rules the app enforces: normal replies only within 24 hours of the person's last message; one private reply per comment, within 7 days; nothing to people who sent "stop"; AI drafts are never sent without approval and never state prices, links, dates or times.
 
 What to expect: videos post as **Reels**. Meta downloads the video from your tunnel, so ngrok must be running when the post goes out.
 

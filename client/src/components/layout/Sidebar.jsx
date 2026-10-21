@@ -30,6 +30,7 @@ import {
     UserCircle,
     Users,
     Zap,
+    Target,
 } from 'lucide-react';
 import './Sidebar.css';
 import { KenganLogo } from '../brand/KenganLogo';
@@ -70,7 +71,10 @@ const NAV_GROUPS = [
     },
     {
         title: 'Grow',
-        items: [{ label: 'Marketing', icon: Megaphone, path: '/dashboard/marketing' }],
+        items: [
+            { label: 'Marketing', icon: Megaphone, path: '/dashboard/marketing' },
+            { label: 'Meta Ads', icon: Target, path: '/dashboard/ads' },
+        ],
     },
     {
         title: 'Results',

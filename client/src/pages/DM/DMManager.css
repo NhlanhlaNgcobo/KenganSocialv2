@@ -416,3 +416,39 @@
         white-space: nowrap;
     }
 }
+/* Reply window (Meta's 24-hour rule) and comment timestamps */
+.dm-window {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+.dm-window.is-closed {
+    color: var(--error, #ef4444);
+}
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+.dm-manager-container .action-row,
+.dm-manager-container .msg-header {
+    flex-wrap: wrap;
+}
+@media (max-width: 768px) {
+    .content-inner {
+        padding: 20px 16px;
+    }
+}
+/* Let the columns shrink to the screen instead of growing to their content (phones). */
+.dm-manager-container,
+.dm-sidebar,
+.dm-main-content {
+    min-width: 0;
+    max-width: 100%;
+}

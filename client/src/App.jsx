@@ -42,6 +42,7 @@ import LegalPage from './pages/LegalPage';
 import OnboardingPage from './pages/OnboardingPage';
 import TrendingFeed from './pages/Trending/TrendingFeed';
 import DMManager from './pages/DM/DMManager';
+import AdsPage from './pages/AdsPage';
 import LaunchPage from './pages/Launch/LaunchPage';
 import ClipsPage from './pages/Clips/ClipsPage';
 import RepurposePage from './pages/Repurpose/RepurposePage';
@@ -113,6 +114,7 @@ function App() {
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="trending" element={<TrendingFeed />} />
                 <Route path="dm" element={<DMManager />} />
+                <Route path="ads" element={<AdsPage />} />
                 <Route path="launch" element={<LaunchPage />} />
                 <Route path="clips" element={<ClipsPage />} />
                 <Route path="repurpose" element={<RepurposePage />} />

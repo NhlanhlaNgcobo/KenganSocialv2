@@ -9,6 +9,8 @@
 
 .dashboard__main {
     flex: 1;
+    /* A flex item grows to its widest content unless allowed to shrink; keeps pages within the screen. */
+    min-width: 0;
     margin-left: var(--sidebar-width);
     transition: margin-left var(--transition-base);
     min-height: 100vh;
@@ -17,6 +19,7 @@
 .dashboard__content {
     padding: 32px 40px 48px;
     max-width: 1280px;
+    min-width: 0;
 }
 
 /* Collapsed sidebar adjustment */

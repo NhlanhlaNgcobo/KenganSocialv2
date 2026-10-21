@@ -53,6 +53,67 @@
     color: var(--accent-text);
     text-decoration: underline;
 }
+/* Account picker (MetaAccountPicker.jsx) */
+.map-list {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    max-height: 340px;
+    overflow-y: auto;
+}
+.map-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-primary);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+.map-option:hover,
+.map-option.is-selected {
+    border-color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+}
+.map-option input {
+    flex: none;
+    accent-color: var(--accent-primary);
+}
+.map-avatar {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.map-avatar--blank {
+    background: var(--bg-tertiary, var(--border-primary));
+}
+.map-text {
+    display: grid;
+    min-width: 0;
+}
+.map-text strong {
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.map-text span {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
 @media (max-width: 480px) {
     .cp-modal {
         padding: 18px;

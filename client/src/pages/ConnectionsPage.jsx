@@ -14,10 +14,12 @@ import {
     MessageSquare,
     Video,
     ExternalLink,
+    Megaphone,
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
 import ConnectPermissions from '../components/connections/ConnectPermissions';
+import MetaAccountPicker from '../components/connections/MetaAccountPicker';
 import './Connections.css';
 
 const PLATFORM_META = {
@@ -26,10 +28,11 @@ const PLATFORM_META = {
     facebook: { name: 'Facebook Page', icon: Facebook, color: '#1877F2' },
     tiktok: { name: 'TikTok', icon: Smartphone, color: 'var(--text-primary)' },
     youtube: { name: 'YouTube', icon: Youtube, color: '#FF0000' },
+    meta_ads: { name: 'Meta Ads', icon: Megaphone, color: '#0866FF' },
 };
 
-// KenganSocial covers the four main social marketing platforms.
-const ALL_PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube'];
+// The four social platforms, plus a Meta ad account for the Ads page.
+const ALL_PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube', 'meta_ads'];
 const REAL_OAUTH_PLATFORMS = new Set(ALL_PLATFORMS);
 const COMING_SOON_PLATFORMS = new Set();
 
@@ -37,6 +40,7 @@ const SERVER_KEYS = {
     youtube: 'YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET',
     instagram: 'FACEBOOK_APP_ID and FACEBOOK_APP_SECRET',
     facebook: 'FACEBOOK_APP_ID and FACEBOOK_APP_SECRET',
+    meta_ads: 'FACEBOOK_APP_ID and FACEBOOK_APP_SECRET',
     tiktok: 'TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET',
 };
 
@@ -45,6 +49,8 @@ const REASON_MESSAGES = {
     no_channel: 'That Google account has no YouTube channel. Create a channel on YouTube first, then connect again.',
     no_instagram_business: 'No Instagram Business account was found. Your Instagram must be a Professional account linked to a Facebook Page.',
     no_page: 'No Facebook Page was found on that account. Create a Page (or ask its admin to add you), then connect again.',
+    no_ad_account: 'No ad account was found on that Facebook account. Open Meta Ads Manager to create one, or ask its admin to add you, then connect again.',
+    cancelled: 'The sign-in was cancelled, so nothing was connected.',
 };
 
 const FOLDERS_KEY = (workspaceId) => `kengan-client-folders-${workspaceId || 'none'}`;
@@ -107,6 +113,11 @@ export default function ConnectionsPage() {
             };
         }
         return null;
+    });
+    // Several Pages / Instagram accounts / ad accounts were found: the server redirects back with ?select=<platform>.
+    const [selectPlatform, setSelectPlatform] = useState(() => {
+        const p = new URLSearchParams(window.location.search).get('select');
+        return ['instagram', 'facebook', 'meta_ads'].includes(p) ? p : null;
     });
     useEffect(() => {
         if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
@@ -431,7 +442,7 @@ export default function ConnectionsPage() {
 
                                             <div className="connection-card__body">
                                                 <h3>{meta.name}</h3>
-                                                <p className="username">@{connection.username}</p>
+                                                <p className="username">{connection.platform === 'meta_ads' ? connection.username : `@${connection.username}`}</p>
                                                 {Number(connection.followers) > 0 && (
                                                     <p className="followers-count">{Number(connection.followers).toLocaleString()} followers</p>
                                                 )}
@@ -710,9 +721,21 @@ export default function ConnectionsPage() {
                 <AlertCircle size={24} className="text-info" />
                 <div>
                     <h4>Connection Security</h4>
-                    <p>KenganSocial uses official OAuth APIs to connect to your accounts. We never store your passwords and only request the minimum permissions needed to publish content.</p>
+                    <p>KenganSocial uses official OAuth APIs to connect to your accounts. We never see your passwords, and we only ask for the permissions the features you use need. Before each sign-in we explain what will be asked for and why.</p>
                 </div>
             </section>
+
+            {selectPlatform && (
+                <MetaAccountPicker
+                    platform={selectPlatform}
+                    onCancel={() => setSelectPlatform(null)}
+                    onDone={(name) => {
+                        setOauthNotice({ tone: 'success', text: `${PLATFORM_META[selectPlatform].name}${name ? ` (${name})` : ''} is connected.` });
+                        setSelectPlatform(null);
+                        fetchConnections();
+                    }}
+                />
+            )}
 
             {pendingConnect && (
                 <ConnectPermissions
