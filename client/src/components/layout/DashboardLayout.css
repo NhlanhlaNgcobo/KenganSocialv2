@@ -38,3 +38,9 @@
         padding: 20px 16px;
     }
 }
+/* Shown when the workspace can't be loaded (e.g. the API can't be reached). */
+.dashboard__offline {
+    justify-content: space-between;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}

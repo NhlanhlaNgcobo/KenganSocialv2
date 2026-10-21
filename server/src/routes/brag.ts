@@ -1,11 +1,11 @@
 import express from 'express';
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { checkLimit, planRateLimit } from '../middleware/planGate';
+import { checkLimit, planRateLimit, refundUsage } from '../middleware/planGate';
 import { storeUpload } from '../services/manual-edit.service.js';
 import { createLaunchVideo, MOODS, normalizeLaunchRequest, TONE_MOOD, TONES } from '../services/brag/index.js';
 
@@ -59,13 +59,18 @@ router.get('/tones', withWorkspace, (_req: Request, res: Response) => {
     });
 });
 
-router.post('/', withWorkspace, planRateLimit(), checkLimit('renders'), async (req: Request, res: Response) => {
-    let request;
+/** Checks the request before a render credit is used, so a mistyped URL costs nothing. */
+function validateLaunchRequest(req: Request, res: Response, next: NextFunction) {
     try {
-        request = normalizeLaunchRequest(req.body);
+        (req as any).launchRequest = normalizeLaunchRequest(req.body);
+        next();
     } catch (error: any) {
-        return res.status(error.status || 400).json({ error: error.message });
+        res.status(error.status || 400).json({ error: error.message });
     }
+}
+
+router.post('/', withWorkspace, planRateLimit(), validateLaunchRequest, checkLimit('renders'), async (req: Request, res: Response) => {
+    const request = (req as any).launchRequest;
 
     const uid = (req as any).uid;
     const jobId = uuidv4();
@@ -125,6 +130,8 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('renders'), async (r
         });
     } catch (error: any) {
         console.error(`[Brag] Job ${jobId} failed:`, error.message);
+        // Nothing was made: give the render credit back.
+        await refundUsage((req as any).workspaceId, (req as any).plan, 'renders').catch(() => {});
         await jobRef.update({ status: 'failed', stage: 'Failed', error: error.message, updatedAt: new Date().toISOString() }).catch(() => {});
     }
 });

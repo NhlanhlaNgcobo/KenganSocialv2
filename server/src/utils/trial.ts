@@ -4,7 +4,7 @@
  * it ends and a purchase during the trial takes over as normal.
  *
  * TRIAL_PLAN: the plan new accounts try (default agency, everything unlocked).
- * TRIAL_DAYS: trial length in days (default 30; 0 turns trials off for new accounts).
+ * TRIAL_DAYS: trial length in days (default 7; 0 turns trials off for new accounts).
  */
 import { PLAN_LIMITS, Plan } from './planLimits';
 
@@ -16,7 +16,7 @@ function trialPlan(): Plan | null {
 }
 
 function trialDays(): number {
-    const days = Number(process.env.TRIAL_DAYS ?? 30);
+    const days = Number(process.env.TRIAL_DAYS ?? 7);
     return Number.isFinite(days) && days > 0 ? days : 0;
 }
 

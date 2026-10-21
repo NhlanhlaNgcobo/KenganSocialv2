@@ -9,6 +9,8 @@ export function WorkspaceProvider({ children }) {
     const [workspaces, setWorkspaces] = useState([]);
     const [currentWorkspace, setCurrentWorkspace] = useState(null);
     const [loading, setLoading] = useState(true);
+    // Why the workspaces couldn't be loaded (e.g. the API can't be reached); '' when they could.
+    const [error, setError] = useState('');
 
     useEffect(() => {
         if (profile) {
@@ -24,6 +26,7 @@ export function WorkspaceProvider({ children }) {
     const fetchWorkspaces = async () => {
         try {
             setLoading(true);
+            setError('');
             const data = await apiClient('/workspaces');
             const list = data.workspaces || [];
             setWorkspaces(list);
@@ -45,6 +48,7 @@ export function WorkspaceProvider({ children }) {
             }
         } catch (error) {
             console.error('Failed to fetch workspaces:', error);
+            setError(error.message || 'Your workspace could not be loaded.');
         } finally {
             setLoading(false);
         }
@@ -62,6 +66,7 @@ export function WorkspaceProvider({ children }) {
         workspaces,
         currentWorkspace,
         loading,
+        error,
         fetchWorkspaces,
         switchWorkspace
     };

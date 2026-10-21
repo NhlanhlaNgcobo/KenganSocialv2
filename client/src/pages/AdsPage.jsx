@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Megaphone, Pause, Play, Pencil, Loader2, RefreshCw, History, ExternalLink } from 'lucide-react';
+import { Megaphone, Pause, Play, Pencil, Loader2, RefreshCw, History, ExternalLink, GraduationCap } from 'lucide-react';
+import GuidedTutorial, { useTutorial } from '../components/tutorial/GuidedTutorial';
+import { META_ADS_TUTORIAL } from '../components/tutorial/metaAdsTutorial';
 import { apiClient } from '../lib/api';
 import { useWorkspace } from '../context/WorkspaceContext';
 import './Ads.css';
@@ -29,7 +31,16 @@ const ACTIVITY_LABEL = { pause: 'Paused', resume: 'Resumed', daily_budget: 'Chan
 const fromMinor = (v) => (v === null || v === undefined ? null : v / 100);
 
 export default function AdsPage() {
-    const { currentWorkspace } = useWorkspace();
+    const { currentWorkspace, loading: workspaceLoading } = useWorkspace();
+    const tutorial = useTutorial(META_ADS_TUTORIAL.id);
+    const tutorialUi = (
+        <GuidedTutorial id={META_ADS_TUTORIAL.id} title={META_ADS_TUTORIAL.title} steps={META_ADS_TUTORIAL.steps} open={tutorial.open} onClose={tutorial.close} />
+    );
+    const howItWorks = (
+        <button className="btn btn-secondary gt-open" onClick={tutorial.show}>
+            <GraduationCap size={16} /> How it works
+        </button>
+    );
     const [preset, setPreset] = useState('last_7d');
     const [account, setAccount] = useState(null);
     const [campaigns, setCampaigns] = useState([]);
@@ -40,6 +51,8 @@ export default function AdsPage() {
     const [notice, setNotice] = useState('');
     const [busyId, setBusyId] = useState(null);
     const [editing, setEditing] = useState(null); // { id, value }
+    // No workspace once loading has finished: nothing to load, so no spinner (the layout explains why).
+    const waiting = loading && (workspaceLoading || Boolean(currentWorkspace));
 
     const money = useCallback(
         (v) => {
@@ -128,6 +141,7 @@ export default function AdsPage() {
                         <h1>Meta Ads</h1>
                         <p className="page-subtitle">See how your Facebook and Instagram campaigns perform, and pause, resume or adjust them.</p>
                     </div>
+                    {howItWorks}
                 </div>
                 <div className="card ads-empty">
                     <Megaphone size={40} />
@@ -137,6 +151,7 @@ export default function AdsPage() {
                         Go to Connections
                     </Link>
                 </div>
+                {tutorialUi}
             </div>
         );
     }
@@ -151,6 +166,7 @@ export default function AdsPage() {
                     </p>
                 </div>
                 <div className="ads-toolbar">
+                    {howItWorks}
                     <label htmlFor="ads-preset" className="sr-only">Period</label>
                     <select id="ads-preset" className="input" value={preset} onChange={(e) => setPreset(e.target.value)}>
                         {PRESETS.map(([id, label]) => (
@@ -176,7 +192,7 @@ export default function AdsPage() {
                 </div>
             )}
 
-            {loading && !account ? (
+            {waiting && !account ? (
                 <div className="card ads-empty">
                     <Loader2 size={28} className="spin" />
                 </div>
@@ -314,6 +330,7 @@ export default function AdsPage() {
                     </section>
                 </>
             )}
+            {tutorialUi}
         </div>
     );
 }

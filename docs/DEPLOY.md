@@ -86,6 +86,7 @@ Edit `~/kengansocial/server/.env` with `nano`. It was copied from `.env.example`
 | `STORAGE_DRIVER` | `local` (media kept on the VM disk; switch to `s3` with Backblaze B2 when you grow) |
 | `TOKEN_ENCRYPTION_KEY` | `openssl rand -hex 32`. Never change it once accounts are connected. Keep a copy in a password manager. |
 | AI keys | `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY`. Use a paid tier for Gemini (`docs/API_APPLICATIONS.md`). |
+| `AI_FREE_FALLBACK` | `off` while there are no AI keys: launch and tutorial videos then use the built-in (non-AI) storyboards straight away, and AI-only buttons say AI isn't set up, instead of queueing on a free public AI service |
 | Platform apps | `YOUTUBE_*`, `FACEBOOK_*`, `META_APP_SECRET`, `META_VERIFY_TOKEN`, `TIKTOK_*` |
 | Paystack | test keys while testing; `PAYSTACK_CALLBACK_URL=https://kengansocial.co.za/dashboard/billing` |
 | `YOUTUBE_LINK_IMPORT` | leave empty (off) |
@@ -160,7 +161,7 @@ Then sign up in the browser, accept the Terms, connect a platform and export a s
 ## 9. Inviting testers
 
 - **Sign-up.** Testers sign up at your domain. Each one gets their own workspace on the free Starter plan.
-- **Full access.** New accounts get a full-access trial automatically: the Agency plan for 30 days, then the free plan unless they upgrade. Change it with `TRIAL_PLAN` and `TRIAL_DAYS` in `server/.env` (`TRIAL_DAYS=0` turns it off). Billing shows the trial and its end date.
+- **Full access.** New accounts get a full-access trial automatically: the Agency plan for 7 days, then the free plan unless they upgrade. Change it with `TRIAL_PLAN` and `TRIAL_DAYS` in `server/.env` (`TRIAL_DAYS=0` turns it off). Billing shows the trial and its end date.
 - **Accounts made before the trial existed, or a longer trial.** In the Firebase console, open Firestore → `workspaces` → the workspace, and set `trialPlan` (for example `agency`) and `trialEndsAt` (a date such as `2026-12-31T00:00:00Z`). Or set `plan` itself for a permanent change. `DEV_PLAN_OVERRIDE` does not work in production.
 - **Connecting social accounts.** Before platform approval, add each tester's social account as a tester or developer in the platform's console; otherwise they can't connect it.
 

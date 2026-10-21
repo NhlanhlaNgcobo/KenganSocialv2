@@ -75,3 +75,6 @@ client_secret*.json
 
 # Vercel CLI project link
 .vercel
+
+# Remotion browser download (Chrome Headless Shell)
+.remotion/

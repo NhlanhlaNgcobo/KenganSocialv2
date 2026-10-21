@@ -40,6 +40,19 @@ function pickTarget(elements = [], type) {
     return el ? { x: el.x, y: el.y, w: el.w, h: el.h, kind: el.kind, text: el.text } : null;
 }
 
+// Chrome Headless Shell sometimes takes longer than Remotion's fixed 25 s to start (a cold start,
+// or antivirus scanning the browser on Windows); one more try almost always works.
+const BROWSER_START = /Timed out after \d+ ms while trying to connect to the browser|Failed to launch the browser process/i;
+async function retryBrowserStart(step) {
+    try {
+        return await step();
+    } catch (error) {
+        if (!BROWSER_START.test(error?.message || '')) throw error;
+        console.warn('[Brag] Chrome was slow to start; trying again.');
+        return step();
+    }
+}
+
 /**
  * @param {object} opts
  * @param {'launch'|'tutorial'} opts.kind
@@ -81,10 +94,10 @@ export async function renderLaunchVideo({ plan, source, format, music, sfx = {},
     console.log(
         `[Brag] Render input ${mb(inputProps)} MB (scenes ${mb(scenes)}, music ${mb(inputProps.music)}, sfx ${mb(sfx)}, icon ${mb(inputProps.iconData)})`
     );
-    const composition = await selectComposition({ serveUrl, id: 'LaunchVideo', inputProps, timeoutInMilliseconds: 120000 });
+    const composition = await retryBrowserStart(() => selectComposition({ serveUrl, id: 'LaunchVideo', inputProps, timeoutInMilliseconds: 120000 }));
     const id = uuidv4();
     const outputPath = path.join(RENDER_DIR, `launch_${id}.mp4`);
-    await renderMedia({
+    await retryBrowserStart(() => renderMedia({
         composition,
         serveUrl,
         codec: 'h264',
@@ -98,7 +111,7 @@ export async function renderLaunchVideo({ plan, source, format, music, sfx = {},
         // RENDER_CONCURRENCY overrides both.
         concurrency: Number(process.env.RENDER_CONCURRENCY) || (kind === 'tutorial' ? 1 : 2),
         onProgress: ({ progress }) => onProgress(progress),
-    });
+    }));
 
     // Poster: a settled frame of the hook (text fully in, before it leaves), per /brag's delivery rules.
     const hookFrames = Math.round(plan.scenes[0].duration * composition.fps);
@@ -108,7 +121,7 @@ export async function renderLaunchVideo({ plan, source, format, music, sfx = {},
             ? hookFrames + Math.round(plan.scenes[1].duration * composition.fps * 0.6)
             : Math.max(0, hookFrames - Math.round(composition.fps * 0.5));
     const posterPath = path.join(RENDER_DIR, `launch_${id}.jpg`);
-    await renderStill({ composition, serveUrl, output: posterPath, inputProps, frame: Math.min(posterFrame, composition.durationInFrames - 1), imageFormat: 'jpeg', jpegQuality: 80, scale: 0.5, timeoutInMilliseconds: 120000 });
+    await retryBrowserStart(() => renderStill({ composition, serveUrl, output: posterPath, inputProps, frame: Math.min(posterFrame, composition.durationInFrames - 1), imageFormat: 'jpeg', jpegQuality: 80, scale: 0.5, timeoutInMilliseconds: 120000 }));
 
     return { outputPath, posterPath, width: composition.width, height: composition.height, durationInFrames: composition.durationInFrames, fps: composition.fps };
 }

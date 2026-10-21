@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BarChart3, CheckCircle2, Circle, Globe, LayoutGrid, Loader2, Megaphone, Palette, Swords, Wand2 } from 'lucide-react';
+import { BarChart3, CheckCircle2, Circle, Globe, GraduationCap, LayoutGrid, Loader2, Megaphone, Palette, Swords, Wand2 } from 'lucide-react';
+import GuidedTutorial, { useTutorial } from '../../components/tutorial/GuidedTutorial';
+import { MARKETING_TUTORIAL } from '../../components/tutorial/marketingTutorial';
 import { useAuth } from '../../context/AuthContext';
 import { marketingApi } from '../../lib/marketing-api';
 import BrandKitPanel from './BrandKitPanel';
@@ -46,6 +48,7 @@ export default function MarketingPage() {
     const tab = TABS.some((t) => t.id === params.get('tab')) ? params.get('tab') : 'overview';
     const [data, setData] = useState(null);
     const [error, setError] = useState('');
+    const tutorial = useTutorial(MARKETING_TUTORIAL.id);
 
     const load = useCallback(async () => {
         try {
@@ -77,7 +80,11 @@ export default function MarketingPage() {
                     <h1>Marketing</h1>
                     <p>Your brand in one place, and on-brand carousels made from it. Competitor research, website insights and ads are coming next.</p>
                 </div>
+                <button className="btn btn-secondary gt-open" onClick={tutorial.show}>
+                    <GraduationCap size={16} /> How it works
+                </button>
             </header>
+            <GuidedTutorial id={MARKETING_TUTORIAL.id} title={MARKETING_TUTORIAL.title} steps={MARKETING_TUTORIAL.steps} open={tutorial.open} onClose={tutorial.close} />
 
             <div className="segmented marketing-tabs" role="tablist" aria-label="Marketing sections">
                 {TABS.map((t) => (

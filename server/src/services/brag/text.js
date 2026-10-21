@@ -15,7 +15,13 @@ export function shortLine(text, max = 14) {
     const head = words.slice(0, max).join(' ');
     const cuts = [',', ' –', ' —', ' - ', ':', ' and ', ' for ', ' with ', ' to ', ' that '].map((c) => head.lastIndexOf(c));
     const cut = Math.max(...cuts);
-    return cut > 18 ? head.slice(0, cut).replace(/[,:–—-]\s*$/, '').trim() : '';
+    if (cut <= 18) return '';
+    let line = head.slice(0, cut).replace(/[,:–—-]\s*$/, '').trim();
+    // "…for agencies: edit" — a stub of a few words after a colon or dash reads as cut off, so end
+    // at the colon or dash instead.
+    const clause = Math.max(line.lastIndexOf(':'), line.lastIndexOf(' –'), line.lastIndexOf(' —'), line.lastIndexOf(' - '));
+    if (clause > 18 && line.slice(clause + 1).trim().split(' ').length <= 3) line = line.slice(0, clause).trim();
+    return line;
 }
 
 /** A headline: up to `max` words, cut at a clause boundary when longer (or with an ellipsis as a last resort). */

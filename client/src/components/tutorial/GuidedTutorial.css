@@ -1,0 +1,613 @@
+/* Guided tutorial: dialog, steps and the animated scene building blocks (scenes.jsx). */
+
+.gt-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: var(--backdrop, rgba(4, 4, 10, 0.72));
+    backdrop-filter: blur(6px);
+    animation: gt-fade 0.25s ease both;
+}
+
+.gt-dialog {
+    width: min(720px, 100%);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    /* Solid, so the page behind doesn't show through the scene. */
+    background: linear-gradient(var(--bg-elevated), var(--bg-elevated)), var(--bg-solid);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl, 20px);
+    box-shadow: var(--shadow-lg);
+    animation: gt-rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.gt-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 0;
+}
+
+.gt-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent-text);
+}
+
+.gt-close {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-full, 999px);
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+
+.gt-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* Scene area */
+.gt-stage {
+    position: relative;
+    height: 280px;
+    margin: 14px 20px 0;
+    border-radius: var(--radius-lg, 14px);
+    overflow: hidden;
+    background:
+        radial-gradient(120% 90% at 20% 0%, var(--accent-soft, rgba(139, 92, 246, 0.18)), transparent 60%),
+        linear-gradient(var(--bg-inset, transparent), var(--bg-inset, transparent)),
+        var(--bg-solid);
+    border: 1px solid var(--border-color);
+    display: grid;
+    place-items: center;
+}
+
+.gt-scene {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+}
+
+.gt-replay {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 9px;
+    font-size: 11px;
+    border-radius: var(--radius-full, 999px);
+    border: 1px solid var(--border-color);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.gt-replay:hover {
+    color: var(--text-primary);
+}
+
+.gt-copy {
+    padding: 18px 24px 4px;
+    animation: gt-in 0.4s ease both;
+}
+
+.gt-count {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.gt-copy h2 {
+    margin: 4px 0 8px;
+    font-size: 1.35rem;
+    line-height: 1.25;
+}
+
+.gt-copy p {
+    margin: 0;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.gt-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 18px 24px 22px;
+}
+
+.gt-dots {
+    display: flex;
+    gap: 6px;
+}
+
+.gt-dot {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: var(--border-strong, var(--border-color));
+    cursor: pointer;
+    transition: width var(--transition-base, 0.2s), background var(--transition-base, 0.2s);
+}
+
+.gt-dot.is-done {
+    background: var(--accent-secondary, var(--accent-primary));
+    opacity: 0.6;
+}
+
+.gt-dot.is-active {
+    width: 22px;
+    background: var(--accent-primary);
+}
+
+.gt-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Page button that reopens a tutorial */
+.gt-open {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ---------- Scene building blocks ---------- */
+
+.gt-window {
+    position: relative;
+    width: min(440px, 92%);
+    border-radius: 12px;
+    background: var(--bg-card, var(--bg-elevated));
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    font-size: 12px;
+    animation: gt-pop 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.gt-window--wide {
+    width: min(560px, 94%);
+}
+
+.gt-window__bar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.gt-window__bar i {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--border-strong, var(--border-color));
+}
+
+.gt-window__bar span {
+    margin-left: 6px;
+}
+
+.gt-window__body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.gt-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gt-row--between {
+    justify-content: space-between;
+}
+
+.gt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 8px;
+}
+
+.gt-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 9px;
+    border-radius: 9px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.gt-card.gt-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.gt-card--accent {
+    border-color: var(--border-accent, var(--accent-primary));
+    background: var(--accent-soft, rgba(139, 92, 246, 0.14));
+}
+
+.gt-label {
+    color: var(--text-muted);
+    font-size: 10px;
+}
+
+.gt-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.gt-icon {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.gt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+}
+
+.gt-chip--ok {
+    background: var(--success-bg);
+    color: var(--success);
+}
+
+.gt-chip--warn {
+    background: var(--warning-bg);
+    color: var(--warning);
+}
+
+.gt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 7px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--accent-primary);
+    color: var(--accent-contrast, #fff);
+}
+
+.gt-btn--ghost {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.gt-btn--meta {
+    background: #0866ff;
+    color: #fff;
+}
+
+.gt-input {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 9px;
+    border-radius: 7px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.gt-input--focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-soft, rgba(139, 92, 246, 0.2));
+}
+
+/* Floating panel (popups, sign-in screens) */
+.gt-float {
+    position: absolute;
+    z-index: 2;
+    right: 7%;
+    bottom: 9%;
+    width: min(250px, 60%);
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong, var(--border-color));
+    box-shadow: var(--shadow-lg);
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.gt-float--left {
+    left: 7%;
+    right: auto;
+}
+
+/* Rise in */
+.gt-in {
+    animation: gt-in 0.5s ease both;
+    animation-delay: var(--d, 0s);
+}
+
+/* Scale in */
+.gt-pop {
+    animation: gt-pop 0.45s cubic-bezier(0.2, 0.8, 0.2, 1.2) both;
+    animation-delay: var(--d, 0s);
+}
+
+/* Growing bars */
+.gt-bar {
+    height: 7px;
+    border-radius: 999px;
+    background: var(--bg-hover);
+    overflow: hidden;
+}
+
+.gt-bar__fill {
+    display: block;
+    height: 100%;
+    width: var(--w);
+    border-radius: inherit;
+    background: var(--gradient-brand, var(--accent-primary));
+    animation: gt-grow 1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation-delay: var(--d, 0s);
+}
+
+.gt-bar__fill--success {
+    background: var(--success);
+}
+
+.gt-bar__fill--warning {
+    background: var(--warning);
+}
+
+/* Ticks */
+.gt-tick {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+}
+
+.gt-tick__box {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 6px;
+    color: #fff;
+    background: var(--success);
+    animation: gt-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1.4) both;
+    animation-delay: var(--d, 0s);
+}
+
+/* Pressed button */
+.gt-press {
+    display: inline-flex;
+    animation: gt-press 0.6s ease both;
+    animation-delay: var(--d, 0s);
+    border-radius: 8px;
+}
+
+/* Typing text */
+.gt-typed {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    vertical-align: bottom;
+    max-width: calc(var(--n) * 1ch + 1ch);
+    animation: gt-type calc(var(--n) * 0.045s) steps(var(--n)) both;
+    animation-delay: var(--d, 0s);
+}
+
+/* Cursor and click ripple */
+.gt-cursor {
+    position: absolute;
+    z-index: 4;
+    left: var(--x2);
+    top: var(--y2);
+    color: var(--text-primary);
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+    pointer-events: none;
+    animation: gt-cursor var(--t, 1.2s) cubic-bezier(0.45, 0, 0.2, 1) both;
+    animation-delay: var(--d, 0s);
+}
+
+.gt-ripple {
+    position: absolute;
+    z-index: 3;
+    left: calc(var(--x2) - 14px);
+    top: calc(var(--y2) - 14px);
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 2px solid var(--accent-primary);
+    opacity: 0;
+    pointer-events: none;
+    animation: gt-ripple 0.7s ease-out both;
+    animation-delay: var(--d, 0s);
+}
+
+@keyframes gt-fade {
+    from {
+        opacity: 0;
+    }
+}
+
+@keyframes gt-rise {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.98);
+    }
+}
+
+@keyframes gt-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+}
+
+@keyframes gt-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.85);
+    }
+}
+
+@keyframes gt-grow {
+    from {
+        width: 0;
+    }
+}
+
+@keyframes gt-press {
+    0%,
+    100% {
+        transform: none;
+        box-shadow: none;
+    }
+    35% {
+        transform: scale(0.92);
+        box-shadow: 0 0 0 4px var(--accent-soft, rgba(139, 92, 246, 0.35));
+    }
+}
+
+@keyframes gt-type {
+    from {
+        max-width: 0;
+    }
+}
+
+@keyframes gt-cursor {
+    from {
+        left: var(--x1);
+        top: var(--y1);
+        opacity: 0;
+    }
+    12% {
+        opacity: 1;
+    }
+}
+
+@keyframes gt-ripple {
+    0% {
+        opacity: 0.9;
+        transform: scale(0.3);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.6);
+    }
+}
+
+/* Marketing scene pieces */
+.gt-swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.gt-thumb {
+    height: 58px;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: linear-gradient(135deg, hsl(var(--hue) 70% 55%), hsl(calc(var(--hue) + 40) 70% 40%));
+    border: none;
+}
+
+.gt-carousel {
+    gap: 8px;
+    overflow: hidden;
+}
+
+.gt-slide {
+    flex: 0 0 92px;
+    height: 92px;
+    border-radius: 10px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    color: #fff;
+    font-size: 11px;
+}
+
+.gt-slide strong {
+    font-size: 15px;
+}
+
+@media (max-width: 560px) {
+    .gt-stage {
+        height: 230px;
+        margin: 12px 12px 0;
+    }
+
+    .gt-copy,
+    .gt-foot {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    .gt-actions {
+        width: 100%;
+    }
+
+    .gt-actions .btn {
+        flex: 1;
+    }
+}
+
+/* Reduced motion: no movement, the finished scene shows straight away. */
+@media (prefers-reduced-motion: reduce) {
+    .gt-backdrop,
+    .gt-dialog,
+    .gt-copy,
+    .gt-stage *,
+    .gt-stage *::before,
+    .gt-stage *::after {
+        animation: none !important;
+    }
+
+    .gt-ripple {
+        display: none;
+    }
+}
