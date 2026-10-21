@@ -6,7 +6,7 @@ import '../../pages/Legal.css';
 const SUMMARY_POINTS = [
     {
         heading: 'Who we are',
-        body: 'KenganSocial (Pty) Ltd is a South African company providing an AI-powered social media automation platform. Our platform is governed by South African law including POPIA, ECTA, and the Consumer Protection Act.',
+        body: 'KenganSocial is operated by MiraiStack (registration number K2025971590), a South African software company. It provides an AI-powered social media automation platform. Our platform is governed by South African law including POPIA, ECTA, and the Consumer Protection Act.',
     },
     {
         heading: 'What you agree to',
@@ -18,7 +18,7 @@ const SUMMARY_POINTS = [
     },
     {
         heading: 'Your data & privacy',
-        body: 'We collect your account info, usage data, and linked social media tokens (encrypted AES-256). We never sell your personal information. You have full POPIA rights including access, correction, deletion, and the right to object to processing. Contact: privacy@kengansocial.com',
+        body: 'We collect your account info, usage data, and linked social media tokens (encrypted AES-256). We never sell your personal information. You have full POPIA rights including access, correction, deletion, and the right to object to processing. Contact: privacy@kengansocial.co.za',
     },
     {
         heading: 'Your content',
@@ -172,20 +172,20 @@ export default function TermsModal({ onAccept, onDecline }) {
                         Conditions and Privacy Policy are available in the{' '}
                         <span
                             className="terms-full-docs-link"
-                            onClick={() => navigate('/terms')}
+                            onClick={() => navigate("/terms")}
                             role="link"
                             tabIndex={0}
-                            onKeyDown={(e) => e.key === 'Enter' && navigate('/terms')}
+                            onKeyDown={(e) => e.key === 'Enter' && navigate("/terms")}
                         >
                             Legal section of your account settings
                         </span>
                         , or by visiting{' '}
                         <span
                             className="terms-full-docs-link"
-                            onClick={() => navigate('/terms')}
+                            onClick={() => navigate("/terms")}
                             role="link"
                             tabIndex={0}
-                            onKeyDown={(e) => e.key === 'Enter' && navigate('/terms')}
+                            onKeyDown={(e) => e.key === 'Enter' && navigate("/terms")}
                         >
                             view full documents →
                         </span>
@@ -206,7 +206,7 @@ export default function TermsModal({ onAccept, onDecline }) {
                             />
                             <span className="terms-modal-checkbox-text">
                                 I have read and agree to the{' '}
-                                <b>Terms &amp; Conditions</b> of KenganSocial (Pty) Ltd,
+                                <b>Terms &amp; Conditions</b> of KenganSocial (operated by MiraiStack),
                                 including the Acceptable Use Policy and Subscription Terms.
                             </span>
                         </label>

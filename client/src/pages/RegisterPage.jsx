@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { db } from '../lib/firebase';
 import { authErrorMessage } from '../lib/auth-errors';
+import { COMPANY } from '../content/legal';
 import './Auth.css';
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -19,7 +18,7 @@ export default function RegisterPage() {
     const [loading, setLoading] = useState(false);
     const [termsAccepted, setTermsAccepted] = useState(false);
     const [marketingConsent, setMarketingConsent] = useState(false);
-    const { register, loginWithGoogle } = useAuth();
+    const { register, loginWithGoogle, acceptLegal } = useAuth();
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
@@ -40,21 +39,13 @@ export default function RegisterPage() {
 
         setLoading(true);
         try {
-            const user = await register(email, password, displayName);
+            await register(email, password, displayName);
 
-            // Save consents to Firestore subcollection (may fail if client rules are strict)
+            // The server records the acceptance (versions, time, IP). If it fails, the consent step asks again.
             try {
-                await setDoc(doc(db, 'users', user.uid, 'consents', 'initial'), {
-                    termsAccepted: true,
-                    privacyAccepted: true,
-                    ageConfirmed: true,
-                    marketingConsent: marketingConsent,
-                    acceptedAt: serverTimestamp(),
-                    termsVersion: '1.0',
-                    ipAddress: null // optionally capture server-side
-                });
+                await acceptLegal({ marketing: marketingConsent, source: 'signup' });
             } catch (err) {
-                console.warn('Failed to save granular consents (Firestore rules):', err);
+                console.warn('Could not record the sign-up consent; the consent step will ask again:', err.message);
             }
 
             navigate('/onboarding');
@@ -159,8 +150,15 @@ export default function RegisterPage() {
                                 onChange={(e) => setTermsAccepted(e.target.checked)}
                             />
                             <span>
-                                I agree to the <Link to="/terms" onClick={e => e.stopPropagation()}>Terms of Service</Link>,{' '}
-                                <Link to="/privacy" onClick={e => e.stopPropagation()}>Privacy Policy</Link>, and confirm I am 18+ years old.
+                                I agree to the{' '}
+                                <Link to="/terms" target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                                    Terms of Service
+                                </Link>{' '}
+                                and{' '}
+                                <Link to="/privacy" target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                                    Privacy Policy
+                                </Link>
+                                , consent to {COMPANY.operator} processing my personal information as they describe (POPIA), and confirm I am 18 or older.
                             </span>
                         </label>
 

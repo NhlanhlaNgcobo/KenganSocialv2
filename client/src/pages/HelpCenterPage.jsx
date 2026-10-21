@@ -1,3 +1,4 @@
+import PublicFooter from '../components/layout/PublicFooter';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import LandingNavbar from '../components/layout/LandingNavbar';
@@ -5,8 +6,8 @@ import { Search, Mail, BookOpen } from 'lucide-react';
 import { BILLING_EMAIL } from '../utils/planLimits';
 import './LandingPage.css';
 
-const SUPPORT_EMAIL = 'info@kengansocial.com';
-const PRIVACY_EMAIL = 'privacy@kengansocial.com';
+const SUPPORT_EMAIL = 'support@kengansocial.co.za';
+const PRIVACY_EMAIL = 'privacy@kengansocial.co.za';
 
 const FAQ = [
     {
@@ -145,6 +146,7 @@ export default function HelpCenterPage() {
                     </p>
                 </section>
             </main>
+            <PublicFooter />
         </div>
     );
 }

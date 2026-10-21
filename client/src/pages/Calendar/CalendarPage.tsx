@@ -995,7 +995,7 @@ export default function CalendarPage() {
                                 </button>
                             ) : (
                                 <>
-                                {selectedPlatforms.includes('tiktok') && status === 'pending' ? <TikTokConsent options={tiktokOptions} /> : null}
+                                {selectedPlatforms.includes('tiktok') && status === 'pending' && tiktokInfo?.mode !== 'inbox' ? <TikTokConsent options={tiktokOptions} /> : null}
                                 <button className="btn btn-primary" onClick={handleCreatePost} disabled={isSubmitting}>
                                     {isSubmitting && <Loader2 size={16} className="spin" />}
                                     {submitStage === 'uploading'

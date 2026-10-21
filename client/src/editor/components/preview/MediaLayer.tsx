@@ -7,7 +7,7 @@ import { previewFilter } from '../../lib/grade';
 import { isNeutralColor } from '../../lib/color-pipeline.js';
 import { useProjectStore } from '../../stores/project-store';
 import { GradedCanvas, useLut, webgl2Available } from './GradedCanvas';
-import { PLAYBACK_EVENTS, usePlaybackStore } from '../../stores/playback-store';
+import { PLAYBACK_EVENTS, setMediaStalled, usePlaybackStore } from '../../stores/playback-store';
 import type { MediaElement } from '../../types';
 
 interface Props {
@@ -52,9 +52,19 @@ export function MediaLayer({ kind, src, element, trackMuted, active, extendHead 
             media.currentTime = toSourceTime((e as CustomEvent).detail.time);
         };
         const onUpdate = (e: Event) => {
-            if (!active) return;
+            // Let a pending seek land: seeking again would cancel it and freeze the picture.
+            if (!active || media.seeking) return;
             const target = toSourceTime((e as CustomEvent).detail.time);
-            if (Math.abs(media.currentTime - target) > 0.3) media.currentTime = target;
+            const drift = target - media.currentTime; // > 0: the media is behind the playhead
+            if (Math.abs(drift) > 1) {
+                media.playbackRate = speed;
+                media.currentTime = target;
+                return;
+            }
+            // Small drift: nudge the rate instead of seeking. A seek restarts decoding from the previous
+            // keyframe, which on phone footage (keyframes seconds apart) takes longer than the drift it
+            // fixes, so the next update seeks again and the picture never moves.
+            media.playbackRate = Math.abs(drift) > 0.05 ? speed * (1 + Math.max(-0.25, Math.min(0.25, drift))) : speed;
         };
         window.addEventListener(PLAYBACK_EVENTS.seek, onSeek);
         window.addEventListener(PLAYBACK_EVENTS.update, onUpdate);
@@ -63,7 +73,29 @@ export function MediaLayer({ kind, src, element, trackMuted, active, extendHead 
             window.removeEventListener(PLAYBACK_EVENTS.update, onUpdate);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [active, element.startTime, element.trimStart, element.trimEnd, element.duration, element.speed, extendHead, extendTail]);
+    }, [active, speed, element.startTime, element.trimStart, element.trimEnd, element.duration, element.speed, extendHead, extendTail]);
+
+    // While the visible clip seeks or buffers, hold the playback clock (see setMediaStalled).
+    useEffect(() => {
+        const media = ref.current;
+        if (!media || !active) return undefined;
+        const stall = () => setMediaStalled(media, true);
+        const resume = () => setMediaStalled(media, false);
+        const events: [string, () => void][] = [
+            ['seeking', stall],
+            ['waiting', stall],
+            ['seeked', resume],
+            ['playing', resume],
+            ['canplay', resume],
+            ['error', resume],
+        ];
+        events.forEach(([name, fn]) => media.addEventListener(name, fn));
+        if (media.seeking) stall();
+        return () => {
+            events.forEach(([name, fn]) => media.removeEventListener(name, fn));
+            resume();
+        };
+    }, [active]);
 
     // Position the media when it first becomes active or when trims change.
     useEffect(() => {
@@ -76,7 +108,10 @@ export function MediaLayer({ kind, src, element, trackMuted, active, extendHead 
         const media = ref.current;
         if (!media) return;
         if (isPlaying && active) media.play().catch(() => {});
-        else media.pause();
+        else {
+            media.pause();
+            media.playbackRate = speed; // drop any drift nudge
+        }
     }, [isPlaying, active]);
 
     useEffect(() => {

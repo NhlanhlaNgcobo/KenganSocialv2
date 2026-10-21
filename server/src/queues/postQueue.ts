@@ -80,14 +80,19 @@ async function processJob(job: Job<PublishPayload>) {
 // Multiplex platform routing to specific adapters
 async function publishMultiplexer(platform: string, workspaceId: string, options: any): Promise<string> {
     // Fetch token for this platform dynamically
-    // Refreshes the token first when it is about to expire (YouTube tokens last an hour, TikTok a day).
+    // Refreshes the token first when it is about to expire (TikTok access tokens last 24 hours,
+    // YouTube's an hour), so a post scheduled long after connecting still goes out.
     let accessToken: string;
     let connRaw: any;
     try {
-        ({ accessToken, connection: connRaw } = await getValidAccessToken(workspaceId, platform as any));
-    } catch (err: any) {
-        throw new Error(err.message === 'NOT_CONNECTED' ? `${platform} connection missing` : `${platform} sign-in could not be refreshed: ${err.message}`);
+        const valid = await getValidAccessToken(workspaceId, platform as any);
+        accessToken = valid.accessToken;
+        connRaw = valid.connection;
+    } catch (error: any) {
+        if (error.message === 'NOT_CONNECTED') throw new Error(`${platform} is not connected. Connect it on the Connections page.`);
+        throw new Error(`${platform} sign-in has expired and could not be renewed (${error.message}). Reconnect it on the Connections page.`);
     }
+
     if (!accessToken) throw new Error(`${platform} access token missing or expired`);
     if (connRaw.status && connRaw.status !== 'active') throw new Error(`${platform} needs reconnecting (${connRaw.status}).`);
 

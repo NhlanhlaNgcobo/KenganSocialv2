@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import PublicFooter from '../components/layout/PublicFooter';
 import {
     ArrowRight,
     Bot,
@@ -24,7 +25,6 @@ import LandingNavbar from '../components/layout/LandingNavbar';
 import { useAuth } from '../context/AuthContext';
 import CaptionShowcase from './Landing/CaptionShowcase';
 import TutorialDemo from './Landing/TutorialDemo';
-import { COMPANY } from '../legal/company';
 import { useReveal } from './Landing/useReveal';
 import './LandingPage.css';
 
@@ -254,7 +254,7 @@ export default function LandingPage() {
                         ))}
                     </div>
                     <p className="lp-integrations__note" data-reveal>
-                        You choose what to allow when you connect, and {COMPANY.brand} uses that access only for the features you use. Disconnect any time: we revoke our access and delete the data that connection brought in.
+                        You choose what to allow when you connect, and KenganSocial uses that access only for the features you use. Disconnect any time: we revoke our access and delete the data that connection brought in.
                         See our <Link to="/privacy">Privacy Policy</Link> and <Link to="/data-deletion">Data Deletion</Link> page.
                     </p>
                 </section>
@@ -388,25 +388,7 @@ export default function LandingPage() {
                 </section>
             </main>
 
-            <footer className="lp-footer container">
-                <div className="lp-footer__company">
-                    <span>
-                        © {new Date().getFullYear()} {COMPANY.legalName}
-                        {COMPANY.registrationNumber ? ` · Reg. ${COMPANY.registrationNumber}` : ''}
-                    </span>
-                    {COMPANY.address ? <span>{COMPANY.address}</span> : null}
-                    <a href={`mailto:${COMPANY.emails.support}`}>{COMPANY.emails.support}</a>
-                    <small>{COMPANY.brand} is not affiliated with or endorsed by Meta, TikTok or Google.</small>
-                </div>
-                <nav aria-label="Footer">
-                    <Link to="/pricing">Pricing</Link>
-                    <Link to="/about">About</Link>
-                    <Link to="/help">Help</Link>
-                    <Link to="/terms">Terms of Service</Link>
-                    <Link to="/privacy">Privacy Policy</Link>
-                    <Link to="/data-deletion">Data Deletion</Link>
-                </nav>
-            </footer>
+            <PublicFooter />
         </div>
     );
 }

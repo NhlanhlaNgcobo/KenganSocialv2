@@ -271,6 +271,52 @@ export async function deleteFile(fileUrl) {
 }
 
 /**
+ * Deletes every file under a key prefix (e.g. 'workspaces/<id>') in the configured storage.
+ * Used when a workspace is deleted. Returns the number of files removed (local: directories count as one).
+ */
+export async function deletePrefix(prefix) {
+    const clean = String(prefix || '').replace(/^\/+|\/+$/g, '');
+    if (!clean) throw new Error('Refusing to delete an empty storage prefix');
+    const driver = getStorageDriver();
+
+    if (driver === 'local') {
+        const dir = resolveLocalPath(clean);
+        try {
+            await fs.rm(dir, { recursive: true, force: true });
+            return 1;
+        } catch {
+            return 0;
+        }
+    }
+
+    if (driver === 's3') {
+        let removed = 0;
+        let ContinuationToken;
+        do {
+            const page = await getS3().send(new ListObjectsV2Command({ Bucket: process.env.S3_BUCKET, Prefix: `${clean}/`, ContinuationToken }));
+            for (const obj of page.Contents || []) {
+                await getS3().send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: obj.Key }));
+                removed++;
+            }
+            ContinuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+        } while (ContinuationToken);
+        return removed;
+    }
+
+    let removed = 0;
+    for (const bucketName of getCandidateBucketNames()) {
+        try {
+            const [files] = await getStorage().bucket(bucketName).getFiles({ prefix: `${clean}/` });
+            await Promise.all(files.map((f) => f.delete().catch(() => {})));
+            removed += files.length;
+        } catch {
+            /* bucket may not exist */
+        }
+    }
+    return removed;
+}
+
+/**
  * Total bytes stored under a key prefix, for local and S3 drivers.
  * Returns null for the Firebase driver (callers query the bucket directly).
  */
@@ -297,47 +343,4 @@ export async function getPrefixSizeBytes(prefix) {
     }
 
     return null;
-}
-
-/**
- * Deletes every stored file under a key prefix (account deletion). Returns how many were removed.
- * The prefix must name a workspace folder; an empty or root prefix is refused.
- */
-export async function deletePrefix(prefix) {
-    if (!prefix || !/^[\w-]+\/|^workspaces\/[\w-]+\//.test(prefix)) throw new Error(`Refusing to delete prefix "${prefix}"`);
-    const driver = getStorageDriver();
-
-    if (driver === 'local') {
-        const dir = resolveLocalPath(prefix);
-        const count = await fs.readdir(dir, { recursive: true }).then((l) => l.length).catch(() => 0);
-        await fs.rm(dir, { recursive: true, force: true });
-        return count;
-    }
-
-    if (driver === 's3') {
-        let removed = 0;
-        let ContinuationToken;
-        do {
-            const page = await getS3().send(new ListObjectsV2Command({ Bucket: process.env.S3_BUCKET, Prefix: prefix, ContinuationToken }));
-            for (const obj of page.Contents || []) {
-                await getS3().send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: obj.Key }));
-                removed += 1;
-            }
-            ContinuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
-        } while (ContinuationToken);
-        return removed;
-    }
-
-    let removed = 0;
-    for (const bucketName of getCandidateBucketNames()) {
-        try {
-            const bucket = getStorage().bucket(bucketName);
-            const [files] = await bucket.getFiles({ prefix });
-            await Promise.all(files.map((f) => f.delete().catch(() => {})));
-            removed += files.length;
-        } catch {
-            /* bucket not available */
-        }
-    }
-    return removed;
 }

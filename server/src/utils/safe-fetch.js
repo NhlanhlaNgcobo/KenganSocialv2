@@ -56,7 +56,7 @@ export async function safeGet(raw, { maxBytes = 5 * 1024 * 1024, timeout = 15000
             maxRedirects: 0,
             maxContentLength: maxBytes,
             validateStatus: () => true,
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KenganSocialBot/1.0; +https://kengansocial.com)', ...headers },
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KenganSocialBot/1.0; +https://kengansocial.co.za)', ...headers },
         });
         if (response.status >= 300 && response.status < 400 && response.headers.location) {
             current = new URL(response.headers.location, url).toString();

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { graphUrl } from '../../config/meta';
 
 interface InstagramPublishConfig {
     accessToken: string;
@@ -12,7 +13,7 @@ export async function publishToInstagram(config: InstagramPublishConfig): Promis
 
     // Step 1: Init Media container
     const initRes = await axios.post(
-        `https://graph.facebook.com/v19.0/${igUserId}/media`,
+        graphUrl(`${igUserId}/media`),
         null,
         {
             params: {
@@ -39,7 +40,7 @@ export async function publishToInstagram(config: InstagramPublishConfig): Promis
         attempts++;
 
         const statusRes = await axios.get(
-            `https://graph.facebook.com/v19.0/${creationId}`,
+            graphUrl(creationId),
             {
                 params: {
                     access_token: accessToken,
@@ -62,7 +63,7 @@ export async function publishToInstagram(config: InstagramPublishConfig): Promis
 
     // Step 3: Publish Media
     const publishRes = await axios.post(
-        `https://graph.facebook.com/v19.0/${igUserId}/media_publish`,
+        graphUrl(`${igUserId}/media_publish`),
         null,
         {
             params: {

@@ -1,0 +1,147 @@
+/* About page. Builds on the landing page's section, kicker and card styles. */
+.about-hero {
+  padding-top: 150px;
+}
+
+.about-hero h1 {
+  margin: 0 0 20px;
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+.about-lede {
+  margin: 0;
+  font-size: 1.12rem;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.about-lede a,
+.about-links a,
+.about-company a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.about-section {
+  padding-top: 96px;
+}
+
+.about-prose {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.about-prose p {
+  margin: 0 0 18px;
+  font-size: 1.05rem;
+  line-height: 1.75;
+  color: var(--text-secondary);
+}
+
+.about-grid--4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.about-links {
+  max-width: 680px;
+  margin: 32px auto 0;
+  text-align: center;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.about-company {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 36px;
+  border-radius: 24px;
+  border: 1px solid var(--border-primary);
+  background: var(--glass-sheen), var(--bg-card);
+  box-shadow: var(--glass-edge), var(--shadow-md);
+}
+
+.about-company .lp-step__icon {
+  flex: none;
+}
+
+.about-company h2 {
+  margin: 0 0 14px;
+}
+
+.about-company p {
+  margin: 0 0 24px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.about-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 28px;
+  margin: 0;
+}
+
+.about-facts dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.about-facts dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.about-cta {
+  text-align: center;
+}
+
+.about-cta h2 {
+  margin-bottom: 12px;
+}
+
+.about-cta p {
+  margin: 0 auto 28px;
+  max-width: 520px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+@media (max-width: 960px) {
+  .about-grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .about-hero {
+    padding-top: 110px;
+  }
+
+  .about-section {
+    padding-top: 72px;
+  }
+
+  .about-grid--4 {
+    grid-template-columns: 1fr;
+  }
+
+  .about-company {
+    flex-direction: column;
+    padding: 24px;
+  }
+
+  .about-facts {
+    grid-template-columns: 1fr;
+  }
+}

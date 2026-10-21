@@ -2,7 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import admin from 'firebase-admin';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { processInstagramWebhook, sendInstagramDM, validSignature, verifyToken } from '../services/instagram-dm';
+import { DmError, PRIVATE_REPLY_WINDOW_MS, isMetaChannel, replyWindowEndsAt, sendDM } from '../services/meta/messaging';
+import { privateReply, publicReply } from '../services/meta/comments';
 
 const router = express.Router();
 
@@ -23,20 +24,22 @@ function requireWorkspace(req: Request, res: Response, next: NextFunction) {
 
 const guard = [withWorkspace, requireWorkspace];
 const ws = (req: Request) => db.collection('workspaces').doc((req as any).workspaceId);
+const millis = (v: any) => (typeof v?.toMillis === 'function' ? v.toMillis() : Number(v) || null);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KEYWORD AUTO-REPLIES
+// KEYWORD AUTO-REPLIES (Instagram DMs and Facebook Messenger)
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.post('/automations', ...guard, route(async (req, res) => {
     if ((req as any).plan === 'starter') return res.status(402).json({ error: 'Upgrade to Nano or higher to create auto-replies.' });
-    const { platform, trigger, keyword, replyTemplate } = req.body || {};
+    const { platform, keyword, replyTemplate } = req.body || {};
+    if (platform !== undefined && !isMetaChannel(platform)) return res.status(400).json({ error: 'Auto-replies work on Instagram and Facebook Messenger.' });
     if (!String(keyword || '').trim() || !String(replyTemplate || '').trim()) {
         return res.status(400).json({ error: 'Add a keyword and a reply.' });
     }
     const data = {
         platform: platform || 'instagram',
-        trigger: trigger || 'keyword',
+        trigger: 'keyword',
         keyword: String(keyword).trim().toLowerCase().slice(0, 100),
         replyTemplate: String(replyTemplate).trim().slice(0, 1000),
         isActive: true,
@@ -71,14 +74,24 @@ router.delete('/automations/:id', ...guard, route(async (req, res) => {
 }));
 
 // ─────────────────────────────────────────────────────────────────────────────
-// APPROVAL QUEUE
+// APPROVAL QUEUE (messages the automations didn't answer)
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get('/queue', ...guard, route(async (req, res) => {
     const plan = (req as any).plan;
     if (plan === 'starter' || plan === 'nano') return res.status(402).json({ error: 'Upgrade to Creator or higher for the reply queue.' });
     const snap = await ws(req).collection('dmQueue').where('status', '==', 'pending').limit(50).get();
-    res.json({ success: true, queue: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+    const queue = await Promise.all(
+        snap.docs.map(async (d) => {
+            const data = d.data();
+            const platform = isMetaChannel(data.platform) ? data.platform : 'instagram';
+            // The window moves when the person writes again, so read it from the thread, not the queued copy.
+            const windowEndsAt = (await replyWindowEndsAt((req as any).workspaceId, platform, data.senderId)) || data.windowEndsAt || null;
+            return { id: d.id, ...data, platform, receivedAt: millis(data.receivedAt), windowEndsAt };
+        })
+    );
+    queue.sort((a, b) => (b.receivedAt || 0) - (a.receivedAt || 0));
+    res.json({ success: true, queue });
 }));
 
 async function sendQueued(req: Request, res: Response, text?: string) {
@@ -86,9 +99,11 @@ async function sendQueued(req: Request, res: Response, text?: string) {
     const doc = await ref.get();
     if (!doc.exists) return res.status(404).json({ error: 'Message not found' });
     const data = doc.data()!;
+    if (data.status !== 'pending') return res.status(409).json({ error: 'This message was already handled.' });
     const reply = String(text ?? data.aiSuggestedReply ?? '').trim();
-    await sendInstagramDM((req as any).workspaceId, data.senderId, reply);
-    await ref.update({ status: 'sent', aiSuggestedReply: reply, sentAt: admin.firestore.FieldValue.serverTimestamp() });
+    const platform = isMetaChannel(data.platform) ? data.platform : 'instagram';
+    await sendDM((req as any).workspaceId, platform, data.senderId, reply);
+    await ref.update({ status: 'sent', aiSuggestedReply: reply, sentBy: (req as any).uid || null, sentAt: admin.firestore.FieldValue.serverTimestamp() });
     res.json({ success: true });
 }
 
@@ -104,22 +119,66 @@ router.post('/queue/:id/dismiss', ...guard, route(async (req, res) => {
 }));
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INSTAGRAM WEBHOOK (same handler as /api/webhooks/meta)
+// COMMENTS (Instagram media and Facebook Page posts)
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.get('/webhook/instagram', (req: Request, res: Response) => {
-    const token = verifyToken();
-    if (req.query['hub.mode'] === 'subscribe' && token && req.query['hub.verify_token'] === token) {
-        return res.status(200).send(req.query['hub.challenge']);
-    }
-    res.sendStatus(403);
-});
+router.get('/comments', ...guard, route(async (req, res) => {
+    const status = req.query.status === 'done' ? ['replied', 'dismissed'] : ['open'];
+    const snap = await ws(req).collection('inboxComments').where('status', 'in', status).limit(100).get();
+    const comments = snap.docs
+        .map((d) => {
+            const c = d.data();
+            return {
+                id: d.id,
+                platform: c.platform,
+                commentId: c.commentId,
+                postId: c.postId,
+                fromName: c.fromName,
+                fromUsername: c.fromUsername,
+                text: c.text,
+                status: c.status,
+                createdAt: c.createdAt,
+                replies: c.replies || [],
+                automation: c.automation || null,
+                privateReplySent: !!c.privateReplySentAt,
+                privateReplyOpen: !c.privateReplySentAt && c.createdAt > Date.now() - PRIVATE_REPLY_WINDOW_MS,
+            };
+        })
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    res.json({ success: true, comments });
+}));
 
-router.post('/webhook/instagram', (req: Request, res: Response) => {
-    if (!validSignature((req as any).rawBody, req.headers['x-hub-signature-256'] as string)) return res.sendStatus(401);
-    // Acknowledge at once; Meta retries slow or failed deliveries.
-    res.sendStatus(200);
-    processInstagramWebhook(req.body).catch((error) => console.error('[Instagram DM] Webhook failed:', error.message));
-});
+async function loadComment(req: Request) {
+    const ref = ws(req).collection('inboxComments').doc(String(req.params.id));
+    const snap = await ref.get();
+    if (!snap.exists) throw new DmError('Comment not found.', 404);
+    return { ref, data: snap.data()! };
+}
+
+const replyText = (req: Request) => {
+    const text = String(req.body?.text || '').trim();
+    if (!text) throw new DmError('Write a reply first.');
+    return text.slice(0, 1000);
+};
+
+router.post('/comments/:id/reply', ...guard, route(async (req, res) => {
+    const { data } = await loadComment(req);
+    await publicReply((req as any).workspaceId, data as any, replyText(req), { by: 'user', uid: (req as any).uid });
+    res.json({ success: true });
+}));
+
+router.post('/comments/:id/private-reply', ...guard, route(async (req, res) => {
+    const { data } = await loadComment(req);
+    await privateReply((req as any).workspaceId, data as any, replyText(req), { by: 'user', uid: (req as any).uid });
+    res.json({ success: true });
+}));
+
+router.post('/comments/:id/dismiss', ...guard, route(async (req, res) => {
+    const { ref } = await loadComment(req);
+    await ref.update({ status: 'dismissed' });
+    res.json({ success: true });
+}));
+
+// Incoming messages and comments arrive on the shared Meta webhook: /api/webhooks/meta (routes/webhooks.routes.js).
 
 export default router;

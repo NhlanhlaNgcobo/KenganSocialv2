@@ -1,16 +1,19 @@
 import express from 'express';
-import { verifyMetaWebhook, handleMetaWebhook } from '../controllers/webhooks.controller.js';
+import { receiveMetaWebhook, receiveTikTokWebhook, verifyMetaWebhook } from '../controllers/webhooks.controller.js';
 import { handlePaystackWebhook } from './billing.ts';
 
+/**
+ * Inbound webhooks (all signature-verified):
+ *   GET  /api/webhooks/meta     Meta subscription check (hub.challenge)
+ *   POST /api/webhooks/meta     Instagram and Facebook Page events (messages, comments, feed)
+ *   POST /api/webhooks/tiktok   TikTok for Developers events (authorization.removed, publishing)
+ *   POST /api/webhooks/paystack Paystack billing events
+ */
 const router = express.Router();
 
-// Meta (Instagram/Facebook) Webhook Verification
 router.get('/meta', verifyMetaWebhook);
-
-// Meta (Instagram/Facebook) Webhook Event processing (DMs, comments)
-router.post('/meta', handleMetaWebhook);
-
-// Paystack webhook alias for external webhook providers
+router.post('/meta', receiveMetaWebhook);
+router.post('/tiktok', receiveTikTokWebhook);
 router.post('/paystack', handlePaystackWebhook);
 
 export default router;

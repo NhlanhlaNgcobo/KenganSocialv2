@@ -2,6 +2,7 @@ import axios from 'axios';
 import { db } from '../../utils/firestore';
 import admin from 'firebase-admin';
 import { decrypt } from '../../utils/tokenEncryption';
+import { META_GRAPH_VERSION } from '../../config/meta';
 
 /**
  * Platform analytics fetchers. Every number returned here comes from the platform's API.
@@ -157,7 +158,7 @@ const youtube: Fetcher = async (_workspaceId, token, accountId, periodDays) => {
 };
 
 // ─── Instagram (professional account via Facebook Login) ─────────────────────
-const IG_GRAPH = 'https://graph.facebook.com/v19.0';
+const IG_GRAPH = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 
 const instagram: Fetcher = async (_workspaceId, token, accountId, periodDays) => {
     try {

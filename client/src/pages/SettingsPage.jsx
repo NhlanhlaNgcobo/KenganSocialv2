@@ -18,16 +18,16 @@ import {
     Palette,
     Sun,
     Moon,
-    Monitor,
-    Database
+    Monitor
 } from 'lucide-react';
 import { apiClient } from '../lib/api';
 import { auth } from '../lib/firebase';
+import DeleteAccount from '../components/settings/DeleteAccount';
+import PrivacyDataSection from '../components/settings/PrivacyDataSection';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import './Settings.css';
-import PrivacyDataSection from '../components/settings/PrivacyDataSection';
 
 /** Resizes an image file to a square JPEG data URL small enough to store on the profile. */
 function resizeToAvatar(file, size = 256) {
@@ -77,12 +77,10 @@ const TABS = [
     { id: 'workspace', name: 'Workspace', icon: Settings2 },
     { id: 'team', name: 'Team', icon: Users },
     { id: 'security', name: 'Security', icon: Shield },
-    { id: 'privacy', name: 'Privacy & data', icon: Database },
 ];
 
 export default function SettingsPage() {
-    // ?tab=privacy opens a tab directly (links from the Privacy Policy and Data Deletion page).
-    const [activeTab, setActiveTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'profile');
+    const [activeTab, setActiveTab] = useState('profile');
     const { preference, setPreference, theme } = useTheme();
 
     // Profile State
@@ -635,7 +633,8 @@ export default function SettingsPage() {
                         </div>
                     )}
 
-                    {activeTab === 'privacy' && <PrivacyDataSection />}
+                    {activeTab === 'security' && <PrivacyDataSection />}
+                    {activeTab === 'security' && <DeleteAccount ownsWorkspace={!!ownWorkspace} />}
                 </main>
             </div>
         </div>

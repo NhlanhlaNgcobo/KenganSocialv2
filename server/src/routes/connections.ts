@@ -1,3 +1,4 @@
+import { tiktokPostMode } from '../services/publishers/tiktok';
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import axios from 'axios';
@@ -7,8 +8,19 @@ import { db } from '../utils/firestore';
 import { encrypt, decrypt } from '../utils/tokenEncryption';
 import { FieldValue } from 'firebase-admin/firestore';
 import { publishToYouTube } from '../services/publishers/youtube';
-import { deleteMetaPlatformData, fetchMetaUserId, linkMetaUser, revokeConnection, unlinkMetaUser } from '../services/platform-access';
-import { purgePlatformAnalytics } from '../services/analytics/analyticsService';
+import { deleteConnection } from '../services/data-deletion.service';
+import { graphUrl, graphErrorMessage, metaDialogUrl } from '../config/meta';
+
+/** App-scoped Facebook user id of a Meta login; Meta's data-deletion callback identifies people by it. */
+async function metaUserIdFor(userToken: string): Promise<string | null> {
+    try {
+        const me = await axios.get(graphUrl('me'), { params: { fields: 'id', access_token: userToken } });
+        return me.data?.id || null;
+    } catch (err: any) {
+        console.warn('[Meta] Could not read the Facebook user id:', err.response?.data?.error?.message || err.message);
+        return null;
+    }
+}
 
 const router = express.Router();
 
@@ -34,14 +46,16 @@ const OAUTH_CONFIG = {
         redirectUri: () => `${REDIRECT_BASE}/api/connections/youtube/callback`,
     },
     instagram: {
-        authUrl: 'https://www.facebook.com/v19.0/dialog/oauth',
-        tokenUrl: 'https://graph.facebook.com/v19.0/oauth/access_token',
+        authUrl: metaDialogUrl(),
+        tokenUrl: graphUrl('oauth/access_token'),
+        // Keep in step with client/src/content/platform-permissions.js: reviewers compare them.
         scopes: [
-            // Publishing Reels and reading insights for an Instagram professional account linked to a Page.
+            // Publishing and insights for an Instagram professional account linked to a Page.
             'instagram_basic', 'instagram_content_publish', 'instagram_manage_insights',
-            'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'business_management',
-            // Inbox and DM automations: read/send Instagram DMs and subscribe the Page to message webhooks.
-            'instagram_manage_messages', 'pages_manage_metadata',
+            // Inbox: comments (read, reply, comment-to-DM) and direct messages.
+            'instagram_manage_comments', 'instagram_manage_messages',
+            // Finding the linked Page (also in Business Manager) and subscribing it to webhooks.
+            'pages_show_list', 'pages_read_engagement', 'pages_manage_metadata', 'business_management',
         ],
         clientId: () => env('FACEBOOK_APP_ID'),
         clientSecret: () => env('FACEBOOK_APP_SECRET'),
@@ -59,17 +73,25 @@ const OAUTH_CONFIG = {
         redirectUri: () => `${REDIRECT_BASE}/api/connections/tiktok/callback`,
     },
     facebook: {
-        authUrl: 'https://www.facebook.com/v19.0/dialog/oauth',
-        tokenUrl: 'https://graph.facebook.com/v19.0/oauth/access_token',
-        // Only what the app uses: list the person's Pages, publish to the chosen Page and read its
-        // follower count. business_management lets /me/accounts include Pages owned through a
-        // business portfolio. (Unused permissions get an app rejected in Meta App Review.)
+        authUrl: metaDialogUrl(),
+        tokenUrl: graphUrl('oauth/access_token'),
         scopes: [
-            'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'business_management',
+            // Publish to the Page, read and answer its comments, Messenger DMs, webhooks.
+            'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_manage_metadata',
+            'pages_manage_engagement', 'pages_read_user_content', 'pages_messaging', 'business_management',
         ],
         clientId: () => env('FACEBOOK_APP_ID'),
         clientSecret: () => env('FACEBOOK_APP_SECRET'),
         redirectUri: () => `${REDIRECT_BASE}/api/connections/facebook/callback`,
+    },
+    meta_ads: {
+        authUrl: metaDialogUrl(),
+        tokenUrl: graphUrl('oauth/access_token'),
+        // Ads page (routes/ads.ts): campaign results (ads_read); pause, resume and budget changes the user makes (ads_management).
+        scopes: ['ads_read', 'ads_management'],
+        clientId: () => env('FACEBOOK_APP_ID'),
+        clientSecret: () => env('FACEBOOK_APP_SECRET'),
+        redirectUri: () => `${REDIRECT_BASE}/api/connections/meta_ads/callback`,
     },
 };
 
@@ -191,6 +213,7 @@ async function getConnectionDoc(workspaceId: string, platform: Platform) {
     return { ref: docRef, data: snap.data()! };
 }
 
+/** Access token for a connection, refreshed first when it expires within a minute. Used by the post queue too. */
 export async function getValidAccessToken(workspaceId: string, platform: Platform) {
     let connection = await getConnectionDoc(workspaceId, platform);
     if (!connection) {
@@ -356,116 +379,270 @@ router.get('/youtube/callback', async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//   INSTAGRAM CALLBACK
+//   META (Instagram, Facebook Page, Meta Ads) — one Facebook Login flow each
+//   1. exchange the code for a long-lived user token (about 60 days; Page tokens fetched with it don't expire)
+//   2. list what the person can connect: Instagram accounts linked to their Pages, Pages, or ad accounts
+//   3. one candidate → connect it; several → the person picks one on the Connections page (?select=<platform>)
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/instagram/callback', async (req: Request, res: Response) => {
+type MetaPlatform = 'instagram' | 'facebook' | 'meta_ads';
+const META_PICK_PLATFORMS: MetaPlatform[] = ['instagram', 'facebook', 'meta_ads'];
+const PENDING_TTL_MS = 15 * 60 * 1000;
+const clientUrl = () => env('CLIENT_URL') || 'http://localhost:5173';
+
+interface MetaCandidate {
+    accountId: string;
+    name: string;
+    avatar?: string | null;
+    followers?: number;
+    detail?: string; // e.g. the linked Page, or the ad account's currency
+    pageId?: string;
+    pageToken?: string; // encrypted while pending
+    extra?: Record<string, unknown>;
+}
+
+interface MetaLogin {
+    userToken: string;
+    expiresIn: number;
+    metaUserId: string | null;
+}
+
+async function metaLoginFromCode(platform: MetaPlatform, code: string): Promise<MetaLogin> {
+    const cfg = OAUTH_CONFIG[platform];
+    const tokenRes = await axios.get(cfg.tokenUrl, {
+        params: { client_id: cfg.clientId(), client_secret: cfg.clientSecret(), redirect_uri: cfg.redirectUri(), code },
+    });
+    let userToken: string = tokenRes.data.access_token;
+    let expiresIn: number = tokenRes.data.expires_in ?? 3600;
     try {
-        const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = verifyState(state);
-        const cfg = OAUTH_CONFIG.instagram;
-
-        // Exchange code
-        const tokenRes = await axios.get(cfg.tokenUrl, {
-            params: {
-                client_id: cfg.clientId(),
-                client_secret: cfg.clientSecret(),
-                redirect_uri: cfg.redirectUri(),
-                code,
-            },
+        const longRes = await axios.get(cfg.tokenUrl, {
+            params: { grant_type: 'fb_exchange_token', client_id: cfg.clientId(), client_secret: cfg.clientSecret(), fb_exchange_token: userToken },
         });
-
-        let { access_token, expires_in } = tokenRes.data;
-
-        // Swap the short-lived token (about an hour) for a long-lived one (about 60 days). Page tokens
-        // fetched with a long-lived user token don't expire, which DMs and scheduled posts rely on.
-        try {
-            const longRes = await axios.get(cfg.tokenUrl, {
-                params: {
-                    grant_type: 'fb_exchange_token',
-                    client_id: cfg.clientId(),
-                    client_secret: cfg.clientSecret(),
-                    fb_exchange_token: access_token,
-                },
-            });
-            if (longRes.data?.access_token) {
-                access_token = longRes.data.access_token;
-                expires_in = longRes.data.expires_in ?? 5184000;
-            }
-        } catch (err: any) {
-            console.warn('[Instagram callback] Long-lived token exchange failed:', err.response?.data?.error?.message || err.message);
+        if (longRes.data?.access_token) {
+            userToken = longRes.data.access_token;
+            expiresIn = longRes.data.expires_in ?? 5184000;
         }
+    } catch (err: any) {
+        console.warn(`[Meta ${platform}] Long-lived token exchange failed:`, graphErrorMessage(err));
+    }
+    return { userToken, expiresIn, metaUserId: await metaUserIdFor(userToken) };
+}
 
-        // Get the Instagram Business Account via /me/accounts
-        const accountsRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
-            params: { access_token },
-        });
+/** Every item of a paged Graph list (up to 500). */
+async function graphList(path: string, params: Record<string, string>) {
+    const items: any[] = [];
+    let url: string | null = graphUrl(path);
+    let query: Record<string, string> | undefined = { limit: '100', ...params };
+    while (url && items.length < 500) {
+        const res: any = await axios.get(url, { params: query, timeout: 20000 });
+        items.push(...(res.data?.data || []));
+        url = res.data?.paging?.next || null;
+        query = undefined; // the next URL carries every parameter
+    }
+    return items;
+}
 
-        let igAccountId = '', igUsername = '', igFollowers = 0, pageId = '', pageToken = '';
-        for (const page of accountsRes.data.data ?? []) {
-            try {
-                const igRes = await axios.get(
-                    `https://graph.facebook.com/v19.0/${page.id}`,
-                    {
-                        params: {
-                            fields: 'instagram_business_account{id,username,followers_count}',
-                            access_token: page.access_token,
-                        },
-                    }
-                );
-                const iga = igRes.data?.instagram_business_account;
-                if (iga) {
-                    igAccountId = iga.id;
-                    igUsername = iga.username;
-                    igFollowers = iga.followers_count ?? 0;
-                    pageId = page.id;
-                    pageToken = page.access_token;
-                    break;
-                }
-            } catch { /* page may not have IG */ }
-        }
+async function metaCandidates(platform: MetaPlatform, userToken: string): Promise<MetaCandidate[]> {
+    if (platform === 'meta_ads') {
+        const accounts = await graphList('me/adaccounts', { fields: 'id,name,account_status,currency,business{name}', access_token: userToken });
+        return accounts.map((a) => ({
+            accountId: String(a.id),
+            name: a.name || a.id,
+            detail: [a.business?.name, a.currency, a.account_status === 1 ? '' : 'not active'].filter(Boolean).join(' · '),
+            extra: { currency: a.currency || null, accountStatus: a.account_status ?? null },
+        }));
+    }
+    const fields =
+        platform === 'instagram'
+            ? 'id,name,access_token,instagram_business_account{id,username,followers_count,profile_picture_url}'
+            : 'id,name,access_token,followers_count,fan_count,picture{url}';
+    const pages = await graphList('me/accounts', { fields, access_token: userToken });
+    if (platform === 'instagram') {
+        return pages
+            .filter((p) => p.instagram_business_account && p.access_token)
+            .map((p) => ({
+                accountId: String(p.instagram_business_account.id),
+                name: p.instagram_business_account.username || p.name,
+                avatar: p.instagram_business_account.profile_picture_url || null,
+                followers: p.instagram_business_account.followers_count ?? 0,
+                detail: `Linked to the Page ${p.name}`,
+                pageId: String(p.id),
+                pageToken: p.access_token,
+            }));
+    }
+    return pages
+        .filter((p) => p.access_token)
+        .map((p) => ({
+            accountId: String(p.id),
+            name: p.name,
+            avatar: p.picture?.data?.url || null,
+            followers: p.followers_count ?? p.fan_count ?? 0,
+            pageId: String(p.id),
+            pageToken: p.access_token,
+        }));
+}
 
-        // Without an Instagram professional account linked to a Facebook Page there is nothing to
-        // publish to or read DMs from, so don't save an empty connection.
-        if (!igAccountId) {
-            return res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?error=instagram&reason=no_instagram_business`);
-        }
+/** Subscribes a Page to the webhook fields KenganSocial uses (needs pages_manage_metadata). Best effort. */
+async function subscribePage(pageId: string, pageToken: string, fields: string) {
+    try {
+        await axios.post(graphUrl(`${pageId}/subscribed_apps`), null, { params: { subscribed_fields: fields, access_token: pageToken } });
+    } catch (err: any) {
+        console.warn(`[Meta] Page ${pageId} webhook subscription failed:`, graphErrorMessage(err));
+    }
+}
 
-        // DMs: subscribe the Page to message webhooks (best effort; needs pages_manage_metadata).
-        if (pageId && pageToken) {
-            try {
-                await axios.post(`https://graph.facebook.com/v19.0/${pageId}/subscribed_apps`, null, {
-                    params: { subscribed_fields: 'messages', access_token: pageToken },
-                });
-            } catch (err: any) {
-                console.warn('[Instagram callback] Page webhook subscription failed:', err.response?.data?.error?.message || err.message);
-            }
-        }
-
-        const metaUserId = await fetchMetaUserId(access_token);
+async function saveMetaConnection(workspaceId: string, platform: MetaPlatform, c: MetaCandidate, login: MetaLogin) {
+    const cfg = OAUTH_CONFIG[platform];
+    const userExpiry = Date.now() + login.expiresIn * 1000;
+    if (platform === 'instagram') {
+        // Instagram events (messages, comments) are chosen in the app's webhook settings; the Page must have the app installed.
+        await subscribePage(c.pageId!, c.pageToken!, 'messages');
         await saveConnection(workspaceId, 'instagram', {
-            accessToken: access_token,
-            refreshToken: access_token, // Meta tokens are self-refreshing long-lived tokens
-            tokenExpiry: Date.now() + (expires_in ?? 5184000) * 1000,
-            accountId: igAccountId,
-            accountName: igUsername,
-            followersCount: igFollowers,
+            accessToken: login.userToken,
+            refreshToken: login.userToken, // a long-lived Meta token renews by exchanging itself
+            tokenExpiry: userExpiry,
+            accountId: c.accountId,
+            accountName: c.name,
+            accountAvatar: c.avatar || undefined,
+            followersCount: c.followers,
             scope: cfg.scopes,
             meta: {
-                instagramAccountId: igAccountId,
-                username: igUsername,
-                // Used to send DMs (services/instagram-dm.ts). Page tokens from a long-lived user token don't expire.
-                pageId: pageId || null,
-                pageAccessToken: pageToken ? encrypt(pageToken) : null,
-                metaUserId: metaUserId || null,
+                metaUserId: login.metaUserId,
+                instagramAccountId: c.accountId,
+                username: c.name,
+                // Messages and comment replies go through the linked Page (services/meta/messaging.ts).
+                pageId: c.pageId,
+                pageAccessToken: encrypt(c.pageToken!),
             },
         });
-        await linkMetaUser(metaUserId, workspaceId, 'instagram');
-
-        res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?connected=instagram`);
-    } catch (err) {
-        console.error('[Instagram callback]', err);
-        res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?error=instagram`);
+    } else if (platform === 'facebook') {
+        await subscribePage(c.pageId!, c.pageToken!, 'feed,messages');
+        await saveConnection(workspaceId, 'facebook', {
+            accessToken: c.pageToken!, // Page token: what posting, replies and messages use
+            refreshToken: login.userToken,
+            tokenExpiry: Date.now() + 10 * 365 * 86400 * 1000, // Page tokens from a long-lived user token don't expire
+            accountId: c.accountId,
+            accountName: c.name,
+            followersCount: c.followers,
+            accountAvatar: c.avatar || undefined,
+            scope: cfg.scopes,
+            meta: { metaUserId: login.metaUserId, pageId: c.accountId, pageName: c.name },
+        });
+    } else {
+        await saveConnection(workspaceId, 'meta_ads', {
+            accessToken: login.userToken,
+            refreshToken: login.userToken,
+            tokenExpiry: userExpiry,
+            accountId: c.accountId,
+            accountName: c.name,
+            scope: cfg.scopes,
+            meta: { metaUserId: login.metaUserId, adAccountId: c.accountId, ...(c.extra || {}) },
+        });
     }
+}
+
+const pendingRef = (workspaceId: string, platform: MetaPlatform) =>
+    db.collection('workspaces').doc(workspaceId).collection('metaPending').doc(platform);
+
+const NO_CANDIDATES_REASON: Record<MetaPlatform, string> = {
+    instagram: 'no_instagram_business',
+    facebook: 'no_page',
+    meta_ads: 'no_ad_account',
+};
+
+/** Shared Meta callback: connect the single candidate, or hold the list for the person to pick from. */
+function metaCallback(platform: MetaPlatform) {
+    return async (req: Request, res: Response) => {
+        const back = (q: string) => res.redirect(`${clientUrl()}/dashboard/connections?${q}`);
+        try {
+            const { code, state, error } = req.query as Record<string, string>;
+            if (error) return back(`error=${platform}&reason=cancelled`); // the person declined on Facebook
+            const { workspaceId } = verifyState(state);
+            const login = await metaLoginFromCode(platform, code);
+            const candidates = await metaCandidates(platform, login.userToken);
+            if (!candidates.length) return back(`error=${platform}&reason=${NO_CANDIDATES_REASON[platform]}`);
+            if (candidates.length === 1) {
+                await saveMetaConnection(workspaceId, platform, candidates[0], login);
+                await pendingRef(workspaceId, platform).delete().catch(() => {});
+                return back(`connected=${platform}`);
+            }
+            // Tokens stay encrypted on the server; the browser only sees names to pick from.
+            await pendingRef(workspaceId, platform).set({
+                platform,
+                candidates: candidates.map((c) => ({ ...c, pageToken: c.pageToken ? encrypt(c.pageToken) : null })),
+                userToken: encrypt(login.userToken),
+                expiresIn: login.expiresIn,
+                metaUserId: login.metaUserId,
+                expiresAt: Date.now() + PENDING_TTL_MS,
+            });
+            back(`select=${platform}`);
+        } catch (err: any) {
+            console.error(`[Meta ${platform} callback]`, err.response?.data || err.message);
+            back(`error=${platform}`);
+        }
+    };
+}
+
+router.get('/instagram/callback', metaCallback('instagram'));
+router.get('/facebook/callback', metaCallback('facebook'));
+router.get('/meta_ads/callback', metaCallback('meta_ads'));
+
+async function loadPending(workspaceId: string, platform: MetaPlatform) {
+    const snap = await pendingRef(workspaceId, platform).get();
+    const data = snap.data();
+    if (!snap.exists || !data) return null;
+    if (Number(data.expiresAt) < Date.now()) {
+        await snap.ref.delete().catch(() => {});
+        return null;
+    }
+    return data;
+}
+
+// The accounts to pick from after a Meta sign-in that found several (names only, no tokens).
+router.get('/:platform/candidates', withWorkspace, async (req: Request, res: Response) => {
+    const platform = req.params.platform as MetaPlatform;
+    const workspaceId = (req as any).workspaceId;
+    if (!META_PICK_PLATFORMS.includes(platform)) return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
+    if (!workspaceId) return res.status(403).json({ error: 'NO_WORKSPACE' });
+    const pending = await loadPending(workspaceId, platform);
+    if (!pending) return res.status(410).json({ error: 'SELECTION_EXPIRED', message: 'The sign-in has expired. Connect again.' });
+    res.json({
+        platform,
+        candidates: (pending.candidates as MetaCandidate[]).map(({ accountId, name, avatar, followers, detail }) => ({ accountId, name, avatar: avatar || null, followers: followers ?? null, detail: detail || '' })),
+    });
+});
+
+router.post('/:platform/select', withWorkspace, async (req: Request, res: Response) => {
+    const platform = req.params.platform as MetaPlatform;
+    const workspaceId = (req as any).workspaceId;
+    if (!META_PICK_PLATFORMS.includes(platform)) return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
+    if (!workspaceId) return res.status(403).json({ error: 'NO_WORKSPACE' });
+    const accountId = String(req.body?.accountId || '');
+    const pending = await loadPending(workspaceId, platform);
+    if (!pending) return res.status(410).json({ error: 'SELECTION_EXPIRED', message: 'The sign-in has expired. Connect again.' });
+    // Only an account from this sign-in's own list can be chosen.
+    const choice = (pending.candidates as MetaCandidate[]).find((c) => c.accountId === accountId);
+    if (!choice) return res.status(400).json({ error: 'NOT_A_CANDIDATE', message: 'Pick one of the listed accounts.' });
+    try {
+        await saveMetaConnection(
+            workspaceId,
+            platform,
+            { ...choice, pageToken: choice.pageToken ? decrypt(choice.pageToken) : undefined },
+            { userToken: decrypt(pending.userToken), expiresIn: Number(pending.expiresIn) || 5184000, metaUserId: pending.metaUserId || null }
+        );
+        await pendingRef(workspaceId, platform).delete();
+        res.json({ success: true, platform, accountId });
+    } catch (err: any) {
+        console.error(`[Meta ${platform} select]`, err.message);
+        res.status(500).json({ error: 'CONNECT_FAILED', message: 'The account could not be connected. Try again.' });
+    }
+});
+
+router.delete('/:platform/candidates', withWorkspace, async (req: Request, res: Response) => {
+    const platform = req.params.platform as MetaPlatform;
+    const workspaceId = (req as any).workspaceId;
+    if (!META_PICK_PLATFORMS.includes(platform) || !workspaceId) return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
+    await pendingRef(workspaceId, platform).delete();
+    res.json({ success: true });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -521,57 +698,6 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//   FACEBOOK PAGE CALLBACK  (same Meta app as Instagram)
-//   Connects the first Page the person manages; its Page token does not expire.
-// ─────────────────────────────────────────────────────────────────────────────
-router.get('/facebook/callback', async (req: Request, res: Response) => {
-    const back = (q: string) => res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?${q}`);
-    try {
-        const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = verifyState(state);
-        const cfg = OAUTH_CONFIG.facebook;
-
-        const tokenRes = await axios.get(cfg.tokenUrl, {
-            params: { client_id: cfg.clientId(), client_secret: cfg.clientSecret(), redirect_uri: cfg.redirectUri(), code },
-        });
-        let userToken = tokenRes.data.access_token;
-        // A long-lived user token makes the Page tokens below permanent.
-        try {
-            const longRes = await axios.get(cfg.tokenUrl, {
-                params: { grant_type: 'fb_exchange_token', client_id: cfg.clientId(), client_secret: cfg.clientSecret(), fb_exchange_token: userToken },
-            });
-            if (longRes.data?.access_token) userToken = longRes.data.access_token;
-        } catch (err: any) {
-            console.warn('[Facebook callback] Long-lived token exchange failed:', err.response?.data?.error?.message || err.message);
-        }
-
-        const pagesRes = await axios.get('https://graph.facebook.com/v19.0/me/accounts', {
-            params: { access_token: userToken, fields: 'id,name,access_token,followers_count,fan_count,picture{url}' },
-        });
-        const page = (pagesRes.data?.data || [])[0];
-        if (!page?.access_token) return back('error=facebook&reason=no_page');
-
-        const metaUserId = await fetchMetaUserId(userToken);
-        await saveConnection(workspaceId, 'facebook', {
-            accessToken: page.access_token, // Page token: what posting and replies use
-            refreshToken: userToken,
-            tokenExpiry: Date.now() + 10 * 365 * 86400 * 1000, // Page tokens from a long-lived user token don't expire
-            accountId: page.id,
-            accountName: page.name,
-            followersCount: page.followers_count ?? page.fan_count ?? 0,
-            accountAvatar: page.picture?.data?.url || undefined,
-            scope: cfg.scopes,
-            meta: { pageId: page.id, pageName: page.name, pageCount: (pagesRes.data?.data || []).length, metaUserId: metaUserId || null },
-        });
-        await linkMetaUser(metaUserId, workspaceId, 'facebook');
-        back('connected=facebook');
-    } catch (err) {
-        console.error('[Facebook callback]', err);
-        back('error=facebook');
-    }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 //   GET /api/connections  — list all (metadata only, no raw tokens)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/', withWorkspace, async (req: Request, res: Response) => {
@@ -582,7 +708,7 @@ router.get('/', withWorkspace, async (req: Request, res: Response) => {
 
     const connections = snap.docs.map((d) => {
         // Strip encrypted tokens from the response
-        const { accessToken, refreshToken, ...safe } = d.data();
+        const { accessToken, refreshToken, pageAccessToken, ...safe } = d.data();
         return safe;
     });
 
@@ -737,36 +863,36 @@ router.delete('/youtube/videos/:videoId', withWorkspace, async (req: Request, re
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//   DELETE /api/connections/:platform  — revoke + delete
+//   DELETE /api/connections/:platform  — revoke with the platform, delete token and fetched data
 // ─────────────────────────────────────────────────────────────────────────────
 router.delete('/:platform', withWorkspace, async (req: Request, res: Response) => {
-    const { platform } = req.params;
+    const platform = String(req.params.platform);
     const workspaceId = (req as any).workspaceId;
+    if (!workspaceId) return res.status(403).json({ error: 'NO_WORKSPACE' });
+    if (!OAUTH_CONFIG[platform as Platform]) return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
 
-    const docRef = db
-        .collection('workspaces').doc(workspaceId)
-        .collection('connections').doc(platform as string);
-
-    const snap = await docRef.get();
-    if (!snap.exists) return res.status(404).json({ error: 'NOT_CONNECTED' });
-
-    // Revoke at the provider (best effort), delete what the connection brought in, then the
-    // connection itself. Platform policies require both on disconnect (YouTube: within 7 days).
-    const data = snap.data()!;
-    const revoke = await revokeConnection(workspaceId, platform as string, data);
-    let removed = 0;
-    if (platform === 'instagram') removed += await deleteMetaPlatformData(workspaceId);
-    removed += await purgePlatformAnalytics(workspaceId, platform as string);
-    await unlinkMetaUser(data.metaUserId, workspaceId, platform as string);
-    await docRef.delete();
-    res.json({ success: true, platform, revoked: revoke.revoked, note: revoke.note || null, removed });
+    try {
+        const result = await deleteConnection(workspaceId, platform, { revoke: true });
+        if (!result.existed) return res.status(404).json({ error: 'NOT_CONNECTED' });
+        res.json({ success: true, platform, revoked: result.revoked });
+    } catch (err: any) {
+        console.error(`[Disconnect ${platform}]`, err.message);
+        res.status(500).json({ error: 'DISCONNECT_FAILED', message: 'The account could not be disconnected. Please try again.' });
+    }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+//   POST /api/connections/:platform/refresh  — manual token refresh
+// ─────────────────────────────────────────────────────────────────────────────
 //   GET /api/connections/tiktok/creator-info  — what TikTok allows this creator to post now
+//   (TikTok's Direct Post rules: show the creator, only the privacy levels it returns, the
+//   interaction settings it allows, the maximum video length, and block posting when it says so.)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/tiktok/creator-info', withWorkspace, async (req: Request, res: Response) => {
     const workspaceId = (req as any).workspaceId;
+    // Inbox mode (video.upload only): the creator finishes the post in the TikTok app, which sets
+    // privacy and the other options; there is no Direct Post screen to fill in here.
+    if (tiktokPostMode() === 'inbox') return res.json({ mode: 'inbox', canPost: true });
     try {
         const { accessToken } = await getValidAccessToken(workspaceId, 'tiktok');
         const { data } = await axios.post('https://open.tiktokapis.com/v2/post/publish/creator_info/query/', {}, {
@@ -775,6 +901,7 @@ router.get('/tiktok/creator-info', withWorkspace, async (req: Request, res: Resp
         });
         const info = data?.data || {};
         res.json({
+            mode: 'direct',
             nickname: info.creator_nickname || '',
             username: info.creator_username || '',
             avatarUrl: info.creator_avatar_url || '',
@@ -794,8 +921,6 @@ router.get('/tiktok/creator-info', withWorkspace, async (req: Request, res: Resp
     }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-//   POST /api/connections/:platform/refresh  — manual token refresh
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/:platform/refresh', withWorkspace, async (req: Request, res: Response) => {
     const { platform } = req.params as { platform: Platform };
@@ -857,8 +982,8 @@ async function refreshPlatformToken(workspaceId: string, platform: Platform): Pr
     } else if (platform === 'facebook') {
         // Page tokens don't expire; nothing to refresh.
         return data.tokenExpiry ?? null;
-    } else if (platform === 'instagram') {
-        // Meta exchange long-lived token for new long-lived token
+    } else if (platform === 'instagram' || platform === 'meta_ads') {
+        // A long-lived Meta user token is renewed by exchanging it for a new one
         const res = await axios.get(cfg.tokenUrl, {
             params: {
                 grant_type: 'fb_exchange_token',
@@ -881,6 +1006,7 @@ async function refreshPlatformToken(workspaceId: string, platform: Platform): Pr
         refreshToken: encrypt(newRefreshToken),
         tokenExpiry,
         status: 'active',
+        expiredAt: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -891,72 +1017,80 @@ async function refreshPlatformToken(workspaceId: string, platform: Platform): Pr
 //   TOKEN AUTO-REFRESH CRON  (every 6 hours)
 //   Scans all connections expiring within 24 hours
 // ─────────────────────────────────────────────────────────────────────────────
+const EXPIRED_RETENTION_MS = 6 * 86400 * 1000;
+
+/**
+ * Renews tokens expiring within 24 hours, marks ones that can't be renewed as expired, and deletes
+ * connections left expired for EXPIRED_RETENTION_MS. Each workspace has only a few connections, so
+ * they are read whole and filtered here (no composite index needed); one workspace's failure
+ * doesn't stop the others.
+ */
+export async function runTokenMaintenance() {
+    const expiryThreshold = Date.now() + 86400 * 1000; // within 24 hours
+    const workspacesSnap = await db.collection('workspaces').select('ownerId').get();
+    for (const wsDoc of workspacesSnap.docs) {
+        const workspaceId = wsDoc.id;
+        const ownerId = wsDoc.data().ownerId;
+        try {
+            const all = (await db.collection('workspaces').doc(workspaceId).collection('connections').get()).docs;
+            const expiring = all.filter((d) => d.data().status === 'active' && Number(d.data().tokenExpiry || 0) > 0 && Number(d.data().tokenExpiry) < expiryThreshold);
+
+            for (const connDoc of expiring) {
+                const platform = connDoc.id as Platform;
+                if (!PLATFORMS.includes(platform)) continue;
+
+                try {
+                    await refreshPlatformToken(workspaceId, platform);
+                    console.log(`[TokenRefreshCron] ✅ Refreshed ${platform} for workspace ${workspaceId}`);
+                } catch (err: any) {
+                    // Only the platform refusing the token (4xx, or TikTok's error body) means access is gone;
+                    // network errors and outages are retried on the next run.
+                    const httpStatus = Number(err.response?.status || 0);
+                    const refused = (httpStatus >= 400 && httpStatus < 500) || /invalid_grant|invalid|revoked|expired/i.test(String(err.message));
+                    console.error(`[TokenRefreshCron] ❌ Failed to refresh ${platform} for ${workspaceId}${refused ? '' : ' (will retry)'}:`, err.response?.data || err.message);
+                    if (!refused) continue;
+
+                    // Mark as expired and notify user. If it isn't reconnected, the sweep below deletes it.
+                    await connDoc.ref.update({
+                        status: 'expired',
+                        expiredAt: Date.now(),
+                        updatedAt: FieldValue.serverTimestamp(),
+                    });
+
+                    // Send re-auth email (using your existing email utility)
+                    try {
+                        const userSnap = await db.collection('users').doc(ownerId).get();
+                        const email = userSnap.data()?.email;
+                        if (email) {
+                            // Stub: replace with your sendEmail(email, ...) call
+                            console.warn(`[TokenRefreshCron] Re-auth required: ${email} → ${platform}`);
+                        }
+                    } catch { /* ignore email failure */ }
+                }
+            }
+
+            // Access refused for 6 days and not reconnected: delete the token and the account's data
+            // (the Privacy Policy promises within 7 days; this job runs every 6 hours).
+            for (const connDoc of all.filter((d) => d.data().status === 'expired')) {
+                const expiredAt = Number(connDoc.data().expiredAt || 0);
+                if (!expiredAt) {
+                    await connDoc.ref.update({ expiredAt: Date.now() }); // marked expired before this rule existed
+                } else if (expiredAt < Date.now() - EXPIRED_RETENTION_MS) {
+                    await deleteConnection(workspaceId, connDoc.id, { revoke: false }).catch((err) =>
+                        console.error(`[TokenRefreshCron] Could not delete expired ${connDoc.id} for ${workspaceId}:`, err.message)
+                    );
+                }
+            }
+        } catch (err: any) {
+            console.error(`[TokenRefreshCron] Workspace ${workspaceId} failed:`, err.message);
+        }
+    }
+}
+
 export function startTokenRefreshCron() {
     cron.schedule('0 */6 * * *', async () => {
         console.log('[TokenRefreshCron] Scanning for expiring tokens…');
-        const expiryThreshold = Date.now() + 86400 * 1000; // within 24 hours
-
-        try {
-            // Scan all workspace connection sub-collections
-            const workspacesSnap = await db.collection('workspaces').get();
-
-            for (const wsDoc of workspacesSnap.docs) {
-                const workspaceId = wsDoc.id;
-                const ownerId = wsDoc.data().ownerId;
-
-                // Filtered in memory: a workspace has a handful of connections, and a two-field
-                // query would need a composite index.
-                const allConnections = await db
-                    .collection('workspaces').doc(workspaceId)
-                    .collection('connections')
-                    .get();
-
-                // Access removed at the platform (or a refresh that keeps failing) for 30 days:
-                // delete the connection and the data it brought in (YouTube API Services III.D.2).
-                for (const connDoc of allConnections.docs) {
-                    const d = connDoc.data();
-                    const since = (d.revokedAt || d.updatedAt)?.toMillis?.() ?? 0;
-                    if ((d.status === 'expired' || d.status === 'revoked') && since && since < Date.now() - 30 * 86400 * 1000) {
-                        if (connDoc.id === 'instagram') await deleteMetaPlatformData(workspaceId);
-                        await purgePlatformAnalytics(workspaceId, connDoc.id);
-                        await unlinkMetaUser(d.metaUserId, workspaceId, connDoc.id);
-                        await connDoc.ref.delete();
-                        console.log(`[TokenRefreshCron] Deleted ${connDoc.id} for ${workspaceId}: access ended over 30 days ago`);
-                    }
-                }
-
-                const connectionsSnap = allConnections.docs.filter((d) => d.data().status === 'active' && Number(d.data().tokenExpiry ?? 0) < expiryThreshold);
-                for (const connDoc of connectionsSnap) {
-                    const platform = connDoc.id as Platform;
-                    if (!PLATFORMS.includes(platform)) continue;
-
-                    try {
-                        await refreshPlatformToken(workspaceId, platform);
-                        console.log(`[TokenRefreshCron] ✅ Refreshed ${platform} for workspace ${workspaceId}`);
-                    } catch (err) {
-                        console.error(`[TokenRefreshCron] ❌ Failed to refresh ${platform} for ${workspaceId}`, err);
-
-                        // Mark as expired and notify user
-                        await connDoc.ref.update({
-                            status: 'expired',
-                            updatedAt: FieldValue.serverTimestamp(),
-                        });
-
-                        // Send re-auth email (using your existing email utility)
-                        try {
-                            const userSnap = await db.collection('users').doc(ownerId).get();
-                            const email = userSnap.data()?.email;
-                            if (email) {
-                                // Stub: replace with your sendEmail(email, ...) call
-                                console.warn(`[TokenRefreshCron] Re-auth required: ${email} → ${platform}`);
-                            }
-                        } catch { /* ignore email failure */ }
-                    }
-                }
-            }
-        } catch (err) {
-            console.error('[TokenRefreshCron] Cron error:', err);
-        }
+        await runTokenMaintenance().catch((err) => console.error('[TokenRefreshCron] Cron error:', err.message));
     });
 
     console.log('[TokenRefreshCron] Scheduled — runs every 6 hours');

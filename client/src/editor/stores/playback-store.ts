@@ -32,6 +32,25 @@ interface PlaybackState {
 let frame: number | null = null;
 let lastTick = 0;
 
+/**
+ * Media that is seeking or buffering. The clock waits for it, so the picture and the playhead stay
+ * together: otherwise a slow seek (e.g. phone footage with keyframes seconds apart) falls behind,
+ * the drift correction seeks again, and the frame never updates. Capped so a broken file can't
+ * hold the playhead forever.
+ */
+const stalled = new Set<object>();
+let stalledSince = 0;
+const MAX_STALL_MS = 4000;
+
+export function setMediaStalled(media: object, isStalled: boolean) {
+    if (isStalled) {
+        if (!stalled.size) stalledSince = performance.now();
+        stalled.add(media);
+    } else {
+        stalled.delete(media);
+    }
+}
+
 const emit = (name: string, time: number) => window.dispatchEvent(new CustomEvent(name, { detail: { time } }));
 
 const contentDuration = () => useTimelineStore.getState().getTotalDuration();
@@ -43,6 +62,10 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
         const now = performance.now();
         const delta = (now - lastTick) / 1000;
         lastTick = now;
+        if (stalled.size && now - stalledSince < MAX_STALL_MS) {
+            frame = requestAnimationFrame(tick);
+            return;
+        }
 
         const end = contentDuration();
         let next = state.currentTime + delta * state.speed;

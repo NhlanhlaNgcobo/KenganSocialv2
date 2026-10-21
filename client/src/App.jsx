@@ -26,7 +26,8 @@ import LandingPage from './pages/LandingPage';
 import PricingPage from './pages/PricingPage';
 import AboutPage from './pages/AboutPage';
 import HelpCenterPage from './pages/HelpCenterPage';
-import LegalDocPage from './pages/LegalDocPage';
+import DeletionStatusPage from './pages/DeletionStatusPage';
+import ConsentPage from './pages/ConsentPage';
 import ConnectionsPage from './pages/ConnectionsPage';
 import ContentStudioPage from './pages/ContentStudioPage';
 import CalendarPage from './pages/Calendar/CalendarPage';
@@ -37,9 +38,11 @@ import LeadsBoard from './pages/Leads/LeadsBoard';
 import BillingPage from './pages/BillingPage';
 import SettingsPage from './pages/SettingsPage';
 import VideoEditorPage from './pages/VideoEditorPage';
+import LegalPage from './pages/LegalPage';
 import OnboardingPage from './pages/OnboardingPage';
 import TrendingFeed from './pages/Trending/TrendingFeed';
 import DMManager from './pages/DM/DMManager';
+import AdsPage from './pages/AdsPage';
 import LaunchPage from './pages/Launch/LaunchPage';
 import ClipsPage from './pages/Clips/ClipsPage';
 import RepurposePage from './pages/Repurpose/RepurposePage';
@@ -59,13 +62,11 @@ function App() {
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/help" element={<HelpCenterPage />} />
-              {/* Public legal pages: platform API reviews require them reachable without signing in. On Vercel a
-                  direct visit to /terms, /privacy and /data-deletion gets the static HTML copy (vercel.json). */}
-              <Route path="/terms" element={<LegalDocPage doc="terms" />} />
-              <Route path="/privacy" element={<LegalDocPage doc="privacy" />} />
-              <Route path="/data-deletion" element={<LegalDocPage doc="data-deletion" />} />
-              <Route path="/data-deletion/status" element={<LegalDocPage doc="data-deletion" />} />
-              <Route path="/legal" element={<Navigate to="/terms" replace />} />
+              <Route path="/privacy" element={<LegalPage docSlug="privacy" />} />
+              <Route path="/terms" element={<LegalPage docSlug="terms" />} />
+              <Route path="/legal" element={<LegalPage docSlug="terms" />} />
+              <Route path="/data-deletion" element={<LegalPage docSlug="data-deletion" />} />
+              <Route path="/data-deletion/status" element={<DeletionStatusPage />} />
 
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
@@ -73,6 +74,11 @@ function App() {
               <Route path="/review/:token" element={<ReviewPage />} />
 
               {/* Onboarding — requires auth, shown before dashboard */}
+              <Route path="/consent" element={
+                <AuthGuard>
+                  <ConsentPage />
+                </AuthGuard>
+              } />
               <Route path="/onboarding" element={
                 <AuthGuard>
                   <OnboardingPage />
@@ -108,6 +114,7 @@ function App() {
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="trending" element={<TrendingFeed />} />
                 <Route path="dm" element={<DMManager />} />
+                <Route path="ads" element={<AdsPage />} />
                 <Route path="launch" element={<LaunchPage />} />
                 <Route path="clips" element={<ClipsPage />} />
                 <Route path="repurpose" element={<RepurposePage />} />

@@ -31,6 +31,7 @@ import videoRouter from './src/routes/video.ts';
 import scheduleRoutes from './src/routes/schedule.ts';
 import trendingRoutes from './src/routes/trending.ts';
 import dmRoutes from './src/routes/dm.ts';
+import adsRoutes from './src/routes/ads.ts';
 import analyticsTsRoutes from './src/routes/analytics.ts';
 import billingTsRoutes from './src/routes/billing.ts';
 import assetsRoutes from './src/routes/assets.ts';
@@ -47,6 +48,9 @@ import lyricsRoutes from './src/routes/lyrics.ts';
 import { startAnalyticsCron } from './src/jobs/analytics.cron.ts';
 import { startTrendingCron } from './src/jobs/trending.cron.ts';
 import authRoutes from './src/routes/auth.ts';
+import dataDeletionRoutes from './src/routes/data-deletion.ts';
+import './src/services/webhooks/handlers.ts';
+import { startWebhookWorker } from './src/services/webhooks/dispatcher.ts';
 import { planRateLimit } from './src/middleware/planGate.ts';
 import { logDevPlanOverride } from './src/utils/devPlan.ts';
 
@@ -89,7 +93,10 @@ app.use(cors({
 const globalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: process.env.NODE_ENV === 'production' ? 1000 : 5000,
-    message: { error: 'Too many requests from this IP.' }
+    message: { error: 'Too many requests from this IP.' },
+    // Platform webhooks are signature-verified and arrive in bursts from a few platform IPs;
+    // a 429 would make Meta/TikTok back off or disable the subscription.
+    skip: (req) => req.path.startsWith('/api/webhooks/'),
 });
 app.use(globalLimiter);
 
@@ -115,10 +122,11 @@ app.get(/^\/tiktok[A-Za-z0-9_-]+\.txt$/, (req, res) => {
     const file = path.join(process.cwd(), 'public', 'verification', path.basename(req.path));
     res.type('text/plain').sendFile(file, (err) => err && res.status(404).end());
 });
-// Public legal pages (platform app reviews need them on a reachable URL).
-app.get('/terms', (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'legal', 'terms.html')));
-app.get('/privacy', (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'legal', 'privacy.html')));
-app.get('/data-deletion', (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'legal', 'data-deletion.html')));
+// Public legal pages (platform app reviews need them on a reachable URL). Built from
+// client/src/content/legal.js by scripts/build-legal-html.mjs.
+for (const slug of ['terms', 'privacy', 'data-deletion']) {
+    app.get(`/${slug}`, (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'legal', `${slug}.html`)));
+}
 if (getStorageDriver() === 'local') {
     app.use('/uploads', express.static(LOCAL_UPLOAD_DIR));
 }
@@ -126,6 +134,7 @@ app.use('/api/health', healthRoutes);
 // Feature switches the app needs before sign-in (e.g. whether YouTube link import is on).
 app.get('/api/features', (_req, res) => res.json({ youtubeLinkImport: features.youtubeLinkImport() }));
 app.use('/api/auth', authRoutes);
+app.use('/api/data-deletion', dataDeletionRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/workspaces/:workspaceId/connections', connectionRoutes);
 app.use('/api/workspaces/:workspaceId/content', contentRoutes);
@@ -149,6 +158,7 @@ app.use('/api/video', videoRouter);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/trending', trendingRoutes);
 app.use('/api/dm', dmRoutes);
+app.use('/api/ads', adsRoutes);
 app.use('/api/assets', assetsRoutes);
 app.use('/api/brag', bragRoutes);
 app.use('/api/music', musicRoutes);
@@ -205,4 +215,7 @@ app.listen(PORT, () => {
 
     // Start Trending Content refresh (every 2 hours)
     startTrendingCron();
+
+    // Webhook retries and stale-event recovery (every minute), purge of old events (daily)
+    startWebhookWorker();
 });

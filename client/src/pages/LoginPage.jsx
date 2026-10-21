@@ -161,6 +161,10 @@ export default function LoginPage() {
                 <p className="auth-card__footer">
                     Don't have an account? <Link to="/register">Sign up</Link>
                 </p>
+                <p className="auth-card__hint" style={{ textAlign: 'center', marginTop: 12 }}>
+                    By signing in you agree to our <Link to="/terms" target="_blank" rel="noreferrer">Terms of Service</Link> and{' '}
+                    <Link to="/privacy" target="_blank" rel="noreferrer">Privacy Policy</Link>. New accounts confirm this before they start.
+                </p>
             </div>
         </div>
     );

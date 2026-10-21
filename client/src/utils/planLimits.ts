@@ -57,7 +57,7 @@ export const PLAN_DISPLAY_NAMES: Record<Plan, string> = {
 export const PLAN_RANK: Record<Plan, number> = { starter: 0, nano: 1, creator: 2, agency: 3 }
 
 // One contact address for billing, cancellations and plan changes (matches the server's BILLING_EMAIL).
-export const BILLING_EMAIL = 'billing@kengansocial.com'
+export const BILLING_EMAIL = 'billing@kengansocial.co.za'
 
 // -1 means unlimited (agency fair-use caps enforced separately via overage billing)
 // All counters reset on the 1st of each billing month at 00:00 UTC

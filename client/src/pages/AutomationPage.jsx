@@ -5,11 +5,8 @@ import {
     Pause,
     Plus,
     Trash2,
-    MoreVertical,
     MessageSquare,
-    UserPlus,
-    Mail,
-    Settings,
+    MessagesSquare,
     ArrowRight,
     Loader2,
     AlertCircle,
@@ -20,19 +17,28 @@ import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
 import './Automation.css';
 
+// Keep in step with server/src/controllers/automation.controller.js.
 const TRIGGER_TYPES = [
-    { id: 'dm_keyword', label: 'DM Keyword', icon: MessageSquare },
-    { id: 'comment_keyword', label: 'Comment Keyword (Coming Soon)', icon: MessageSquare, disabled: true },
-    { id: 'new_follower', label: 'New Follower (Coming Soon)', icon: UserPlus, disabled: true },
-    { id: 'story_reply', label: 'Story Reply (Coming Soon)', icon: Mail, disabled: true },
+    { id: 'dm_keyword', label: 'Keyword in a direct message', icon: MessageSquare, help: 'A message containing any of these words starts the automation.' },
+    { id: 'comment_keyword', label: 'Keyword in a comment', icon: MessagesSquare, help: 'A comment on any of your posts containing any of these words starts the automation.' },
 ];
 
-const ACTION_TYPES = [
-    { id: 'send_dm', label: 'Send DM' },
-    { id: 'add_lead', label: 'Add to Leads' },
-    { id: 'send_email', label: 'Send Email (Coming Soon)', disabled: true },
-    { id: 'tag', label: 'Apply Tag (Coming Soon)', disabled: true },
-];
+const ACTION_TYPES = {
+    dm_keyword: [
+        { id: 'send_dm', label: 'Reply with a message' },
+        { id: 'add_lead', label: 'Add the person to Leads' },
+    ],
+    comment_keyword: [
+        { id: 'send_dm', label: 'Send a private message (comment-to-DM)' },
+        { id: 'reply_comment', label: 'Reply publicly to the comment' },
+        { id: 'add_lead', label: 'Add the person to Leads' },
+    ],
+};
+
+const ACTION_LABEL = { send_dm: 'send message', reply_comment: 'public reply', add_lead: 'add lead' };
+const TRIGGER_LABEL = { dm_keyword: 'DM keyword', comment_keyword: 'comment keyword' };
+const PLATFORM_NAME = { instagram: 'Instagram', facebook: 'Facebook Page' };
+const EMPTY = { name: '', triggerType: 'dm_keyword', keywords: '', actionType: 'send_dm', message: '', publicReply: '', connections: [] };
 
 export default function AutomationPage() {
     const { currentWorkspace } = useWorkspace();
@@ -42,15 +48,9 @@ export default function AutomationPage() {
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
     const [loadError, setLoadError] = useState('');
-    const [newAutomation, setNewAutomation] = useState({
-        name: '',
-        triggerType: 'dm_keyword',
-        triggerConfig: { keywords: '' },
-        actionType: 'send_dm',
-        actionConfig: { message: '' },
-        connections: [], // List of connection IDs this appies to
-    });
+    const [form, setForm] = useState(EMPTY);
     const [availableConnections, setAvailableConnections] = useState([]);
+    const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
     useEffect(() => {
         if (currentWorkspace?.id) {
@@ -69,33 +69,41 @@ export default function AutomationPage() {
             ]);
             if (rules.status === 'fulfilled') setAutomations(rules.value.automations || []);
             else setLoadError(`Automations could not be loaded: ${rules.reason?.message || 'unknown error'}`);
-            // Rules only run on Instagram DMs, so only Instagram accounts can be targeted.
+            // Rules run on Instagram and Facebook Page messages and comments.
             if (conns.status === 'fulfilled') {
-                setAvailableConnections((conns.value.connections || []).filter(c => c.status === 'active' && c.platform === 'instagram'));
+                setAvailableConnections((conns.value.connections || []).filter(c => c.status === 'active' && PLATFORM_NAME[c.platform]));
             }
         } finally {
             setLoading(false);
         }
     };
 
-    const parsedKeywords = newAutomation.triggerConfig.keywords
-        .split(',')
-        .map(k => k.trim())
-        .filter(Boolean);
-    const needsMessage = newAutomation.actionType === 'send_dm';
-    const formProblem = !newAutomation.name.trim()
+    const parsedKeywords = form.keywords.split(',').map(k => k.trim()).filter(Boolean);
+    const isComment = form.triggerType === 'comment_keyword';
+    const needsMessage = form.actionType === 'send_dm';
+    const showPublicReply = isComment && form.actionType !== 'add_lead';
+    const formProblem = !form.name.trim()
         ? 'Give the automation a name.'
         : parsedKeywords.length === 0
             ? 'Add at least one keyword.'
-            : needsMessage && !newAutomation.actionConfig.message.trim()
+            : needsMessage && !form.message.trim()
                 ? 'Write the message to send.'
-                : '';
+                : form.actionType === 'reply_comment' && !form.publicReply.trim()
+                    ? 'Write the public reply.'
+                    : '';
 
     const closeCreate = () => {
         if (creating) return;
         setShowCreate(false);
         setError('');
     };
+
+    const changeTrigger = (triggerType) => {
+        const allowed = ACTION_TYPES[triggerType].map(a => a.id);
+        set({ triggerType, actionType: allowed.includes(form.actionType) ? form.actionType : allowed[0] });
+    };
+
+    const insert = (field, token) => set({ [field]: form[field] + token });
 
     const handleCreate = async () => {
         if (formProblem) {
@@ -106,26 +114,21 @@ export default function AutomationPage() {
         setError('');
 
         try {
-            const payload = {
-                name: newAutomation.name.trim(),
-                trigger: {
-                    type: newAutomation.triggerType,
-                    config: { keywords: parsedKeywords },
-                },
-                action: {
-                    type: newAutomation.actionType,
-                    config: needsMessage ? { message: newAutomation.actionConfig.message.trim() } : {},
-                },
-                connections: newAutomation.connections,
-            };
-
+            const config = {};
+            if (needsMessage) config.message = form.message.trim();
+            if (showPublicReply && form.publicReply.trim()) config.publicReply = form.publicReply.trim();
             await apiClient(`/workspaces/${currentWorkspace.id}/automations`, {
                 method: 'POST',
-                body: JSON.stringify(payload),
+                body: JSON.stringify({
+                    name: form.name.trim(),
+                    trigger: { type: form.triggerType, config: { keywords: parsedKeywords } },
+                    action: { type: form.actionType, config },
+                    connections: form.connections,
+                }),
             });
             await fetchAutomations();
             setShowCreate(false);
-            setNewAutomation({ name: '', triggerType: 'dm_keyword', triggerConfig: { keywords: '' }, actionType: 'send_dm', actionConfig: { message: '' }, connections: [] });
+            setForm(EMPTY);
         } catch (err) {
             setError(err.message || 'Failed to create automation');
         } finally {
@@ -159,12 +162,17 @@ export default function AutomationPage() {
         }
     };
 
+    const platformsOf = (auto) => (auto.connections?.length ? auto.connections.map(p => PLATFORM_NAME[p] || p).join(', ') : 'Instagram and Facebook');
+
     return (
         <div className="automation-page animate-fade-in">
             <div className="page-header">
                 <div>
                     <h1>Automation</h1>
-                    <p className="page-subtitle">Reply to Instagram DMs automatically and turn the people who message you into leads. Rules run once Instagram is connected and its DM webhook is set up.</p>
+                    <p className="page-subtitle">
+                        Answer Instagram and Facebook messages and comments automatically, and turn the people who reach out into leads.
+                        Replies to messages are sent only within 24 hours of the person&apos;s message, as Meta requires.
+                    </p>
                 </div>
                 <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
                     <Plus size={18} /> New automation
@@ -183,8 +191,8 @@ export default function AutomationPage() {
                 <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
                     <Zap size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 16px' }} />
                     <h3>No automations yet</h3>
-                    <p style={{ color: 'var(--text-secondary)', maxWidth: 420, margin: '8px auto 24px' }}>
-                        Start with a keyword reply: when someone DMs you “price”, send them your price list automatically.
+                    <p style={{ color: 'var(--text-secondary)', maxWidth: 460, margin: '8px auto 24px' }}>
+                        Try a comment-to-DM: when someone comments “price” on your post, send them your price list privately and reply “Sent you a DM!”.
                     </p>
                     <button className="btn btn-primary" style={{ margin: '0 auto' }} onClick={() => setShowCreate(true)}>
                         <Plus size={16} /> Create an automation
@@ -201,10 +209,16 @@ export default function AutomationPage() {
                                     <div className="auto-info">
                                         <h4>{auto.name}</h4>
                                         <div className="auto-flow">
-                                            <span className="flow-step trigger">{auto.trigger?.type?.replace('_', ' ')}</span>
+                                            <span className="flow-step trigger">{TRIGGER_LABEL[auto.trigger?.type] || auto.trigger?.type}</span>
                                             <ArrowRight size={14} />
-                                            <span className="flow-step action">{auto.action?.type?.replace('_', ' ')}</span>
+                                            <span className="flow-step action">
+                                                {ACTION_LABEL[auto.action?.type] || auto.action?.type}
+                                                {auto.action?.config?.publicReply && auto.action?.type === 'send_dm' ? ' + public reply' : ''}
+                                            </span>
                                         </div>
+                                        <span className="auto-help">
+                                            {platformsOf(auto)} · “{(auto.trigger?.config?.keywords || []).join('”, “')}” · ran {auto.runCount || 0} times
+                                        </span>
                                     </div>
                                 </div>
                                 <div className="auto-right">
@@ -216,7 +230,7 @@ export default function AutomationPage() {
                                         {auto.status === 'active' ? <Pause size={14} /> : <Play size={14} />}
                                         {auto.status === 'active' ? 'Active' : 'Paused'}
                                     </button>
-                                    <button className="btn-icon btn-ghost" onClick={() => deleteAutomation(auto.id)} title="Delete">
+                                    <button className="btn-icon btn-ghost" onClick={() => deleteAutomation(auto.id)} title="Delete" aria-label={`Delete ${auto.name}`}>
                                         <Trash2 size={16} />
                                     </button>
                                 </div>
@@ -226,70 +240,83 @@ export default function AutomationPage() {
                 </div>
             )}
 
-            {/* Create Modal */}
             {showCreate && (
                 <div className="modal-overlay animate-fade-in" onClick={closeCreate}>
-                    <div className="modal card" onClick={e => e.stopPropagation()}>
+                    <div className="modal card" role="dialog" aria-modal="true" aria-labelledby="auto-create-title" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>Create Automation</h3>
+                            <h3 id="auto-create-title">Create Automation</h3>
                             <button className="btn-icon btn-ghost" onClick={closeCreate} aria-label="Close"><X size={18} /></button>
                         </div>
                         {error && <div className="error-banner"><AlertCircle size={14} /><span>{error}</span></div>}
                         <div className="modal-body">
-                            <label>Automation Name</label>
-                            <input className="input" value={newAutomation.name} onChange={e => setNewAutomation({ ...newAutomation, name: e.target.value })} placeholder="e.g. DM Welcome Flow" />
+                            <label htmlFor="auto-name">Automation name</label>
+                            <input id="auto-name" className="input" value={form.name} onChange={e => set({ name: e.target.value })} placeholder="e.g. Price list on comment" />
 
-                            <label>Trigger</label>
-                            <select className="input" value={newAutomation.triggerType} onChange={e => setNewAutomation({ ...newAutomation, triggerType: e.target.value })}>
-                                {TRIGGER_TYPES.map(t => <option key={t.id} value={t.id} disabled={t.disabled}>{t.label}</option>)}
+                            <label htmlFor="auto-trigger">Trigger</label>
+                            <select id="auto-trigger" className="input" value={form.triggerType} onChange={e => changeTrigger(e.target.value)}>
+                                {TRIGGER_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                             </select>
 
-                            <label style={{ marginTop: '16px' }}>Apply to Instagram accounts (leave blank for all)</label>
+                            <label style={{ marginTop: '16px' }}>Accounts (none selected = all)</label>
                             <div className="platform-selector" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
                                 {availableConnections.length === 0 ? (
                                     <span className="auto-help">
-                                        No Instagram account is connected. Automations only run on Instagram DMs. <Link to="/dashboard/connections">Connect Instagram</Link>
+                                        No Instagram account or Facebook Page is connected yet. <Link to="/dashboard/connections">Connect one</Link>
                                     </span>
                                 ) : availableConnections.map(c => (
                                     <button
                                         key={c.id}
-                                        onClick={() => {
-                                            const conns = newAutomation.connections.includes(c.id)
-                                                ? newAutomation.connections.filter(id => id !== c.id)
-                                                : [...newAutomation.connections, c.id];
-                                            setNewAutomation({ ...newAutomation, connections: conns });
-                                        }}
-                                        className={`btn btn-sm ${newAutomation.connections.includes(c.id) ? 'btn-primary' : 'btn-secondary'}`}
-                                        title={`@${c.username}`}
+                                        type="button"
+                                        aria-pressed={form.connections.includes(c.id)}
+                                        onClick={() => set({
+                                            connections: form.connections.includes(c.id)
+                                                ? form.connections.filter(id => id !== c.id)
+                                                : [...form.connections, c.id],
+                                        })}
+                                        className={`btn btn-sm ${form.connections.includes(c.id) ? 'btn-primary' : 'btn-secondary'}`}
                                     >
-                                        {c.groupName ? `${c.groupName} - ` : ''}@{c.username}
+                                        {PLATFORM_NAME[c.platform]}: {c.platform === 'instagram' ? '@' : ''}{c.username}
                                     </button>
                                 ))}
                             </div>
 
-                            <label>Keywords (comma-separated) *</label>
-                            <input className="input" value={newAutomation.triggerConfig.keywords} onChange={e => setNewAutomation({ ...newAutomation, triggerConfig: { keywords: e.target.value } })} placeholder="e.g. price, info, link" />
-                            <span className="auto-help">A DM containing any of these words triggers the automation.</span>
+                            <label htmlFor="auto-keywords">Keywords (comma-separated) *</label>
+                            <input id="auto-keywords" className="input" value={form.keywords} onChange={e => set({ keywords: e.target.value })} placeholder="e.g. price, info, link" />
+                            <span className="auto-help">{TRIGGER_TYPES.find(t => t.id === form.triggerType)?.help}</span>
 
-                            <label>Action</label>
-                            <select className="input" value={newAutomation.actionType} onChange={e => setNewAutomation({ ...newAutomation, actionType: e.target.value })}>
-                                {ACTION_TYPES.map(a => <option key={a.id} value={a.id} disabled={a.disabled}>{a.label}</option>)}
+                            <label htmlFor="auto-action">Action</label>
+                            <select id="auto-action" className="input" value={form.actionType} onChange={e => set({ actionType: e.target.value })}>
+                                {ACTION_TYPES[form.triggerType].map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                             </select>
 
-                            {needsMessage ? (
+                            {needsMessage && (
                                 <>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', marginTop: '16px' }}>
-                                        <label style={{ margin: 0 }}>Message Template *</label>
+                                        <label htmlFor="auto-message" style={{ margin: 0 }}>{isComment ? 'Private message *' : 'Message *'}</label>
                                         <div style={{ display: 'flex', gap: '4px' }}>
-                                            <button className="btn btn-sm btn-ghost" onClick={() => setNewAutomation({ ...newAutomation, actionConfig: { message: newAutomation.actionConfig.message + '{name}' } })} type="button">+ {`{name}`}</button>
-                                            <button className="btn btn-sm btn-ghost" onClick={() => setNewAutomation({ ...newAutomation, actionConfig: { message: newAutomation.actionConfig.message + '{username}' } })} type="button">+ {`{username}`}</button>
+                                            <button className="btn btn-sm btn-ghost" onClick={() => insert('message', '{name}')} type="button">+ {`{name}`}</button>
+                                            <button className="btn btn-sm btn-ghost" onClick={() => insert('message', '{username}')} type="button">+ {`{username}`}</button>
                                         </div>
                                     </div>
-                                    <textarea className="input" value={newAutomation.actionConfig.message} onChange={e => setNewAutomation({ ...newAutomation, actionConfig: { message: e.target.value } })} placeholder="Hey {name}, thanks for reaching out! Here's the link..." />
-                                    <span className="auto-help">{'{name}'} and {'{username}'} are replaced with the sender&apos;s details (or &quot;there&quot; if Instagram doesn&apos;t share them).</span>
+                                    <textarea id="auto-message" className="input" value={form.message} onChange={e => set({ message: e.target.value })} placeholder="Hey {name}, thanks for reaching out! Here's the link..." />
+                                    <span className="auto-help">
+                                        {isComment
+                                            ? 'Sent privately to the person who commented. Meta allows one private reply per comment, within 7 days of it.'
+                                            : '{name} and {username} are replaced with the sender’s details (or “there” if Meta doesn’t share them).'}
+                                    </span>
                                 </>
-                            ) : (
-                                <span className="auto-help" style={{ marginTop: '8px' }}>The sender is added to Leads as a prospect. No message is sent.</span>
+                            )}
+
+                            {showPublicReply && (
+                                <>
+                                    <label htmlFor="auto-public" style={{ marginTop: '16px' }}>{form.actionType === 'reply_comment' ? 'Public reply *' : 'Public reply (optional)'}</label>
+                                    <textarea id="auto-public" className="input" value={form.publicReply} onChange={e => set({ publicReply: e.target.value })} placeholder={needsMessage ? 'Sent you a DM, {name}!' : 'Thanks {name}! Details are in our bio.'} />
+                                    <span className="auto-help">Posted under the comment, where everyone can see it.</span>
+                                </>
+                            )}
+
+                            {form.actionType === 'add_lead' && (
+                                <span className="auto-help" style={{ marginTop: '8px' }}>The person is added to Leads as a prospect. No message is sent.</span>
                             )}
                         </div>
                         <div className="modal-footer">

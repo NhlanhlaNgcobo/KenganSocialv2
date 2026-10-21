@@ -2,7 +2,7 @@ import { getFirestore } from '../config/firebase.js';
 
 function mapConnection(doc) {
     const data = doc.data();
-    const { accessToken, refreshToken, ...safe } = data;
+    const { accessToken, refreshToken, pageAccessToken, ...safe } = data;
     return {
         id: doc.id,
         platform: safe.platform || doc.id,
@@ -78,14 +78,11 @@ export async function updateConnection(req, res) {
     try {
         const db = getFirestore();
         const { workspaceId, connectionId } = req.params;
-        const updates = {
-            ...req.body,
-        };
-
-        delete updates.accessToken;
-        delete updates.refreshToken;
-        delete updates.platform;
-        delete updates.accountId;
+        // Only the client folder can be changed here; tokens, account ids and status come from the platform sign-in.
+        const updates = {};
+        if (req.body?.groupName !== undefined) {
+            updates.groupName = String(req.body.groupName || '').trim().slice(0, 80);
+        }
 
         updates.updatedAt = new Date().toISOString();
 

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { META_GRAPH_VERSION } from '../../config/meta';
 
 /**
  * Publishes to a Facebook Page with the Page access token (pages_manage_posts):
@@ -8,7 +9,7 @@ import axios from 'axios';
  * Returns the new post/video id. Media must be at a public HTTPS URL that Facebook can fetch.
  */
 
-const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v19.0'}`;
+const GRAPH = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 const VIDEO = /\.(mp4|mov|m4v|webm)(\?|$)/i;
 const IMAGE = /\.(jpe?g|png|gif|webp)(\?|$)/i;
 

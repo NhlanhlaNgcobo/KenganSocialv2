@@ -25,6 +25,33 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
     return next;
 }
 
+// A job that hangs (e.g. Chrome stops responding) fails after this long, so the queue moves on.
+const JOB_TIMEOUT_MS = 20 * 60 * 1000;
+function withTimeout<T>(work: Promise<T>): Promise<T> {
+    let timer: NodeJS.Timeout;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('The video took too long to make and was stopped. Try again, or pick a shorter length.')), JOB_TIMEOUT_MS);
+    });
+    return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
+// The queue lives in memory, so launch/tutorial jobs still 'processing' when the server starts were lost.
+async function failInterruptedJobs() {
+    try {
+        const snap = await db.collection('manual_edit_jobs').where('type', 'in', ['launch', 'tutorial']).where('status', '==', 'processing').get();
+        const now = new Date().toISOString();
+        await Promise.all(
+            snap.docs.map((d) =>
+                d.ref.update({ status: 'failed', stage: 'Failed', error: 'Making this video stopped before it finished (the server restarted). Please try again.', updatedAt: now })
+            )
+        );
+        if (snap.size) console.log(`[Brag] Marked ${snap.size} interrupted job(s) as failed`);
+    } catch (error: any) {
+        console.warn('[Brag] Could not check for interrupted jobs:', error.message);
+    }
+}
+failInterruptedJobs();
+
 router.get('/tones', withWorkspace, (_req: Request, res: Response) => {
     res.json({
         tones: Object.entries(TONES as Record<string, { feel: string; pacing: string }>).map(([id, t]) => ({ id, feel: t.feel, pacing: t.pacing, mood: (TONE_MOOD as any)[id] || 'upbeat' })),
@@ -66,10 +93,12 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('renders'), async (r
 
     try {
         const result: any = await enqueue(() =>
-            createLaunchVideo(request, {
-                onStage: (stage: string, progress: number) => update({ stage, progress }, true),
-                onProgress: (progress: number) => update({ progress }),
-            })
+            withTimeout(
+                createLaunchVideo(request, {
+                    onStage: (stage: string, progress: number) => update({ stage, progress }, true),
+                    onProgress: (progress: number) => update({ progress }),
+                })
+            )
         );
         const outputUploadId = uuidv4();
         storeUpload(outputUploadId, result.outputPath, uid);

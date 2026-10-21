@@ -29,6 +29,20 @@
       ]
     },
     {
+      "collectionGroup": "webhookEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "receivedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "ai_usage_logs",
       "queryScope": "COLLECTION",
       "fields": [
@@ -47,6 +61,20 @@
     {
       "collectionGroup": "connections",
       "fieldPath": "accountId",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "connections",
+      "fieldPath": "metaUserId",
       "indexes": [
         {
           "order": "ASCENDING",

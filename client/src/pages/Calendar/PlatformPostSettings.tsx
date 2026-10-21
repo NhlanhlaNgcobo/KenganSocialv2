@@ -26,6 +26,8 @@ export interface TikTokOptions {
 }
 
 export interface TikTokCreatorInfo {
+    /** 'inbox': videos go to the creator's TikTok inbox and they finish posting in TikTok. */
+    mode?: 'direct' | 'inbox';
     nickname: string;
     username: string;
     avatarUrl: string;
@@ -53,6 +55,7 @@ const BRANDED_URL = 'https://www.tiktok.com/legal/page/global/bc-policy/en';
 export function tiktokProblem(o: TikTokOptions, info: TikTokCreatorInfo | null, videoSeconds: number | null): string {
     if (!info) return 'Loading your TikTok posting options…';
     if (info.error) return `TikTok: ${info.error}`;
+    if (info.mode === 'inbox') return '';
     if (!info.canPost) return `TikTok says you can't post right now${info.reason ? ` (${info.reason})` : ''}. Try again later.`;
     if (!o.privacyLevel) return 'Choose who can view the TikTok post.';
     if (!info.privacyLevelOptions.includes(o.privacyLevel)) return 'That TikTok privacy option is not available for your account.';
@@ -122,6 +125,15 @@ export function TikTokPostSettings({ value, onChange, info, mediaFile, videoSeco
         return (
             <div className="tt-settings">
                 <p className="cal-text-muted"><Loader2 size={14} className="spin" /> Loading your TikTok posting options…</p>
+            </div>
+        );
+    }
+    if (info.mode === 'inbox') {
+        return (
+            <div className="tt-settings">
+                <p className="cal-text-muted">
+                    <Info size={13} /> The video goes to your TikTok inbox. Open TikTok to choose who can see it, add any disclosure and post it.
+                </p>
             </div>
         );
     }

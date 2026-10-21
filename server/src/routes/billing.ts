@@ -16,7 +16,7 @@ const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
 const PAYSTACK_PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY || '';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const PAYSTACK_CALLBACK_URL = process.env.PAYSTACK_CALLBACK_URL || `${FRONTEND_URL}/dashboard/billing`;
-export const BILLING_EMAIL = 'billing@kengansocial.com';
+export const BILLING_EMAIL = 'billing@kengansocial.co.za';
 const BILLING_SUPPORT_URL = process.env.PAYSTACK_BILLING_SUPPORT_URL || `mailto:${BILLING_EMAIL}`;
 // Annual billing charges 12 months at this fraction of the monthly price (0.9 = 10% off; deeper
 // discounts push the full-use margin below 50%).

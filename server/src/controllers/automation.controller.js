@@ -1,12 +1,14 @@
 import { getFirestore } from '../config/firebase.js';
 
 const STATUSES = ['active', 'paused'];
-const TRIGGER_TYPES = ['dm_keyword'];
-const ACTION_TYPES = ['send_dm', 'add_lead'];
+const TRIGGER_TYPES = ['dm_keyword', 'comment_keyword'];
+// reply_comment only makes sense for comments; send_dm on a comment is a private reply (comment-to-DM).
+const ACTION_TYPES = { dm_keyword: ['send_dm', 'add_lead'], comment_keyword: ['send_dm', 'reply_comment', 'add_lead'] };
+const PLATFORMS = ['instagram', 'facebook'];
 
 /**
  * Normalises and validates trigger/action input. Only the fields the automation runner
- * (services/instagram-dm.ts) reads are kept, so arbitrary client data is never stored.
+ * (services/meta/inbound.ts and comments.ts) reads are kept, so arbitrary client data is never stored.
  * Returns { value } or { error }.
  */
 function sanitizeRule({ trigger, action }) {
@@ -22,7 +24,7 @@ function sanitizeRule({ trigger, action }) {
         return { error: 'Add at least one keyword.' };
     }
 
-    if (!action || !ACTION_TYPES.includes(action.type)) {
+    if (!action || !ACTION_TYPES[trigger.type].includes(action.type)) {
         return { error: 'Pick a supported action.' };
     }
     const actionConfig = {};
@@ -30,6 +32,12 @@ function sanitizeRule({ trigger, action }) {
         const message = String(action.config?.message || '').trim().slice(0, 1000);
         if (!message) return { error: 'Write the message to send.' };
         actionConfig.message = message;
+    }
+    // Comments can also get a public reply ("Sent you a DM!"); reply_comment needs one.
+    if (trigger.type === 'comment_keyword' && action.type !== 'add_lead') {
+        const publicReply = String(action.config?.publicReply || '').trim().slice(0, 1000);
+        if (action.type === 'reply_comment' && !publicReply) return { error: 'Write the public reply.' };
+        if (publicReply) actionConfig.publicReply = publicReply;
     }
 
     return {
@@ -42,7 +50,7 @@ function sanitizeRule({ trigger, action }) {
 
 function sanitizeConnections(connections) {
     return Array.isArray(connections)
-        ? connections.filter((c) => typeof c === 'string' && c).slice(0, 50)
+        ? [...new Set(connections.filter((c) => PLATFORMS.includes(c)))]
         : [];
 }
 

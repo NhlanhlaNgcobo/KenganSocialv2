@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../lib/api';
-import { Settings2, Inbox, Send, ToggleLeft, ToggleRight, Trash2, Check, X, RefreshCw, PenSquare, Loader2 } from 'lucide-react';
+import { Settings2, Inbox, Send, ToggleLeft, ToggleRight, Trash2, Check, X, RefreshCw, PenSquare, Loader2, MessagesSquare, Lock, Clock } from 'lucide-react';
 import './DMManager.css';
 
 interface Automation {
@@ -23,6 +23,32 @@ interface QueuedMsg {
     aiSuggestedReply: string;
     platform: string;
     status: string;
+    windowEndsAt?: number | null;
+}
+
+interface InboxComment {
+    id: string;
+    platform: string;
+    fromName: string;
+    fromUsername: string;
+    text: string;
+    createdAt: number;
+    replies: { text: string; kind: 'public' | 'private'; by: string; at: number }[];
+    automation: { ruleName: string } | null;
+    privateReplySent: boolean;
+    privateReplyOpen: boolean;
+}
+
+const CHANNEL_LABEL: Record<string, string> = { instagram: 'Instagram', facebook: 'Messenger' };
+const COMMENT_LABEL: Record<string, string> = { instagram: 'Instagram', facebook: 'Facebook' };
+
+/** "Reply within 5h" / "closed": Meta allows replies only within 24 hours of the person's last message. */
+function windowLabel(endsAt?: number | null) {
+    if (!endsAt) return null;
+    const left = endsAt - Date.now();
+    if (left <= 0) return { open: false, text: 'Reply window closed' };
+    const h = Math.floor(left / 3600000);
+    return { open: true, text: h >= 1 ? `Reply within ${h}h` : `Reply within ${Math.max(1, Math.round(left / 60000))} min` };
 }
 
 const QUEUE_PLANS = ['creator', 'agency'];
@@ -31,7 +57,9 @@ const EMPTY_RULE = { platform: 'instagram', trigger: 'keyword', keyword: '', rep
 export default function DMManager() {
     const { user, plan } = useAuth() as any;
 
-    const [activeTab, setActiveTab] = useState<'automations' | 'inbox' | 'sent'>('inbox');
+    const [activeTab, setActiveTab] = useState<'automations' | 'inbox' | 'comments'>('inbox');
+    const [comments, setComments] = useState<InboxComment[]>([]);
+    const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
     const [automations, setAutomations] = useState<Automation[]>([]);
     const [queue, setQueue] = useState<QueuedMsg[]>([]);
     const [loading, setLoading] = useState(true);
@@ -61,8 +89,9 @@ export default function DMManager() {
             } else {
                 setQueue([]);
             }
-            const aData = await apiClient('/dm/automations');
+            const [aData, cData] = await Promise.all([apiClient('/dm/automations'), apiClient('/dm/comments')]);
             setAutomations(aData.automations || []);
+            setComments(cData.comments || []);
         } catch (err: any) {
             setLoadError(err.message || 'The inbox could not be loaded.');
         } finally {
@@ -149,6 +178,25 @@ export default function DMManager() {
         }
     };
 
+    const commentAction = async (c: InboxComment, action: 'reply' | 'private-reply' | 'dismiss') => {
+        setActionError('');
+        const text = (commentDrafts[c.id] || '').trim();
+        if (action !== 'dismiss' && !text) {
+            setActionError('Write a reply first.');
+            return;
+        }
+        setBusyId(c.id);
+        try {
+            await apiClient(`/dm/comments/${encodeURIComponent(c.id)}/${action}`, { method: 'POST', ...(action === 'dismiss' ? {} : { body: { text } }) });
+            setComments(prev => prev.filter(x => x.id !== c.id));
+            setCommentDrafts(prev => ({ ...prev, [c.id]: '' }));
+        } catch (err: any) {
+            setActionError(err.message || 'The reply could not be sent.');
+        } finally {
+            setBusyId(null);
+        }
+    };
+
     const openCreate = () => {
         setCreateError('');
         setNewAuto(EMPTY_RULE);
@@ -159,9 +207,12 @@ export default function DMManager() {
         <div className="dm-manager-container">
             <div className="dm-sidebar">
                 <div className="dm-nav">
-                    <h2>DM Studio</h2>
+                    <h2>Inbox</h2>
                     <button className={`nav-btn ${activeTab === 'inbox' ? 'active' : ''}`} onClick={() => setActiveTab('inbox')}>
                         <Inbox size={18} /> Review Inbox {queue.length > 0 && <span className="dm-count-badge">{queue.length}</span>}
+                    </button>
+                    <button className={`nav-btn ${activeTab === 'comments' ? 'active' : ''}`} onClick={() => setActiveTab('comments')}>
+                        <MessagesSquare size={18} /> Comments {comments.length > 0 && <span className="dm-count-badge">{comments.length}</span>}
                     </button>
                     <button className={`nav-btn ${activeTab === 'automations' ? 'active' : ''}`} onClick={() => setActiveTab('automations')}>
                         <Settings2 size={18} /> Keyword Automations
@@ -178,7 +229,7 @@ export default function DMManager() {
                     {activeTab === 'inbox' && (
                         <div className="inbox-view">
                             <div className="view-header">
-                                <h3>AI Smart Queue</h3>
+                                <h3>Messages to review</h3>
                                 <button className="btn-icon" onClick={fetchState} disabled={loading} aria-label="Reload" title="Reload">
                                     <RefreshCw size={16} className={loading ? 'spin' : ''} />
                                 </button>
@@ -205,11 +256,18 @@ export default function DMManager() {
                                         const suggestion = (msg.aiSuggestedReply || '').trim();
                                         const isEditing = editingMsgId === msg.id;
                                         const busy = busyId === msg.id;
+                                        const win = windowLabel(msg.windowEndsAt);
+                                        const closed = win ? !win.open : false;
                                         return (
                                             <div key={msg.id} className="queue-card">
                                                 <div className="msg-header">
-                                                    <span className="platform-tag">{msg.platform}</span>
+                                                    <span className="platform-tag">{CHANNEL_LABEL[msg.platform] || msg.platform}</span>
                                                     <strong>{msg.senderName}</strong>
+                                                    {win && (
+                                                        <span className={`dm-window ${win.open ? '' : 'is-closed'}`} title="Meta allows replies only within 24 hours of the person's last message.">
+                                                            <Clock size={12} /> {win.text}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <p className="original-msg">"{msg.originalMessage}"</p>
 
@@ -235,7 +293,7 @@ export default function DMManager() {
                                                             <button
                                                                 className="btn-primary"
                                                                 onClick={() => processMsg(msg.id, 'edit-send', editDraft)}
-                                                                disabled={busy || !editDraft.trim()}
+                                                                disabled={busy || closed || !editDraft.trim()}
                                                             >
                                                                 {busy ? <Loader2 size={14} className="spin" /> : <Send size={14} />} Send Edit
                                                             </button>
@@ -246,8 +304,8 @@ export default function DMManager() {
                                                             <button
                                                                 className="btn-primary"
                                                                 onClick={() => processMsg(msg.id, 'send', suggestion)}
-                                                                disabled={busy || !suggestion}
-                                                                title={suggestion ? undefined : 'Edit the reply first'}
+                                                                disabled={busy || closed || !suggestion}
+                                                                title={closed ? 'The 24-hour reply window has closed' : suggestion ? undefined : 'Edit the reply first'}
                                                             >
                                                                 {busy ? <Loader2 size={14} className="spin" /> : <Check size={16} />} Approve & Send
                                                             </button>
@@ -259,6 +317,67 @@ export default function DMManager() {
                                                             </button>
                                                         </>
                                                     )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── COMMENTS VIEW ── */}
+                    {activeTab === 'comments' && (
+                        <div className="inbox-view">
+                            <div className="view-header">
+                                <h3>Comments</h3>
+                                <button className="btn-icon" onClick={fetchState} disabled={loading} aria-label="Reload" title="Reload">
+                                    <RefreshCw size={16} className={loading ? 'spin' : ''} />
+                                </button>
+                            </div>
+                            <p className="dm-hint">
+                                New comments on your Instagram posts and Facebook Page appear here. Reply publicly, or send the one private message Meta allows per comment (within 7 days).
+                            </p>
+                            {loading && comments.length === 0 ? (
+                                <div className="empty-state"><Loader2 size={20} className="spin" /> Loading comments…</div>
+                            ) : comments.length === 0 ? (
+                                <div className="empty-state">No comments waiting for a reply.</div>
+                            ) : (
+                                <div className="queue-list">
+                                    {comments.map(c => {
+                                        const busy = busyId === c.id;
+                                        const draft = commentDrafts[c.id] || '';
+                                        return (
+                                            <div key={c.id} className="queue-card">
+                                                <div className="msg-header">
+                                                    <span className="platform-tag">{COMMENT_LABEL[c.platform] || c.platform}</span>
+                                                    <strong>{c.fromUsername ? `@${c.fromUsername}` : c.fromName || 'Someone'}</strong>
+                                                    <span className="dm-window">{new Date(c.createdAt).toLocaleString()}</span>
+                                                </div>
+                                                <p className="original-msg">"{c.text}"</p>
+                                                <label className="sr-only" htmlFor={`reply-${c.id}`}>Your reply</label>
+                                                <textarea
+                                                    id={`reply-${c.id}`}
+                                                    className="edit-textarea"
+                                                    value={draft}
+                                                    onChange={e => setCommentDrafts(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                                    placeholder="Write your reply…"
+                                                />
+                                                <div className="action-row">
+                                                    <button className="btn-primary" onClick={() => commentAction(c, 'reply')} disabled={busy || !draft.trim()}>
+                                                        {busy ? <Loader2 size={14} className="spin" /> : <Send size={14} />} Reply publicly
+                                                    </button>
+                                                    <button
+                                                        className="btn-outline"
+                                                        onClick={() => commentAction(c, 'private-reply')}
+                                                        disabled={busy || !draft.trim() || !c.privateReplyOpen}
+                                                        title={c.privateReplySent ? 'A private reply was already sent' : !c.privateReplyOpen ? 'Private replies are allowed within 7 days of the comment' : undefined}
+                                                    >
+                                                        <Lock size={14} /> Reply privately
+                                                    </button>
+                                                    <button className="btn-ghost" onClick={() => commentAction(c, 'dismiss')} disabled={busy}>
+                                                        <X size={16} /> Dismiss
+                                                    </button>
                                                 </div>
                                             </div>
                                         );
@@ -286,7 +405,7 @@ export default function DMManager() {
                                         <div key={a.id} className={`auto-card ${a.isActive ? 'active' : 'paused'}`}>
                                             <div className="card-top">
                                                 <div>
-                                                    <span className="platform-tag">{a.platform}</span>
+                                                    <span className="platform-tag">{CHANNEL_LABEL[a.platform] || a.platform}</span>
                                                     <h4 style={{ margin: '8px 0' }}>Trigger: {(a.trigger || 'keyword').replace('_', ' ')}</h4>
                                                     {a.keyword && <span className="keyword-chip">"{a.keyword}"</span>}
                                                 </div>
@@ -337,7 +456,8 @@ export default function DMManager() {
                         <div className="form-group">
                             <label>Platform</label>
                             <select value={newAuto.platform} onChange={e => setNewAuto({ ...newAuto, platform: e.target.value })} className="input-dark">
-                                <option value="instagram">Instagram</option>
+                                <option value="instagram">Instagram DMs</option>
+                                <option value="facebook">Facebook Messenger</option>
                             </select>
                         </div>
 

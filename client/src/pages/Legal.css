@@ -725,3 +725,19 @@
         font-size: 26px;
     }
 }
+/* Tabs and sidebar entries are links (one URL per document); headings are real h1/h2 for reviewers and screen readers. */
+a.legal-nav-tab,
+a.legal-sidebar-link {
+    text-decoration: none;
+}
+h1.legal-hero-title,
+h2.legal-section-heading {
+    margin-top: 0;
+}
+.legal-section-body a,
+.legal-contact-footer a {
+    color: var(--legal-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    overflow-wrap: anywhere;
+}
