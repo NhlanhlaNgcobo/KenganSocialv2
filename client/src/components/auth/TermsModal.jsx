@@ -172,20 +172,20 @@ export default function TermsModal({ onAccept, onDecline }) {
                         Conditions and Privacy Policy are available in the{' '}
                         <span
                             className="terms-full-docs-link"
-                            onClick={() => navigate('/legal')}
+                            onClick={() => navigate('/terms')}
                             role="link"
                             tabIndex={0}
-                            onKeyDown={(e) => e.key === 'Enter' && navigate('/legal')}
+                            onKeyDown={(e) => e.key === 'Enter' && navigate('/terms')}
                         >
                             Legal section of your account settings
                         </span>
                         , or by visiting{' '}
                         <span
                             className="terms-full-docs-link"
-                            onClick={() => navigate('/legal')}
+                            onClick={() => navigate('/terms')}
                             role="link"
                             tabIndex={0}
-                            onKeyDown={(e) => e.key === 'Enter' && navigate('/legal')}
+                            onKeyDown={(e) => e.key === 'Enter' && navigate('/terms')}
                         >
                             view full documents →
                         </span>

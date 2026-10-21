@@ -1,0 +1,37 @@
+{
+    "schema": "kengan.template/1",
+    "id": "beat-montage-15",
+    "name": "Beat Montage 15",
+    "description": "Twelve shots cut on the beat of your song: a held opener, bursts of two-beat cuts with flash, whip and zoom transitions, a hero moment and a sign-off. About 15 seconds at 120 BPM; follows your music's tempo.",
+    "category": "montage",
+    "tags": ["beat sync", "music", "fast"],
+    "canvas": { "ratio": "9:16", "fps": 30, "background": "#000000" },
+    "timing": { "unit": "beats", "bpm": 120 },
+    "slots": [
+        { "id": "opener", "label": "Opener", "length": 4, "camera": "push-in", "keyframes": { "scale": [{ "t": 0, "v": 1.18, "ease": "expo-out" }, { "t": 0.45, "v": 1, "ease": "linear" }] } },
+        { "id": "burst-1", "label": "Burst 1", "length": 2, "transitionIn": { "type": "flash", "duration": 0.25 } },
+        { "id": "burst-2", "label": "Burst 2", "length": 2, "transitionIn": { "type": "ks-whip-carry", "duration": 0.35 } },
+        { "id": "burst-3", "label": "Burst 3", "length": 2, "transitionIn": { "type": "zoomin", "duration": 0.3 } },
+        { "id": "burst-4", "label": "Burst 4", "length": 2, "transitionIn": { "type": "glitchbands", "duration": 0.25 } },
+        { "id": "hero", "label": "Hero moment", "length": 4, "camera": "zoom-in", "transitionIn": { "type": "ks-crash-reveal", "duration": 0.4 }, "effects": [{ "type": "ks-impact-shake", "amount": 0.35 }] },
+        { "id": "burst-5", "label": "Burst 5", "length": 2, "transitionIn": { "type": "flash", "duration": 0.25 } },
+        { "id": "burst-6", "label": "Burst 6", "length": 2, "transitionIn": { "type": "ks-whip-carry", "duration": 0.35 } },
+        { "id": "burst-7", "label": "Burst 7", "length": 2, "transitionIn": { "type": "zoomin", "duration": 0.3 } },
+        { "id": "burst-8", "label": "Burst 8", "length": 2, "transitionIn": { "type": "flash", "duration": 0.25 } },
+        { "id": "finale", "label": "Finale", "length": 4, "camera": "pull-out", "transitionIn": { "type": "ks-spin-catch", "duration": 0.4 } },
+        { "id": "sign-off", "label": "Sign-off", "length": 2, "transitionIn": { "type": "fadeblack", "duration": 0.4 } }
+    ],
+    "texts": [
+        { "id": "title", "label": "Title", "content": "WEEKEND MODE", "slot": "opener", "start": 0.5, "length": 3.5, "motion": "title-drop", "style": { "fontSize": 120, "fontFamily": "Anton", "fontWeight": "bold", "color": "#ffffff", "y": -560 } },
+        { "id": "tagline", "label": "Tagline", "content": "no plans just vibes", "slot": "hero", "start": 0, "length": 4, "motion": "kinetic-stack", "style": { "fontSize": 84, "fontFamily": "Poppins", "fontWeight": "bold", "color": "#ffffff", "y": 520 } },
+        { "id": "cta", "label": "Sign-off", "content": "@yourname", "slot": "sign-off", "start": 0, "length": 2, "motion": "pop", "style": { "fontSize": 72, "fontFamily": "Poppins", "fontWeight": "bold", "color": "#0a0a0b", "backgroundColor": "#facc15", "y": 0 } }
+    ],
+    "music": { "source": "user", "volume": 0.9, "originalVolume": 0, "startAt": 0, "beatSync": true },
+    "params": [
+        { "id": "title", "type": "text", "label": "Title", "default": "WEEKEND MODE", "targets": ["texts.title.content"] },
+        { "id": "tagline", "type": "text", "label": "Tagline", "default": "no plans just vibes", "targets": ["texts.tagline.content"] },
+        { "id": "cta", "type": "text", "label": "Sign-off", "default": "@yourname", "targets": ["texts.cta.content"] },
+        { "id": "accent", "type": "color", "label": "Accent colour", "default": "#facc15", "targets": ["texts.cta.style.backgroundColor"] },
+        { "id": "music-volume", "type": "number", "label": "Music volume", "min": 0, "max": 1.5, "default": 0.9, "targets": ["music.volume"] }
+    ]
+}

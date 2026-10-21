@@ -10,6 +10,7 @@ export const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe';
  */
 export function run(bin, args, { cwd, duration, onProgress } = {}) {
     return new Promise((resolve, reject) => {
+        const started = Date.now();
         const child = spawn(bin, args, { cwd, windowsHide: true });
         let stderr = '';
         let stdout = '';
@@ -27,6 +28,7 @@ export function run(bin, args, { cwd, duration, onProgress } = {}) {
         });
         child.on('error', (err) => reject(new Error(`${path.basename(bin)} could not start: ${err.message}`)));
         child.on('close', (code) => {
+            if (process.env.KENGAN_RENDER_DEBUG && path.basename(bin).startsWith('ffmpeg')) console.log(`[ffmpeg] ${((Date.now() - started) / 1000).toFixed(1)}s ${args.find((a) => /\.(mp4|m4a)$/.test(a) && !args[args.indexOf(a) - 1]?.startsWith('-i')) || args.slice(-1)[0]}`);
             if (code === 0) resolve(stdout);
             else reject(new Error(`${path.basename(bin)} failed (${code}): ${stderr.split('\n').slice(-6).join(' ').trim()}`));
         });
@@ -44,5 +46,12 @@ export async function probe(filePath) {
         width: video?.width ?? 0,
         height: video?.height ?? 0,
         duration: Number(data.format?.duration) || 0,
+        // The picture's own length; the container duration also counts audio priming/padding.
+        videoDuration: Number(video?.duration) || 0,
+        /** When the picture starts (concat can push it after the audio's encoder delay). */
+        videoStart: Number(video?.start_time) || 0,
+        // Display orientation (FFmpeg auto-rotates phone video by this) and pixel shape.
+        rotation: Number(video?.side_data_list?.find((d) => d.rotation !== undefined)?.rotation ?? video?.tags?.rotate ?? 0) || 0,
+        squarePixels: !video?.sample_aspect_ratio || ['1:1', '0:1', 'N/A'].includes(video.sample_aspect_ratio),
     };
 }

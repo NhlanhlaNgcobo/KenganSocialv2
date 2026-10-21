@@ -26,7 +26,7 @@ import LandingPage from './pages/LandingPage';
 import PricingPage from './pages/PricingPage';
 import AboutPage from './pages/AboutPage';
 import HelpCenterPage from './pages/HelpCenterPage';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import LegalDocPage from './pages/LegalDocPage';
 import ConnectionsPage from './pages/ConnectionsPage';
 import ContentStudioPage from './pages/ContentStudioPage';
 import CalendarPage from './pages/Calendar/CalendarPage';
@@ -37,7 +37,6 @@ import LeadsBoard from './pages/Leads/LeadsBoard';
 import BillingPage from './pages/BillingPage';
 import SettingsPage from './pages/SettingsPage';
 import VideoEditorPage from './pages/VideoEditorPage';
-import LegalPage from './pages/LegalPage';
 import OnboardingPage from './pages/OnboardingPage';
 import TrendingFeed from './pages/Trending/TrendingFeed';
 import DMManager from './pages/DM/DMManager';
@@ -60,8 +59,13 @@ function App() {
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/help" element={<HelpCenterPage />} />
-              <Route path="/privacy" element={<PrivacyPolicyPage />} />
-              <Route path="/legal" element={<LegalPage />} />
+              {/* Public legal pages: platform API reviews require them reachable without signing in. On Vercel a
+                  direct visit to /terms, /privacy and /data-deletion gets the static HTML copy (vercel.json). */}
+              <Route path="/terms" element={<LegalDocPage doc="terms" />} />
+              <Route path="/privacy" element={<LegalDocPage doc="privacy" />} />
+              <Route path="/data-deletion" element={<LegalDocPage doc="data-deletion" />} />
+              <Route path="/data-deletion/status" element={<LegalDocPage doc="data-deletion" />} />
+              <Route path="/legal" element={<Navigate to="/terms" replace />} />
 
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />

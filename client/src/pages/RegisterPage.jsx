@@ -159,7 +159,7 @@ export default function RegisterPage() {
                                 onChange={(e) => setTermsAccepted(e.target.checked)}
                             />
                             <span>
-                                I agree to the <Link to="/legal" onClick={e => e.stopPropagation()}>Terms of Service</Link>,{' '}
+                                I agree to the <Link to="/terms" onClick={e => e.stopPropagation()}>Terms of Service</Link>,{' '}
                                 <Link to="/privacy" onClick={e => e.stopPropagation()}>Privacy Policy</Link>, and confirm I am 18+ years old.
                             </span>
                         </label>

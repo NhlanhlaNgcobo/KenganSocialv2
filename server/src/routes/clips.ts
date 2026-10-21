@@ -1,3 +1,4 @@
+import { features, YOUTUBE_LINK_IMPORT_OFF } from '../utils/features';
 import express from 'express';
 import type { Request, Response } from 'express';
 import path from 'path';
@@ -237,6 +238,7 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('clipAnalysis'), asy
  * then the normal pipeline runs. Only for videos the user owns or has the rights to repurpose.
  */
 router.post('/from-url', withWorkspace, planRateLimit(), checkLimit('clipAnalysis'), async (req: Request, res: Response) => {
+    if (!features.youtubeLinkImport()) return res.status(403).json({ error: YOUTUBE_LINK_IMPORT_OFF, code: 'YOUTUBE_LINK_IMPORT_OFF' });
     const url = String(req.body?.url || '').trim();
     const match = YOUTUBE_URL.exec(url);
     if (!match) return res.status(400).json({ error: 'Paste a YouTube video link (youtube.com/watch, youtu.be or /shorts).' });

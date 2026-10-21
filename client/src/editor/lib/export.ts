@@ -21,6 +21,14 @@ export interface ExportProgress {
 function exportTransform(el: MediaElement, isMain: boolean) {
     const t = getTransform(el);
     if (!isMain) t.animation = 'none'; // zoom animation renders on the main track only
+    // A keyframed property replaces the static value (and camera motion) for that property.
+    const kf = el.keyframes || {};
+    if (kf.scale?.length) {
+        t.scale = 1;
+        t.animation = 'none';
+    }
+    if (kf.rotation?.length) t.rotation = 0;
+    if (kf.x?.length || kf.y?.length) t.animation = 'none';
     if (isIdentity(t)) return null;
     const [scaleStart, scaleEnd] = scaleRange(t);
     return { scaleStart, scaleEnd, x: t.x, y: t.y, ...cameraEndpoints(t), rotation: t.rotation, flipH: t.flipH, flipV: t.flipV };
@@ -50,6 +58,7 @@ export function buildEditConfig(uploadIds: Record<string, string>) {
             transform: exportTransform(el, isMain),
             // Effects and transitions render on the main track only (preview matches).
             effects: isMain ? el.effects || [] : [],
+            keyframes: el.keyframes || null,
             color: el.color || null,
             transitionIn: isMain ? el.transitionIn || null : null,
         };
@@ -86,6 +95,7 @@ export function buildEditConfig(uploadIds: Record<string, string>) {
                 x: el.x,
                 y: el.y,
                 opacity: el.opacity,
+                keyframes: el.keyframes || null,
                 rotation: el.rotation || 0,
                 strokeColor: el.strokeColor || 'transparent',
                 strokeWidth: el.strokeWidth || 0,
@@ -129,7 +139,8 @@ function collectMediaIds() {
     return ids;
 }
 
-export async function exportTimeline(onProgress: (p: ExportProgress) => void, signal?: AbortSignal): Promise<Blob> {
+/** Renders the timeline; `range` renders only that part (exact preview, same pipeline). */
+export async function exportTimeline(onProgress: (p: ExportProgress) => void, signal?: AbortSignal, range?: { start: number; end: number }): Promise<Blob> {
     const mediaIds = collectMediaIds();
     if (!mediaIds.length && !useTimelineStore.getState().tracks.some((t) => t.type === 'text' && t.elements.length)) {
         throw new Error('Add something to the timeline before exporting.');
@@ -140,7 +151,7 @@ export async function exportTimeline(onProgress: (p: ExportProgress) => void, si
         const uploadIds = await useMediaStore.getState().ensureUploaded(mediaIds, (done, total) =>
             onProgress({ stage: 'uploading', progress: Math.round((done / total) * 100), message: `Uploading media ${done}/${total}` })
         );
-        return editorApi.startRender(buildEditConfig(uploadIds));
+        return editorApi.startRender(range ? { ...buildEditConfig(uploadIds), range } : buildEditConfig(uploadIds));
     };
 
     let jobId: string;

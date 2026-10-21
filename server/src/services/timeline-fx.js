@@ -94,7 +94,8 @@ export function normalizeEffects(raw) {
  * Effect filters for a canvas-sized frame (W×H), applied after framing so they cover the whole
  * picture. Returns a leading-comma string, like the other builders.
  */
-export function effectFilters(effects, W, H, fps = 30) {
+/** `et`: element time expression (seconds from the clip's start), so effects match the preview. */
+export function effectFilters(effects, W, H, fps = 30, et = 't') {
     const parts = [];
     for (const [index, { type, amount: a }] of (effects || []).entries()) {
         if (type.startsWith('ks-')) {
@@ -122,7 +123,7 @@ export function effectFilters(effects, W, H, fps = 30) {
         if (type === 'shake') {
             const amp = (4 + a * 26).toFixed(1);
             const pad = Math.ceil(Number(amp) * 2 + 4);
-            parts.push(`scale=${W + pad * 2}:${H + pad * 2}`, `crop=${W}:${H}:x='${pad}+${amp}*sin(n*1.7)':y='${pad}+${amp}*cos(n*2.3)'`);
+            parts.push(`scale=${W + pad * 2}:${H + pad * 2}`, `crop=${W}:${H}:x='${pad}+${amp}*sin((${et})*30*1.7)':y='${pad}+${amp}*cos((${et})*30*2.3)'`);
         }
         if (type === 'echo') parts.push(`lagfun=decay=${(0.86 + a * 0.12).toFixed(3)}`);
         if (type === 'sketch') parts.push('edgedetect=mode=colormix:high=0.2:low=0.06');

@@ -51,7 +51,12 @@ export default function RepurposePage() {
     const [ytUrl, setYtUrl] = useState('');
     const [ytRights, setYtRights] = useState(false);
     // Video → shorts: a YouTube link or a file from this device, plus the shared shorts settings.
-    const [videoFrom, setVideoFrom] = useState('link');
+    const [videoFrom, setVideoFrom] = useState('upload');
+    // YouTube link import is a server switch (off by default; see server/src/utils/features.ts).
+    const [ytLinks, setYtLinks] = useState(false);
+    useEffect(() => {
+        apiClient('/features').then((f) => setYtLinks(!!f?.youtubeLinkImport)).catch(() => setYtLinks(false));
+    }, []);
     const [videoFile, setVideoFile] = useState(null);
     const [videoInfo, setVideoInfo] = useState(null);
     const [uploadPct, setUploadPct] = useState(null);
@@ -233,8 +238,8 @@ export default function RepurposePage() {
 
                     {source === 'url' ? (
                         <label className="field">
-                            <span>Article, page or YouTube video</span>
-                            <input className="input" placeholder="yourblog.com/latest-post or a YouTube link" value={url} onChange={(e) => setUrl(e.target.value)} disabled={busy} />
+                            <span>{ytLinks ? 'Article, page or YouTube video' : 'Article or page'}</span>
+                            <input className="input" placeholder={ytLinks ? 'yourblog.com/latest-post or a YouTube link' : 'yourblog.com/latest-post'} value={url} onChange={(e) => setUrl(e.target.value)} disabled={busy} />
                             <small>
                                 {linkIsYoutube
                                     ? 'We read the video’s captions (or transcribe it if it has none) and write posts from what is said.'
@@ -294,9 +299,11 @@ export default function RepurposePage() {
                     {source === 'youtube' ? (
                         <>
                             <div className="segmented" role="tablist" aria-label="Video source">
-                                <button role="tab" aria-selected={videoFrom === 'link'} className={videoFrom === 'link' ? 'is-active' : ''} onClick={() => setVideoFrom('link')} disabled={busy}>
-                                    <Youtube size={15} /> YouTube link
-                                </button>
+                                {ytLinks ? (
+                                    <button role="tab" aria-selected={videoFrom === 'link'} className={videoFrom === 'link' ? 'is-active' : ''} onClick={() => setVideoFrom('link')} disabled={busy}>
+                                        <Youtube size={15} /> YouTube link
+                                    </button>
+                                ) : null}
                                 <button role="tab" aria-selected={videoFrom === 'upload'} className={videoFrom === 'upload' ? 'is-active' : ''} onClick={() => setVideoFrom('upload')} disabled={busy}>
                                     <Upload size={15} /> Upload from device
                                 </button>

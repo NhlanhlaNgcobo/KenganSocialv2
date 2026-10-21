@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { buildLut, LOOK_NAMES, neutralColor, sampleLut } from '../../lib/color-pipeline.js';
 import { canTransition, DEFAULT_TRANSITION_SECONDS, EFFECTS, effectPreview, TRANSITION_GROUPS, TRANSITIONS, transitionStyles } from '../../lib/fx';
 import { useMediaStore } from '../../stores/media-store';
+import { usePlaybackStore } from '../../stores/playback-store';
 import { useTimelineStore } from '../../stores/timeline-store';
 import { useUiStore } from '../../stores/ui-store';
 import type { ClipEffect, ColorSettings, EffectType, MediaElement, TransitionType } from '../../types';
@@ -183,19 +184,54 @@ export function TransitionsView() {
     const visible = TRANSITIONS.filter((t) => matchesPreset(t.type, `${t.label} ${t.description || ''}`, query, collection));
     const overlayClips = useTimelineStore((s) => s.tracks.filter((t) => t.type === 'media' && !t.isMain).reduce((n, t) => n + t.elements.length, 0));
 
-    // Cuts: each clip that directly follows another. Selected clips → their incoming cut; else every cut.
-    const cuts = clips.map((c, i) => ({ clip: c, prev: clips[i - 1] })).filter((x) => canTransition(x.prev, x.clip));
-    // A selected clip means the cut into it, or the cut after it when it is the first clip.
-    // If the selection touches no cut, every cut is used.
+    // Cuts: each clip that directly follows another (identified by the clip after the cut).
+    const cuts = clips.map((c, i) => ({ clip: c, prev: clips[i - 1], number: 0 })).filter((x) => canTransition(x.prev, x.clip));
+    cuts.forEach((c, i) => (c.number = i + 1));
+    // Which cuts a transition goes on, in order of precedence:
+    // 1. cuts picked in the strip below (or by clicking a cut on the timeline);
+    // 2. the cut into each selected clip (the cut after it for the first clip);
+    // 3. the cut nearest the playhead. Every cut only via "All cuts".
+    const picked = useUiStore((s) => s.transitionCuts);
+    const setPicked = useUiStore((s) => s.setTransitionCuts);
+    const pickedCuts = cuts.filter((x) => picked.includes(x.clip.id));
     const selectedCuts = cuts.filter((x) => chosen.includes(x.clip) || (chosen.includes(x.prev!) && !cuts.some((y) => y.clip === x.prev)));
-    const targetCuts = hasSelection ? selectedCuts : cuts;
+    const nearestId = usePlaybackStore((s) => {
+        let best: string | null = null;
+        let gap = Infinity;
+        for (const c of cuts) {
+            const d = Math.abs(c.clip.startTime - s.currentTime);
+            if (d < gap) {
+                gap = d;
+                best = c.clip.id;
+            }
+        }
+        return best;
+    });
+    const nearest = cuts.filter((x) => x.clip.id === nearestId);
+    const source = pickedCuts.length ? 'picked' : hasSelection && selectedCuts.length ? 'selection' : 'playhead';
+    const targetCuts = source === 'picked' ? pickedCuts : source === 'selection' ? selectedCuts : nearest;
+    const allPicked = cuts.length > 0 && pickedCuts.length === cuts.length;
+
+    // Selecting clips on the timeline takes over from earlier picks.
+    const selectionKey = chosen.map((c) => c.id).join(',');
+    useEffect(() => {
+        if (selectionKey) setPicked([]);
+    }, [selectionKey, setPicked]);
+
+    const togglePick = (id: string, add: boolean) => {
+        const current = pickedCuts.map((x) => x.clip.id);
+        if (!add) return setPicked(current.length === 1 && current[0] === id ? [] : [id]);
+        setPicked(current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
+    };
+
+    const describe = (list: typeof cuts) => (list.length === 1 ? `cut ${list[0].number}` : list.length === cuts.length ? `all ${list.length} cuts` : `cuts ${list.map((x) => x.number).join(', ')}`);
 
     const apply = (type: TransitionType | null) => {
-        if (!main || !targetCuts.length) return notify(cuts.length ? 'Select a clip that directly follows another.' : 'Put two clips next to each other on the main track first.', 'error');
+        if (!main || !targetCuts.length) return notify(cuts.length ? 'Pick a cut below or click one on the timeline.' : 'Put two clips next to each other on the main track first.', 'error');
         const timeline = useTimelineStore.getState();
         timeline.pushHistory();
         for (const { clip } of targetCuts) timeline.updateElement(main.id, clip.id, { transitionIn: type ? { type, duration } : null }, false);
-        notify(type ? `${TRANSITIONS.find((t) => t.type === type)?.label} on ${targetCuts.length} cut${targetCuts.length === 1 ? '' : 's'}.` : `Removed transitions from ${targetCuts.length} cut${targetCuts.length === 1 ? '' : 's'}.`, 'success');
+        notify(type ? `${TRANSITIONS.find((t) => t.type === type)?.label} on ${describe(targetCuts)}.` : `Removed the transition from ${describe(targetCuts)}.`, 'success');
     };
 
     return (
@@ -203,13 +239,48 @@ export function TransitionsView() {
             <div className="ke-view__head">
                 <h3>Transitions</h3>
             </div>
-            <p className="ke-note">
-                {cuts.length
-                    ? selectedCuts.length
-                        ? `Applies to ${targetCuts.length} cut${targetCuts.length === 1 ? '' : 's'} at the selected clip${chosen.length === 1 ? '' : 's'}. Click empty timeline space to target every cut.`
-                        : `Applies to all ${cuts.length} cut${cuts.length === 1 ? '' : 's'}. Select a clip to change only the cut into it.`
-                    : 'Add at least two videos or images to the main track. Transitions go on the cuts between them.'}
-            </p>
+            {cuts.length ? (
+                <>
+                    <div className="ke-cuts" role="group" aria-label="Cuts">
+                        {cuts.map((x) => {
+                            const on = targetCuts.includes(x);
+                            const label = x.clip.transitionIn ? TRANSITIONS.find((t) => t.type === x.clip.transitionIn?.type)?.label || 'Transition' : 'Cut';
+                            return (
+                                <button
+                                    key={x.clip.id}
+                                    className={`ke-cut ${on ? 'is-on' : ''} ${x.clip.transitionIn ? 'has-tr' : ''}`}
+                                    aria-pressed={on}
+                                    title={`Cut ${x.number}: ${x.prev?.name} → ${x.clip.name} (${label}). Ctrl/Shift-click to pick several.`}
+                                    onClick={(e) => {
+                                        togglePick(x.clip.id, e.ctrlKey || e.metaKey || e.shiftKey);
+                                        usePlaybackStore.getState().seek(x.clip.startTime);
+                                    }}
+                                >
+                                    <strong>{x.number}</strong>
+                                    <span>{label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <div className="ke-inline">
+                        <button className={`ke-chip ${allPicked ? 'is-active' : ''}`} onClick={() => setPicked(allPicked ? [] : cuts.map((x) => x.clip.id))}>
+                            All cuts
+                        </button>
+                        {pickedCuts.length ? (
+                            <button className="ke-chip" onClick={() => setPicked([])}>
+                                Clear picks
+                            </button>
+                        ) : null}
+                    </div>
+                    <p className="ke-note">
+                        {targetCuts.length
+                            ? `Applies to ${describe(targetCuts)}${source === 'playhead' ? ' (nearest the playhead)' : source === 'selection' ? ' (at the selected clip)' : ''}. Click a cut here or on the timeline to choose; Ctrl-click to pick several. Each cut keeps its own transition.`
+                            : 'Pick a cut above.'}
+                    </p>
+                </>
+            ) : (
+                <p className="ke-note">Add at least two videos or images to the main track. Transitions go on the cuts between them.</p>
+            )}
             {overlayClips > 0 ? (
                 <div className="ke-alert">
                     <p>

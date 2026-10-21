@@ -1,0 +1,30 @@
+{
+    "schema": "kengan.template/1",
+    "id": "animated-promo-10",
+    "name": "Animated Promo 10",
+    "description": "A square 10-second product promo: the hero shot pops in, details crash and slide in, an animated offer and a call to action in your brand colour.",
+    "category": "promo",
+    "tags": ["product", "sale", "brand"],
+    "canvas": { "ratio": "1:1", "fps": 30, "background": "#0a0a0b" },
+    "timing": { "unit": "seconds" },
+    "slots": [
+        { "id": "hero", "label": "Hero product", "length": 1.5, "keyframes": { "scale": [{ "t": 0, "v": 0.6, "ease": "back-out" }, { "t": 0.45, "v": 1, "ease": "linear" }], "opacity": [{ "t": 0, "v": 0, "ease": "ease-out" }, { "t": 0.2, "v": 1, "ease": "linear" }] } },
+        { "id": "detail-1", "label": "Detail", "length": 2, "camera": "push-in", "transitionIn": { "type": "ks-crash-reveal", "duration": 0.35 } },
+        { "id": "in-use", "label": "In use", "length": 2, "transitionIn": { "type": "slideleft", "duration": 0.3 }, "keyframes": { "rotation": [{ "t": 0, "v": -4, "ease": "elastic-out" }, { "t": 0.6, "v": 0, "ease": "linear" }] } },
+        { "id": "detail-2", "label": "Second detail", "length": 2, "camera": "zoom-in", "transitionIn": { "type": "zoomin", "duration": 0.3 }, "effects": [{ "type": "ks-spotlight", "amount": 0.3 }] },
+        { "id": "pack-shot", "label": "Pack shot", "length": 2.5, "transitionIn": { "type": "flash", "duration": 0.25 }, "keyframes": { "scale": [{ "t": 0, "v": 1, "ease": "linear" }, { "t": 2.5, "v": 1.1, "ease": "linear" }] } }
+    ],
+    "texts": [
+        { "id": "headline", "label": "Headline", "content": "NEW DROP", "slot": "hero", "start": 0.2, "length": 1.3, "motion": "title-grow", "style": { "fontSize": 120, "fontFamily": "Anton", "fontWeight": "bold", "color": "#ffffff", "y": -330 } },
+        { "id": "offer", "label": "Offer", "content": "50% OFF", "slot": "in-use", "start": 0.15, "length": 1.8, "motion": "pop", "style": { "fontSize": 96, "fontFamily": "Anton", "fontWeight": "bold", "color": "#0a0a0b", "backgroundColor": "#a3e635", "y": 330 }, "keyframes": { "scale": [{ "t": 0.3, "v": 1, "ease": "ease-in-out" }, { "t": 0.6, "v": 1.12, "ease": "ease-in-out" }, { "t": 0.9, "v": 1, "ease": "linear" }] } },
+        { "id": "cta", "label": "Call to action", "content": "Shop now", "slot": "pack-shot", "start": 0.4, "length": 2.1, "motion": "pop", "style": { "fontSize": 80, "fontFamily": "Poppins", "fontWeight": "bold", "color": "#0a0a0b", "backgroundColor": "#a3e635", "y": 340 } }
+    ],
+    "music": { "source": "user", "volume": 0.8, "originalVolume": 0, "startAt": 0, "beatSync": false },
+    "params": [
+        { "id": "headline", "type": "text", "label": "Headline", "default": "NEW DROP", "targets": ["texts.headline.content"] },
+        { "id": "offer", "type": "text", "label": "Offer", "default": "50% OFF", "targets": ["texts.offer.content"] },
+        { "id": "cta", "type": "text", "label": "Call to action", "default": "Shop now", "targets": ["texts.cta.content"] },
+        { "id": "brand", "type": "color", "label": "Brand colour", "default": "#a3e635", "targets": ["texts.offer.style.backgroundColor", "texts.cta.style.backgroundColor"] },
+        { "id": "music-volume", "type": "number", "label": "Music volume", "min": 0, "max": 1.5, "default": 0.8, "targets": ["music.volume"] }
+    ]
+}

@@ -24,6 +24,7 @@ import LandingNavbar from '../components/layout/LandingNavbar';
 import { useAuth } from '../context/AuthContext';
 import CaptionShowcase from './Landing/CaptionShowcase';
 import TutorialDemo from './Landing/TutorialDemo';
+import { COMPANY } from '../legal/company';
 import { useReveal } from './Landing/useReveal';
 import './LandingPage.css';
 
@@ -36,8 +37,16 @@ const NETWORKS = [
     { icon: Facebook, label: 'Facebook' },
 ];
 
+/** What each account connection does: platform reviewers check the site explains it. */
+const INTEGRATIONS = [
+    { icon: Instagram, name: 'Instagram', text: 'Publish Reels you create or schedule, see your account insights, and answer direct messages from one inbox, with automated replies only if you switch them on. Needs a professional account linked to a Facebook Page.' },
+    { icon: Facebook, name: 'Facebook Pages', text: 'Publish posts and videos to the Page you choose, and see its follower count.' },
+    { icon: Music2, name: 'TikTok', text: 'Post videos to your TikTok account. You pick who can see each post, whether people can comment, duet or stitch, and any content disclosure before it goes out.' },
+    { icon: Youtube, name: 'YouTube', text: 'Upload videos and Shorts with the visibility you choose, manage your uploads, read comments and see channel analytics.' },
+];
+
 const STEPS = [
-    { icon: Upload, title: 'Bring one long video', text: 'A podcast, a livestream, a webinar or a YouTube link. Up to 2 GB.' },
+    { icon: Upload, title: 'Bring one long video', text: 'Upload a podcast, a livestream or a webinar you recorded. Up to 2 GB.' },
     { icon: Wand2, title: 'Get shorts that are ready to post', text: 'Ranked by how likely they are to hold attention, with faces framed and captions burned in.' },
     { icon: CalendarClock, title: 'Schedule the whole week', text: 'Drop them on the calendar for TikTok, Reels, Shorts and more, from one place.' },
 ];
@@ -59,7 +68,7 @@ const FEATURES = [
 const STATS = [
     { value: '8', label: 'caption templates' },
     { value: '4', label: 'face-aware layouts' },
-    { value: '6', label: 'networks to post to' },
+    { value: '4', label: 'networks to post to' },
     { value: '10', label: 'shorts from one video' },
 ];
 
@@ -189,7 +198,7 @@ export default function LandingPage() {
                         <RotatingWord />
                     </h1>
                     <p className="lp-lede" data-reveal>
-                        Kengan Social finds the best moments in your podcasts and streams, keeps every face in frame, adds captions that pop and puts it all on your
+                        KenganSocial finds the best moments in your podcasts and streams, keeps every face in frame, adds captions that pop and puts it all on your
                         calendar. One app for creators, brands and agencies.
                     </p>
                     <div className="lp-actions" data-reveal>
@@ -226,6 +235,28 @@ export default function LandingPage() {
                             </span>
                         ))}
                     </div>
+                </section>
+
+                <section className="lp-section container" id="integrations" aria-labelledby="integrations-title">
+                    <header className="lp-section__head" data-reveal>
+                        <span className="lp-kicker">Connected accounts</span>
+                        <h2 id="integrations-title">Connect your accounts with each platform’s official sign-in</h2>
+                    </header>
+                    <div className="lp-integrations">
+                        {INTEGRATIONS.map((n, i) => (
+                            <article key={n.name} className="lp-integration" data-reveal style={{ '--delay': `${i * 90}ms` }}>
+                                <span className="lp-integration__icon">
+                                    <n.icon size={18} />
+                                </span>
+                                <h3>{n.name}</h3>
+                                <p>{n.text}</p>
+                            </article>
+                        ))}
+                    </div>
+                    <p className="lp-integrations__note" data-reveal>
+                        You choose what to allow when you connect, and {COMPANY.brand} uses that access only for the features you use. Disconnect any time: we revoke our access and delete the data that connection brought in.
+                        See our <Link to="/privacy">Privacy Policy</Link> and <Link to="/data-deletion">Data Deletion</Link> page.
+                    </p>
                 </section>
 
                 <section className="lp-section container">
@@ -304,7 +335,7 @@ export default function LandingPage() {
                             <article key={p.name} className={`lp-plan ${p.featured ? 'is-featured' : ''}`} data-reveal style={{ '--delay': `${i * 100}ms` }}>
                                 {p.featured ? (
                                     <span className="lp-plan__badge">
-                                        <Sparkles size={12} /> Most popular
+                                        <Sparkles size={12} /> Recommended
                                     </span>
                                 ) : null}
                                 <h3>{p.name}</h3>
@@ -358,13 +389,22 @@ export default function LandingPage() {
             </main>
 
             <footer className="lp-footer container">
-                <span>© {new Date().getFullYear()} KenganSocial</span>
-                <nav>
+                <div className="lp-footer__company">
+                    <span>
+                        © {new Date().getFullYear()} {COMPANY.legalName}
+                        {COMPANY.registrationNumber ? ` · Reg. ${COMPANY.registrationNumber}` : ''}
+                    </span>
+                    {COMPANY.address ? <span>{COMPANY.address}</span> : null}
+                    <a href={`mailto:${COMPANY.emails.support}`}>{COMPANY.emails.support}</a>
+                    <small>{COMPANY.brand} is not affiliated with or endorsed by Meta, TikTok or Google.</small>
+                </div>
+                <nav aria-label="Footer">
                     <Link to="/pricing">Pricing</Link>
                     <Link to="/about">About</Link>
                     <Link to="/help">Help</Link>
-                    <Link to="/privacy">Privacy</Link>
-                    <Link to="/legal">Terms</Link>
+                    <Link to="/terms">Terms of Service</Link>
+                    <Link to="/privacy">Privacy Policy</Link>
+                    <Link to="/data-deletion">Data Deletion</Link>
                 </nav>
             </footer>
         </div>

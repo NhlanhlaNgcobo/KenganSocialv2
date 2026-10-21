@@ -99,6 +99,9 @@ try {
     await page.waitForSelector('.ke-root:not(.ke-loading)');
     assert.deepEqual(await page.evaluate(() => [window.qa.TEMPLATES.length, window.qa.CAPTION_TEMPLATES.length]), [54, 33]);
     await page.click('button[title="Templates"]');
+    // The panel opens on the fill-in (JSON) templates; the auto-cut recipes have their own tab.
+    await page.waitForSelector('.ke-tplg__grid');
+    await page.evaluate(() => [...document.querySelectorAll('[role="tab"]')].find((t) => /Auto-cut/.test(t.textContent))?.click());
     await page.waitForSelector('.ke-recipe');
     await page.screenshot({ path: path.join(dir, 'templates.png') });
     await page.click('.ke-btn--primary.ke-btn--block');

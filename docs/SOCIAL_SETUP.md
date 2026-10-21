@@ -55,7 +55,7 @@ What to expect: uploads appear on your channel. Testing-mode tokens expire after
 2. Add the product **Facebook Login for Business** (or **Facebook Login**). Under its **Settings**:
    - Valid OAuth Redirect URIs: `<SERVER>/api/connections/instagram/callback`
 3. Add the product **Instagram** (Instagram API with Facebook Login).
-4. **App settings → Basic**: copy the **App ID** and **App Secret**. Add a privacy policy URL (`http://localhost:5173/privacy` is fine while testing).
+4. **App settings → Basic**: copy the **App ID** and **App Secret**. Set the Privacy Policy URL (`<WEBSITE>/privacy`), Terms of Service URL (`<WEBSITE>/terms`) and, under **User data deletion**, the Data Deletion Callback URL `<SERVER>/api/privacy/meta/data-deletion`. Under Facebook Login settings set the Deauthorize Callback URL `<SERVER>/api/privacy/meta/deauthorize`. See docs/API_APPLICATIONS.md.
 5. **App roles → Roles**: your Facebook account is already Admin. Add anyone else who will test as Tester.
 6. In `server/.env`:
    ```
@@ -65,7 +65,7 @@ What to expect: uploads appear on your channel. Testing-mode tokens expire after
    META_VERIFY_TOKEN=any-random-string-you-choose
    ```
 
-The app requests `instagram_basic`, `instagram_content_publish`, `instagram_manage_insights`, `pages_show_list`, `pages_read_engagement`, `pages_manage_posts` and `business_management`. In development mode, Meta grants these to app roles without review.
+For Instagram the app requests `instagram_basic`, `instagram_content_publish`, `instagram_manage_insights`, `instagram_manage_messages`, `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `pages_manage_metadata` and `business_management`. For a Facebook Page it requests `pages_show_list`, `pages_read_engagement`, `pages_manage_posts` and `business_management`. In development mode, Meta grants these to app roles without review.
 
 What to expect: videos post as **Reels**. Meta downloads the video from your tunnel, so ngrok must be running when the post goes out.
 
@@ -84,7 +84,7 @@ What to expect: videos post as **Reels**. Meta downloads the video from your tun
    TIKTOK_CLIENT_SECRET=...
    ```
 
-What to expect: until TikTok audits your app, every post is **private ("Only me")**, which is TikTok's rule for unaudited apps. You can still check that the video, caption and timing are right in the TikTok app. After the audit, set `TIKTOK_DEFAULT_PRIVACY=PUBLIC_TO_EVERYONE`.
+What to expect: the scheduler's TikTok settings show your account and the privacy levels TikTok allows it; you choose one on each post (there is no default, as TikTok's posting rules require). Until TikTok audits your app, only **"Only me"** works and the posting account must be private. You can still check that the video, caption and timing are right in the TikTok app.
 
 ---
 
@@ -104,7 +104,7 @@ What to expect: until TikTok audits your app, every post is **private ("Only me"
 | "YouTube is not set up on the server yet" | Keys missing from `server/.env` | Add them and restart the API |
 | `redirect_uri_mismatch` (Google) or "URL blocked" (Meta) | The redirect URI in the platform console doesn't match `SERVER_URL` exactly | Copy it again, with no trailing slash |
 | TikTok "scope_not_authorized" | Content Posting API or Direct Post isn't added to the app | Add the product and enable Direct Post in the sandbox |
-| TikTok `unaudited_client_can_only_post_to_private_accounts` | A public post from an unaudited app | Keep `TIKTOK_DEFAULT_PRIVACY` unset (private) |
+| TikTok `unaudited_client_can_only_post_to_private_accounts` | A public post from an unaudited app | Choose "Only me" on the post until the app is audited |
 | Instagram "media could not be fetched" | ngrok wasn't running, or `SERVER_URL` isn't the tunnel address | Start ngrok and restart the API |
 | Instagram account not found after connecting | The Instagram account isn't Professional or isn't linked to a Page | See "Before you start" in section 2 |
 | "INVALID_OAUTH_STATE" / "EXPIRED_OAUTH_STATE" | The sign-in took longer than 15 minutes, or was started from another session | Click Connect again |

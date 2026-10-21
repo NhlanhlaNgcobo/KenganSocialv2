@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import './TutorialDemo.css';
-import { CalendarCheck, Check, Film, Instagram, Link2, Music2, Sparkles, Upload, Wand2, Youtube } from 'lucide-react';
+import { CalendarCheck, Check, Film, Instagram, Music2, Sparkles, Upload, Wand2, Youtube } from 'lucide-react';
 
 /**
  * A self-playing walkthrough of the app, drawn in HTML/CSS (no video file): each step is a
@@ -9,7 +9,7 @@ import { CalendarCheck, Check, Film, Instagram, Link2, Music2, Sparkles, Upload,
  */
 
 const STEPS = [
-    { id: 'drop', title: 'Drop in a long video', text: 'Paste a YouTube link or upload a podcast, stream or talk.' },
+    { id: 'drop', title: 'Drop in a long video', text: 'Upload a podcast, stream or talk you recorded.' },
     { id: 'target', title: 'Pick where it goes', text: 'TikTok, Shorts or Reels set the shape, length and caption spot.' },
     { id: 'moments', title: 'AI finds the moments', text: 'It transcribes, scores every moment and cuts the best ones.' },
     { id: 'frame', title: 'Faces framed, captions on', text: 'Two speakers get stacked so nobody is cut off.' },
@@ -29,12 +29,6 @@ function SceneDrop() {
     return (
         <div className="td-scene td-drop">
             <div className="td-label">Repurpose → Video → shorts</div>
-            <div className="td-field">
-                <Link2 className="td-ico" />
-                <span className="td-typed">youtube.com/watch?v=podcast-ep-12</span>
-                <span className="td-caret" />
-            </div>
-            <div className="td-or">or</div>
             <div className="td-file">
                 <Film className="td-ico" />
                 <div>

@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Expand, Minimize, Pause, Play, Repeat, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react';
 import { previewFont } from '../../constants';
 import { formatTimecode, getElementEnd, getElementLength } from '../../lib/time';
-import { cssTransform, getTransform } from '../../lib/transform';
+import { animatedTransform, cssFromValues, cssTransform, getTransform } from '../../lib/transform';
+import { evaluateKeyframes, setKeyframe } from '../../lib/keyframes.js';
 import { useMediaStore } from '../../stores/media-store';
 import { usePlaybackStore } from '../../stores/playback-store';
 import { getCanvasSize, useProjectStore } from '../../stores/project-store';
@@ -17,6 +18,7 @@ import { GuideTrackPlayer } from './GuideTrackPlayer';
 import { LyricOverlay } from './LyricOverlay';
 import { MediaLayer } from './MediaLayer';
 import { captionFrame } from '../../lib/caption-motion.js';
+import { ExactPreviewButton, ExactPreviewOverlay } from './ExactPreview';
 
 /** Vignette masks (data URLs) by settings and canvas shape; the export builds the same mask. */
 const vignetteCache = new Map<string, string>();
@@ -79,6 +81,7 @@ export function PreviewPanel() {
     const [box, setBox] = useState({ width: 0, height: 0 });
     const [fullscreen, setFullscreen] = useState(false);
     const [safeGuides, setSafeGuides] = useState(false);
+    const [exact, setExact] = useState<{ url: string; start: number; end: number } | null>(null);
     type TextDrag = { trackId: string; id: string; startX: number; startY: number; x: number; y: number; dx: number; dy: number };
     const [drag, setDragState] = useState<TextDrag | null>(null);
     const dragRef = useRef<TextDrag | null>(null);
@@ -166,7 +169,19 @@ export function PreviewPanel() {
             setDrag(null);
             if (d && (Math.abs(d.dx) > 1 || Math.abs(d.dy) > 1)) {
                 pushHistory();
-                updateElement(d.trackId, d.id, { x: Math.round(d.x + d.dx), y: Math.round(d.y + d.dy) }, false);
+                const el = useTimelineStore.getState().findElement(d.id)?.element;
+                const kfs = el?.keyframes;
+                if (el && (kfs?.x?.length || kfs?.y?.length)) {
+                    // Animated position: the drop becomes a keyframe at the playhead.
+                    const local = Math.max(0, usePlaybackStore.getState().currentTime - el.startTime);
+                    const fpsNow = useProjectStore.getState().fps;
+                    const next = { ...kfs };
+                    if (kfs.x?.length) next.x = setKeyframe(kfs.x, local, Math.round(d.x + d.dx), undefined, fpsNow);
+                    if (kfs.y?.length) next.y = setKeyframe(kfs.y, local, Math.round(d.y + d.dy), undefined, fpsNow);
+                    updateElement(d.trackId, d.id, { keyframes: next, ...(!kfs.x?.length ? { x: Math.round(d.x + d.dx) } : {}), ...(!kfs.y?.length ? { y: Math.round(d.y + d.dy) } : {}) }, false);
+                } else {
+                    updateElement(d.trackId, d.id, { x: Math.round(d.x + d.dx), y: Math.round(d.y + d.dy) }, false);
+                }
             }
         };
         window.addEventListener('pointermove', onMove);
@@ -179,8 +194,9 @@ export function PreviewPanel() {
 
     const renderText = (trackId: string, el: TextElement, z: number) => {
         const isDragging = drag?.id === el.id;
-        const x = el.x + (isDragging ? drag!.dx : 0);
-        const y = el.y + (isDragging ? drag!.dy : 0);
+        const kf = evaluateKeyframes(el.keyframes, currentTime - el.startTime) as Partial<Record<'x' | 'y' | 'scale' | 'rotation' | 'opacity', number>>;
+        const x = (kf.x ?? el.x) + (isDragging ? drag!.dx : 0);
+        const y = (kf.y ?? el.y) + (isDragging ? drag!.dy : 0);
         const isSelected = selected.some((s) => s.elementId === el.id);
         // Entrance animation, matching the renderer (fade 0.25s; pop: quick fade + scale 72% → 100%).
         const local = currentTime - el.startTime;
@@ -195,14 +211,14 @@ export function PreviewPanel() {
                 style={{
                     left: `${50 + (x / canvas.width) * 100}%`,
                     top: `${50 + (y / canvas.height) * 100}%`,
-                    transform: `translate(-50%, -50%) translateY(${(motion?.y || 0) * scale}px) rotate(${el.rotation}deg) scale(${pop * (motion?.scale || 1)})`,
-                    opacity: el.opacity * Math.max(0, fadeIn) * (motion?.opacity ?? 1),
+                    transform: `translate(-50%, -50%) translateY(${(motion?.y || 0) * scale}px) rotate(${kf.rotation ?? el.rotation}deg) scale(${pop * (motion?.scale || 1) * (kf.scale ?? 1)})`,
+                    opacity: el.opacity * Math.max(0, fadeIn) * (motion?.opacity ?? 1) * (kf.opacity ?? 1),
                     zIndex: 100 + z,
                 }}
                 onPointerDown={(e) => {
                     e.stopPropagation();
                     selectElement(trackId, el.id);
-                    setDrag({ trackId, id: el.id, startX: e.clientX, startY: e.clientY, x: el.x, y: el.y, dx: 0, dy: 0 });
+                    setDrag({ trackId, id: el.id, startX: e.clientX, startY: e.clientY, x: kf.x ?? el.x, y: kf.y ?? el.y, dx: 0, dy: 0 });
                 }}
             >
                 <div
@@ -263,7 +279,11 @@ export function PreviewPanel() {
                         const mediaEl = element as MediaElement;
                         const fx = track.isMain && media.type !== 'audio' ? effectPreview(mediaEl.effects, currentTime - element.startTime, scale) : null;
                         const tr = track.isMain ? transitionFor(element.id) : null;
-                        const transform = [cssTransform(clipTransform, progress, scale), fx?.transform].filter(Boolean).join(' ') || undefined;
+                        // Keyframes replace the static/camera value per property (same rule as the export).
+                        const animated = mediaEl.keyframes ? animatedTransform(track.isMain ? mediaEl : { ...mediaEl, transform: clipTransform }, currentTime - element.startTime, getElementLength(element)) : null;
+                        const baseCss = animated ? cssFromValues(animated, scale) : cssTransform(clipTransform, progress, scale);
+                        const transform = [baseCss, fx?.transform].filter(Boolean).join(' ') || undefined;
+                        const kfOpacity = animated?.opacity ?? 1;
                         const ext = extend.get(element.id);
                         // Incoming clips draw above outgoing ones during a transition.
                         const zIndex = z * 2 + (tr?.incoming ? 1 : 0);
@@ -285,7 +305,7 @@ export function PreviewPanel() {
                                             src={media.url}
                                             alt=""
                                             className="ke-preview__media"
-                                            style={{ filter: `${previewFilter(mediaEl.filter, mediaEl.grade)}${fx?.filter || ''}`.replace(/^none /, ''), transform }}
+                                            style={{ filter: `${previewFilter(mediaEl.filter, mediaEl.grade)}${fx?.filter || ''}`.replace(/^none /, ''), transform, opacity: kfOpacity }}
                                             draggable={false}
                                         />
                                     )}
@@ -295,7 +315,7 @@ export function PreviewPanel() {
                         }
                         return (
                             <div key={element.id} className="ke-preview__tx" style={{ zIndex, ...(active ? tr?.style : null) }}>
-                                <div className="ke-preview__layer" style={{ transform }}>
+                                <div className="ke-preview__layer" style={{ transform, ...(kfOpacity < 1 ? { opacity: kfOpacity } : {}) }}>
                                     <MediaLayer
                                         kind={media.type === 'audio' ? 'audio' : 'video'}
                                         src={media.url}
@@ -313,6 +333,15 @@ export function PreviewPanel() {
                     })}
                     {wash ? <div className="ke-preview__fx" style={{ ...wash, zIndex: 99 }} /> : null}
                     <LyricOverlay scale={scale} />
+                    {exact ? (
+                        <ExactPreviewOverlay
+                            result={exact}
+                            onClose={() => {
+                                URL.revokeObjectURL(exact.url);
+                                setExact(null);
+                            }}
+                        />
+                    ) : null}
                 </div>
                 <GuideTrackPlayer />
             </div>
@@ -335,6 +364,14 @@ export function PreviewPanel() {
                     </button>
                 </div>
                 <div className="ke-preview__right">
+                    <ExactPreviewButton
+                        onResult={(r) =>
+                            setExact((old) => {
+                                if (old) URL.revokeObjectURL(old.url);
+                                return r;
+                            })
+                        }
+                    />
                     <button className={`ke-chip ${safeGuides ? 'is-active' : ''}`} aria-pressed={safeGuides} title="Show suggested text-safe margins" onClick={() => setSafeGuides((value) => !value)}>Safe area</button>
                     <button className={`ke-icon-btn ${loop ? 'is-active' : ''}`} title="Loop" onClick={toggleLoop}>
                         <Repeat size={15} />

@@ -4,8 +4,8 @@ import axios from 'axios';
  * TikTok Content Posting API, direct post (scope video.publish).
  * https://developers.tiktok.com/doc/content-posting-api-reference-direct-post
  *
- * Unaudited apps may only post with privacy SELF_ONLY ("only me"); set
- * TIKTOK_DEFAULT_PRIVACY=PUBLIC_TO_EVERYONE once TikTok has audited the app.
+ * The privacy level is chosen by the creator on each post (no default, per TikTok's posting rules).
+ * Unaudited apps may only post with privacy SELF_ONLY ("only me").
  *
  * Two modes, chosen by the scopes the app requests (TIKTOK_SCOPES):
  *  - direct (video.publish): posts straight to the profile.
@@ -22,6 +22,12 @@ interface TikTokPublishConfig {
     disableDuet?: boolean;
     disableComment?: boolean;
     disableStitch?: boolean;
+    /** Commercial content disclosure: promoting a third party (Paid partnership). */
+    brandContentToggle?: boolean;
+    /** Commercial content disclosure: promoting the creator's own business (Promotional content). */
+    brandOrganicToggle?: boolean;
+    /** AI-generated content label. */
+    isAigc?: boolean;
 }
 
 const API = 'https://open.tiktokapis.com/v2/post/publish';
@@ -47,7 +53,11 @@ export function planChunks(size: number) {
 
 export async function publishToTikTok(config: TikTokPublishConfig): Promise<string> {
     const { accessToken, videoUrl, title = '' } = config;
-    const privacyLevel = config.privacyLevel || (process.env.TIKTOK_DEFAULT_PRIVACY as TikTokPublishConfig['privacyLevel']) || 'SELF_ONLY';
+    // TikTok's posting rules: the creator chooses the privacy level on the post screen; there is no
+    // default. Unaudited apps can only post SELF_ONLY (TikTok rejects other levels until the audit).
+    const privacyLevel = config.privacyLevel;
+    if (tiktokPostMode() === 'direct' && !privacyLevel) throw new Error('Choose who can view the TikTok post.');
+    if (config.brandContentToggle && privacyLevel === 'SELF_ONLY') throw new Error('Branded content cannot be posted as "Only me" on TikTok.');
     const auth = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json; charset=UTF-8' };
 
     // The whole file is needed up front: TikTok wants the exact size and chunk plan at init.
@@ -72,6 +82,9 @@ export async function publishToTikTok(config: TikTokPublishConfig): Promise<stri
                     disable_duet: config.disableDuet || false,
                     disable_comment: config.disableComment || false,
                     disable_stitch: config.disableStitch || false,
+                    brand_content_toggle: config.brandContentToggle || false,
+                    brand_organic_toggle: config.brandOrganicToggle || false,
+                    is_aigc: config.isAigc || false,
                 },
                 source_info: sourceInfo,
             },

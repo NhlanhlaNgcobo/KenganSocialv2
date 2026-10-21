@@ -14,6 +14,7 @@ import { decrypt } from '../utils/tokenEncryption';
 
 import { redis } from '../utils/redis';
 import { publicMediaUrl } from '../services/storage.service.js';
+import { getValidAccessToken } from '../routes/connections';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 // Reusing shared client
@@ -79,13 +80,16 @@ async function processJob(job: Job<PublishPayload>) {
 // Multiplex platform routing to specific adapters
 async function publishMultiplexer(platform: string, workspaceId: string, options: any): Promise<string> {
     // Fetch token for this platform dynamically
-    const connSnap = await db.collection('workspaces').doc(workspaceId).collection('connections').doc(platform).get();
-    if (!connSnap.exists) throw new Error(`${platform} connection missing`);
-
-    const connRaw = connSnap.data()!;
-    const accessToken = decrypt ? decrypt(connRaw.accessToken) : connRaw.accessToken; // Assumes token encryption is available
-
+    // Refreshes the token first when it is about to expire (YouTube tokens last an hour, TikTok a day).
+    let accessToken: string;
+    let connRaw: any;
+    try {
+        ({ accessToken, connection: connRaw } = await getValidAccessToken(workspaceId, platform as any));
+    } catch (err: any) {
+        throw new Error(err.message === 'NOT_CONNECTED' ? `${platform} connection missing` : `${platform} sign-in could not be refreshed: ${err.message}`);
+    }
     if (!accessToken) throw new Error(`${platform} access token missing or expired`);
+    if (connRaw.status && connRaw.status !== 'active') throw new Error(`${platform} needs reconnecting (${connRaw.status}).`);
 
     switch (platform) {
         case 'youtube':
@@ -94,6 +98,9 @@ async function publishMultiplexer(platform: string, workspaceId: string, options
                 videoUrl: options.mediaUrl,
                 title: options.title || options.caption.substring(0, 100),
                 description: options.caption,
+                // Chosen on the post; a scheduled post is never made public unless the person picked it.
+                privacyStatus: ['public', 'unlisted', 'private'].includes(options.privacyStatus) ? options.privacyStatus : 'private',
+                madeForKids: options.madeForKids === true,
             });
         case 'instagram':
             return publishToInstagram({
@@ -107,7 +114,15 @@ async function publishMultiplexer(platform: string, workspaceId: string, options
                 accessToken,
                 openId: connRaw.accountId,
                 videoUrl: options.mediaUrl,
-                title: options.caption || '',
+                title: options.title ?? options.caption ?? '',
+                // Everything below was chosen by the person on the TikTok post screen (no defaults).
+                privacyLevel: options.privacyLevel,
+                disableComment: options.allowComment !== true,
+                disableDuet: options.allowDuet !== true,
+                disableStitch: options.allowStitch !== true,
+                brandContentToggle: options.brandedContent === true,
+                brandOrganicToggle: options.yourBrand === true,
+                isAigc: options.isAigc === true,
             });
         case 'facebook':
             return publishToFacebook({

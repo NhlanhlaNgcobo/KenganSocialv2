@@ -1000,3 +1000,97 @@
         border: none;
     }
 }
+
+/* TikTok / YouTube post settings */
+.tt-settings {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    margin: 8px 0 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.tt-creator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tt-creator img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.tt-preview {
+    width: 100%;
+    max-height: 260px;
+    border-radius: 8px;
+    background: #000;
+}
+
+.tt-checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+}
+
+.tt-checks label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tt-checks label.is-disabled {
+    opacity: 0.5;
+}
+
+.tt-toggle,
+.tt-disclose label {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.tt-toggle span,
+.tt-disclose label span {
+    display: grid;
+    gap: 2px;
+}
+
+.tt-disclose {
+    display: grid;
+    gap: 10px;
+    margin: 10px 0 0 26px;
+}
+
+.tt-label-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: 0.88rem;
+}
+
+.tt-consent {
+    margin: 0 8px 0 0;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    align-self: center;
+}
+
+.tt-consent a {
+    color: var(--accent-text);
+}
+
+.cal-form-error {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.08);
+    color: var(--danger, #ef4444);
+    font-size: 0.88rem;
+}

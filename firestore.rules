@@ -34,8 +34,10 @@ service cloud.firestore {
       allow write: if isWorkspaceOwner(wsId);
       
       // Nested collections inside workspaces
+      // Social connections hold (encrypted) access tokens: server only (the API strips tokens and
+      // serves the rest), never read or written from the browser.
       match /connections/{platform} {
-        allow read, write: if isWorkspaceOwner(wsId);
+        allow read, write: if false;
       }
       
       match /leads/{leadId} {

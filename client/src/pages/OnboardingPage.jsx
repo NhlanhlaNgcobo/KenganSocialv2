@@ -497,7 +497,7 @@ function WelcomeModal({ name, onClose }) {
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
                     By using KenganSocial you agree to our{' '}
                     <Link
-                        to="/legal"
+                        to="/terms"
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{ color: 'var(--brand)', textDecoration: 'underline' }}

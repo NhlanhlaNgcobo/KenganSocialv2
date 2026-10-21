@@ -1,3 +1,8 @@
+import { Link } from 'react-router-dom';
+import ConnectDisclosure from '../components/connections/ConnectDisclosure';
+
+/** Platforms that show the access/terms disclosure before their sign-in (components/connections/ConnectDisclosure). */
+const hasDisclosure = (platform) => ['youtube', 'instagram', 'facebook', 'tiktok'].includes(platform);
 import { useEffect, useState } from 'react';
 import {
     Instagram,
@@ -203,6 +208,13 @@ export default function ConnectionsPage() {
         }
     };
 
+    // Platform disclosure first (what we access, platform terms); the sign-in starts from its Continue.
+    const [disclosure, setDisclosure] = useState(null);
+    const requestConnect = (platformId, source) => {
+        if (hasDisclosure(platformId) && REAL_OAUTH_PLATFORMS.has(platformId) && !COMING_SOON_PLATFORMS.has(platformId)) setDisclosure({ platformId, source });
+        else handleConnect(platformId, source);
+    };
+
     const handleConnect = async (platformId, source) => {
         setConnecting(platformId);
         setConnectSource(source);
@@ -234,14 +246,21 @@ export default function ConnectionsPage() {
 
     const handleDisconnect = async (connection) => {
         const name = PLATFORM_META[connection.platform]?.name || connection.platform;
-        if (!window.confirm(`Disconnect ${name} (@${connection.username})? Scheduled posts and automations for this account will stop working until you reconnect.`)) {
+        if (!window.confirm(`Disconnect ${name} (@${connection.username})?
+
+We revoke KenganSocial's access at ${name} and delete the data this connection brought in (its stored analytics${connection.platform === 'instagram' ? ', DMs and message leads' : ''}). Scheduled posts and automations for this account stop until you reconnect.`)) {
             return;
         }
         try {
             if (currentWorkspace?.id) {
                 if (connection.id === connection.platform) {
-                    await apiClient(`/connections/${connection.platform}`, {
+                    const result = await apiClient(`/connections/${connection.platform}`, {
                         method: 'DELETE',
+                    });
+                    setConnectError({
+                        source: connection.groupName || 'Ungrouped',
+                        tone: 'success',
+                        text: `${name} disconnected${result?.revoked ? ` and KenganSocial's access was revoked at ${name}` : ''}.${result?.note ? ` Note: ${result.note}.` : ''}${result?.revoked ? '' : ` You can also remove access in ${name}'s own settings.`}`,
                     });
                 } else {
                     await apiClient(`/workspaces/${currentWorkspace.id}/connections/${connection.id}`, {
@@ -480,7 +499,7 @@ export default function ConnectionsPage() {
                                         disabled={!!connecting}
                                         onChange={(event) => {
                                             if (event.target.value) {
-                                                handleConnect(event.target.value, group);
+                                                requestConnect(event.target.value, group);
                                                 event.target.value = '';
                                             }
                                         }}
@@ -498,7 +517,7 @@ export default function ConnectionsPage() {
                                         </p>
                                     )}
                                     {connectError?.source === group && (
-                                        <p className="connect-inline-error" role="alert">{connectError.text}</p>
+                                        <p className={`connect-inline-error ${connectError.tone === 'success' ? 'is-success' : ''}`} role={connectError.tone === 'success' ? 'status' : 'alert'}>{connectError.text}</p>
                                     )}
                                 </div>
                             </div>
@@ -517,7 +536,7 @@ export default function ConnectionsPage() {
                                 {!youtubeConnection ? (
                                     <button
                                         className="btn btn-primary"
-                                        onClick={() => handleConnect('youtube', 'youtube-studio')}
+                                        onClick={() => requestConnect('youtube', 'youtube-studio')}
                                         disabled={connecting === 'youtube'}
                                     >
                                         {connecting === 'youtube' ? <Loader2 size={16} className="spin" /> : <Youtube size={16} />}
@@ -539,7 +558,7 @@ export default function ConnectionsPage() {
                         </div>
 
                         {connectError?.source === 'youtube-studio' ? (
-                            <div className="connect-inline-error" role="alert">{connectError.text}</div>
+                            <div className={`connect-inline-error ${connectError.tone === 'success' ? 'is-success' : ''}`} role={connectError.tone === 'success' ? 'status' : 'alert'}>{connectError.text}</div>
                         ) : null}
                         {youtubeMessage ? (
                             <div className="youtube-studio__message">{youtubeMessage}</div>
@@ -697,11 +716,25 @@ export default function ConnectionsPage() {
                 </>
             )}
 
+            {disclosure ? (
+                <ConnectDisclosure
+                    platform={disclosure.platformId}
+                    onCancel={() => setDisclosure(null)}
+                    onContinue={() => {
+                        const { platformId, source } = disclosure;
+                        setDisclosure(null);
+                        handleConnect(platformId, source);
+                    }}
+                />
+            ) : null}
+
             <section className="connection-info card glass">
                 <AlertCircle size={24} className="text-info" />
                 <div>
                     <h4>Connection Security</h4>
-                    <p>KenganSocial uses official OAuth APIs to connect to your accounts. We never store your passwords and only request the minimum permissions needed to publish content.</p>
+                    <p>
+                        KenganSocial connects through each platform’s official sign-in. We never see your passwords, we encrypt access tokens, and we use each permission only for the features described when you connect: publishing what you create, analytics, and (for Instagram) your DM inbox. Disconnecting revokes our access and deletes the data that connection brought in. See our <Link to="/privacy">Privacy Policy</Link> and <Link to="/data-deletion">Data Deletion</Link> page.
+                    </p>
                 </div>
             </section>
         </div>

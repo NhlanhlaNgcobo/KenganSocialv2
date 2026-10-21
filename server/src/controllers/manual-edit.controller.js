@@ -96,6 +96,8 @@ export async function processManualEdit(req, res) {
                 duration: Number(editConfig.duration) || null,
                 clips: Array.isArray(editConfig.main) ? editConfig.main.length : Array.isArray(editConfig.clips) ? editConfig.clips.length : 0,
                 texts: Array.isArray(editConfig.text) ? editConfig.text.length : 0,
+                // Exact preview of a short range (same pipeline as export).
+                range: editConfig.range ? { start: Number(editConfig.range.start) || 0, end: Number(editConfig.range.end) || 0 } : null,
             },
             createdAt: new Date().toISOString(),
         });

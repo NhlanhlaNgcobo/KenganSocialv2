@@ -25,6 +25,8 @@ import webhooksRoutes from './src/routes/webhooks.routes.js';
 import manualEditRoutes from './src/routes/manual-edit.routes.js';
 import { startSchedulerCron } from './src/jobs/scheduler.cron.js';
 import connectionsRouter, { startTokenRefreshCron } from './src/routes/connections.ts';
+import privacyRoutes from './src/routes/privacy.ts';
+import { features } from './src/utils/features.ts';
 import videoRouter from './src/routes/video.ts';
 import scheduleRoutes from './src/routes/schedule.ts';
 import trendingRoutes from './src/routes/trending.ts';
@@ -116,10 +118,13 @@ app.get(/^\/tiktok[A-Za-z0-9_-]+\.txt$/, (req, res) => {
 // Public legal pages (platform app reviews need them on a reachable URL).
 app.get('/terms', (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'legal', 'terms.html')));
 app.get('/privacy', (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'legal', 'privacy.html')));
+app.get('/data-deletion', (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'legal', 'data-deletion.html')));
 if (getStorageDriver() === 'local') {
     app.use('/uploads', express.static(LOCAL_UPLOAD_DIR));
 }
 app.use('/api/health', healthRoutes);
+// Feature switches the app needs before sign-in (e.g. whether YouTube link import is on).
+app.get('/api/features', (_req, res) => res.json({ youtubeLinkImport: features.youtubeLinkImport() }));
 app.use('/api/auth', authRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/workspaces/:workspaceId/connections', connectionRoutes);
@@ -136,6 +141,8 @@ app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/video/manual-edit', manualEditRoutes);
 // OAuth connections (platform auth + callbacks — no workspaceId prefix needed for callbacks)
 app.use('/api/connections', connectionsRouter);
+// Data export, account deletion and Meta's data deletion / deauthorize callbacks.
+app.use('/api/privacy', privacyRoutes);
 
 // Python Video processing service endpoints
 app.use('/api/video', videoRouter);

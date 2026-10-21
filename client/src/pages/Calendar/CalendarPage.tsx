@@ -26,6 +26,7 @@ import { useWorkspace } from '../../context/WorkspaceContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../lib/api';
 import './Calendar.css';
+import { TikTokConsent, TikTokPostSettings, tiktokProblem, useTikTokCreatorInfo, useVideoSeconds, YouTubePostSettings, youtubeProblem, type TikTokOptions, type YouTubeOptions } from './PlatformPostSettings';
 
 type PostStatus = 'pending' | 'published' | 'failed' | 'partial' | 'draft' | 'cancelled';
 
@@ -138,6 +139,9 @@ export default function CalendarPage() {
     const [mediaFile, setMediaFile] = useState<File | null>(null);
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
     const [captions, setCaptions] = useState<Record<string, string>>({});
+    // Per-platform post settings chosen by the person (TikTok and YouTube have no defaults).
+    const [tiktokOptions, setTiktokOptions] = useState<TikTokOptions>({});
+    const [youtubeOptions, setYoutubeOptions] = useState<YouTubeOptions>({});
     const [activeTab, setActiveTab] = useState('instagram');
     const [scheduledAt, setScheduledAt] = useState('');
     const [scheduledTime, setScheduledTime] = useState('12:00');
@@ -291,10 +295,28 @@ export default function CalendarPage() {
         setMediaFile(null);
         setSelectedPlatforms([]);
         setCaptions({});
+        setTiktokOptions({});
+        setYoutubeOptions({});
         setStatus('pending');
         setScheduledTime('12:00');
         setFormError('');
         setAiMessage('');
+    };
+
+    const tiktokInfo = useTikTokCreatorInfo(isModalOpen && selectedPlatforms.includes('tiktok'));
+    const videoSeconds = useVideoSeconds(mediaFile);
+    /** What still blocks scheduling (drafts may be saved without the platform settings). */
+    const platformSettingsProblem = (forStatus: string) => {
+        if (forStatus === 'draft') return '';
+        if (selectedPlatforms.includes('tiktok')) {
+            const problem = tiktokProblem(tiktokOptions, tiktokInfo, videoSeconds);
+            if (problem) return problem;
+        }
+        if (selectedPlatforms.includes('youtube')) {
+            const problem = youtubeProblem(youtubeOptions);
+            if (problem) return problem;
+        }
+        return '';
     };
 
     const closeModal = () => {
@@ -316,6 +338,11 @@ export default function CalendarPage() {
         }
         if (selectedPlatforms.length === 0) {
             setFormError('Pick at least one platform.');
+            return;
+        }
+        const settingsProblem = platformSettingsProblem(status);
+        if (settingsProblem) {
+            setFormError(settingsProblem);
             return;
         }
 
@@ -341,7 +368,14 @@ export default function CalendarPage() {
                 mediaUrl,
                 caption: firstCaption,
                 scheduledAt: when.toISOString(),
-                platformOptions: selectedPlatforms.reduce((acc, p) => ({ ...acc, [p]: { caption: captions[p] ?? firstCaption } }), {}),
+                platformOptions: selectedPlatforms.reduce((acc, p) => ({
+                    ...acc,
+                    [p]: {
+                        caption: captions[p] ?? firstCaption,
+                        ...(p === 'tiktok' ? { title: captions.tiktok ?? firstCaption, ...tiktokOptions } : {}),
+                        ...(p === 'youtube' ? youtubeOptions : {}),
+                    },
+                }), {}),
                 status
             };
 
@@ -860,6 +894,18 @@ export default function CalendarPage() {
                                                     {/Billing/.test(aiMessage) && <Link to="/dashboard/billing">Open Billing</Link>}
                                                 </p>
                                             )}
+                                            {selectedPlatforms.includes('tiktok') && (
+                                                <>
+                                                    <label className="cal-section-label">TikTok post settings</label>
+                                                    <TikTokPostSettings value={tiktokOptions} onChange={setTiktokOptions} info={tiktokInfo} mediaFile={mediaFile} videoSeconds={videoSeconds} />
+                                                </>
+                                            )}
+                                            {selectedPlatforms.includes('youtube') && (
+                                                <>
+                                                    <label className="cal-section-label">YouTube post settings</label>
+                                                    <YouTubePostSettings value={youtubeOptions} onChange={setYoutubeOptions} />
+                                                </>
+                                            )}
                                         </>
                                     )}
                                 </div>
@@ -934,12 +980,22 @@ export default function CalendarPage() {
                             {modalStep < 3 ? (
                                 <button
                                     className="btn btn-primary"
-                                    onClick={() => { setFormError(''); setModalStep(modalStep + 1); }}
+                                    onClick={() => {
+                                        const problem = modalStep === 2 ? platformSettingsProblem('pending') : '';
+                                        if (problem && !window.confirm(`${problem}\n\nContinue anyway? You can still save a draft, but scheduling needs this.`)) {
+                                            setFormError(problem);
+                                            return;
+                                        }
+                                        setFormError('');
+                                        setModalStep(modalStep + 1);
+                                    }}
                                     disabled={modalStep === 2 && selectedPlatforms.length === 0}
                                 >
                                     Continue
                                 </button>
                             ) : (
+                                <>
+                                {selectedPlatforms.includes('tiktok') && status === 'pending' ? <TikTokConsent options={tiktokOptions} /> : null}
                                 <button className="btn btn-primary" onClick={handleCreatePost} disabled={isSubmitting}>
                                     {isSubmitting && <Loader2 size={16} className="spin" />}
                                     {submitStage === 'uploading'
@@ -948,6 +1004,7 @@ export default function CalendarPage() {
                                             ? 'Saving…'
                                             : status === 'pending' ? 'Schedule Content' : 'Save Draft'}
                                 </button>
+                                </>
                             )}
                         </div>
                     </div>

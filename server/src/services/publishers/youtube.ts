@@ -8,10 +8,12 @@ interface YouTubePublishConfig {
     tags?: string[];
     categoryId?: string;
     privacyStatus?: 'public' | 'unlisted' | 'private';
+    /** "Made for kids" (COPPA); YouTube requires a declaration for every upload. */
+    madeForKids?: boolean;
 }
 
 export async function publishToYouTube(config: YouTubePublishConfig): Promise<string> {
-    const { accessToken, videoUrl, title, description = '', tags = [], categoryId = '22', privacyStatus = 'public' } = config;
+    const { accessToken, videoUrl, title, description = '', tags = [], categoryId = '22', privacyStatus = 'private', madeForKids = false } = config;
 
     // 1. Download video stream from Firebase/URL
     const videoStream = await axios({
@@ -30,6 +32,7 @@ export async function publishToYouTube(config: YouTubePublishConfig): Promise<st
         },
         status: {
             privacyStatus,
+            selfDeclaredMadeForKids: madeForKids,
         },
     };
 

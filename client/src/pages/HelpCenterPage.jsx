@@ -141,7 +141,7 @@ export default function HelpCenterPage() {
                     )}
 
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '32px', textAlign: 'center' }}>
-                        See also <Link to="/pricing" style={{ color: 'var(--accent-text)' }}>Pricing</Link>, <Link to="/privacy" style={{ color: 'var(--accent-text)' }}>Privacy</Link> and <Link to="/legal" style={{ color: 'var(--accent-text)' }}>Terms</Link>.
+                        See also <Link to="/pricing" style={{ color: 'var(--accent-text)' }}>Pricing</Link>, <Link to="/privacy" style={{ color: 'var(--accent-text)' }}>Privacy</Link> and <Link to="/terms" style={{ color: 'var(--accent-text)' }}>Terms</Link>.
                     </p>
                 </section>
             </main>

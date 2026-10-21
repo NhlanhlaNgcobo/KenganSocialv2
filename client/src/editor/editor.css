@@ -2288,3 +2288,368 @@
 .ke-scopes { display:grid; gap:10px; }
 .ke-scopes canvas { width:100%; background:#090b10; border:1px solid #303541; border-radius:6px; }
 .ke-scopes canvas[aria-label="Sampled colour frame"] { max-height:180px; object-fit:contain; }
+
+/* ---------- Keyframes ---------- */
+
+.ke-el__kf {
+    position: absolute;
+    bottom: 3px;
+    width: 8px;
+    height: 8px;
+    margin-left: -4px;
+    background: #facc15;
+    border: 1px solid rgba(0, 0, 0, 0.6);
+    transform: rotate(45deg);
+    z-index: 3;
+    cursor: pointer;
+}
+
+.ke-kf__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.ke-kf__time {
+    min-width: 48px;
+    text-align: center;
+    color: var(--ke-text-2);
+}
+
+.ke-kf__row {
+    display: grid;
+    grid-template-columns: 22px 74px 1fr 52px 92px;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.ke-kf__row input[type='range'] {
+    width: 100%;
+    accent-color: var(--ke-accent);
+}
+
+.ke-kf__label {
+    font-size: 12px;
+    color: var(--ke-text-2);
+}
+
+.ke-kf__row.is-animated .ke-kf__label {
+    color: #facc15;
+}
+
+.ke-kf__diamond {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--ke-text-3);
+    cursor: pointer;
+}
+
+.ke-kf__diamond.is-on {
+    color: #facc15;
+}
+
+.ke-kf__diamond.is-on svg {
+    fill: #facc15;
+}
+
+.ke-kf__diamond:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.ke-kf__ease {
+    height: 24px;
+    font-size: 11px;
+    padding: 0 4px;
+}
+
+/* Beat sync: beats of the music on the ruler (downbeats taller), hand-placed markers as flags. */
+.ke-beats {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.ke-beats__tick {
+    position: absolute;
+    bottom: 0;
+    width: 1px;
+    height: 7px;
+    background: #22d3ee;
+    opacity: 0.55;
+}
+
+.ke-beats__tick.is-down {
+    height: 13px;
+    width: 2px;
+    margin-left: -0.5px;
+    opacity: 0.9;
+}
+
+.ke-beats__marker {
+    position: absolute;
+    bottom: 0;
+    width: 0;
+    height: 0;
+    margin-left: -5px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 9px solid #f97316;
+}
+
+.ke-beat__stats {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    flex-wrap: wrap;
+}
+
+.ke-beat__bpm {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+/* Fill-in (JSON) templates: gallery cards and the schematic preview player. */
+.ke-tplg__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 8px;
+}
+
+.ke-tplg__card {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 7px;
+    border-radius: 8px;
+    border: 1px solid var(--ke-border);
+    background: var(--ke-panel-2);
+    color: var(--ke-text);
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+}
+
+.ke-tplg__card:hover {
+    border-color: var(--ke-border-strong);
+}
+
+.ke-tplg__card.is-active {
+    border-color: var(--ke-accent);
+    background: var(--ke-accent-soft);
+}
+
+.ke-tplg__card strong {
+    font-size: 12px;
+}
+
+.ke-tplg__card small {
+    font-size: 10px;
+    color: var(--ke-text-muted, #9999a2);
+}
+
+.ke-tplg__card .ke-tplp {
+    max-height: 150px;
+    margin: 0 auto;
+}
+
+.ke-tplp {
+    position: relative;
+    width: 100%;
+    max-height: 340px;
+    overflow: hidden;
+    border-radius: 6px;
+    container-type: inline-size;
+    margin: 6px auto;
+}
+
+.ke-tplp__slot,
+.ke-tplp__wash {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    font-style: normal;
+}
+
+.ke-tplp__slot > b {
+    position: absolute;
+    inset: 0;
+    background: inherit;
+}
+
+.ke-tplp__slot > span {
+    position: relative;
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+    padding: 0 6px;
+    text-align: center;
+}
+
+.ke-tplp__text {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    padding: 0 0.3em;
+    border-radius: 0.15em;
+    white-space: nowrap;
+    line-height: 1.15;
+    font-family: Poppins, Inter, sans-serif;
+    animation: ke-tplp-in 0.25s ease-out;
+}
+
+@keyframes ke-tplp-in {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -40%) scale(0.92);
+    }
+}
+
+.ke-tplp__beat {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22d3ee;
+    opacity: 0.25;
+}
+
+.ke-tplp__beat.is-hit {
+    opacity: 1;
+    box-shadow: 0 0 8px #22d3ee;
+}
+
+.ke-tplp__bar {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    height: 5px;
+    display: flex;
+    gap: 2px;
+}
+
+.ke-tplp__bar > i {
+    background: rgba(255, 255, 255, 0.35);
+    border-radius: 2px;
+}
+
+.ke-tplp__bar > i.is-on {
+    background: #ffffff;
+}
+
+.ke-tplp__bar > em {
+    position: absolute;
+    top: -2px;
+    width: 2px;
+    height: 9px;
+    background: #22d3ee;
+}
+
+/* Exact preview: the export engine's render of a short range, over the live preview. */
+.ke-exact {
+    position: absolute;
+    inset: 0;
+    z-index: 600;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+}
+
+.ke-exact__video {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    object-fit: contain;
+    background: #000;
+}
+
+.ke-exact__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 4px 6px;
+    font-size: 11px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.ke-preview__right .ke-chip {
+    white-space: nowrap;
+}
+
+/* Transition cuts: picker strip in the Transitions panel and markers on the main track's cuts. */
+.ke-cuts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.ke-cut {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    max-width: 100%;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--ke-border);
+    background: var(--ke-panel-2);
+    color: var(--ke-text);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.ke-cut span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 110px;
+    color: var(--ke-text-muted, #9999a2);
+}
+
+.ke-cut.has-tr span {
+    color: var(--ke-text);
+}
+
+.ke-cut.is-on {
+    border-color: var(--ke-accent);
+    background: var(--ke-accent-soft);
+}
+
+.ke-cutmark {
+    position: absolute;
+    top: -1px;
+    z-index: 6;
+    width: 18px;
+    height: 18px;
+    margin-left: -9px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    background: rgba(20, 20, 24, 0.85);
+    color: #fff;
+    font-size: 10px;
+    line-height: 16px;
+    cursor: pointer;
+}
+
+.ke-cutmark.has-tr {
+    background: var(--ke-accent);
+    border-color: var(--ke-accent-2);
+}
+
+.ke-cutmark.is-on {
+    box-shadow: 0 0 0 2px #22d3ee;
+}

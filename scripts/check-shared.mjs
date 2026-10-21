@@ -2,7 +2,7 @@
 // Run: node scripts/check-shared.mjs   (also run before deploying)
 import fs from 'fs';
 
-const PAIRS = ['color-pipeline.js', 'trend-transitions.js', 'trend-effects.js', 'caption-motion.js'].map((name) => [`client/src/editor/lib/${name}`, `server/src/services/${name}`]);
+const PAIRS = ['color-pipeline.js', 'trend-transitions.js', 'trend-effects.js', 'caption-motion.js', 'keyframes.js'].map((name) => [`client/src/editor/lib/${name}`, `server/src/services/${name}`]);
 let ok = true;
 for (const [a, b] of PAIRS) {
     if (fs.readFileSync(a, 'utf8') !== fs.readFileSync(b, 'utf8')) {

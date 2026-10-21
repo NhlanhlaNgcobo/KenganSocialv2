@@ -1126,3 +1126,59 @@
     transform: none;
   }
 }
+
+/* Connected accounts (what each integration does) */
+.lp-integrations {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.lp-integration {
+  padding: 20px;
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+  background: var(--bg-secondary);
+}
+
+.lp-integration h3 {
+  margin: 10px 0 6px;
+  font-size: 1.05rem;
+}
+
+.lp-integration p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  font-size: 0.92rem;
+}
+
+.lp-integration__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent-soft, rgba(139, 92, 246, 0.14));
+}
+
+.lp-integrations__note {
+  margin-top: 20px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  text-align: center;
+}
+
+.lp-integrations__note a,
+.lp-footer__company a {
+  color: var(--accent-text);
+}
+
+.lp-footer__company {
+  display: grid;
+  gap: 4px;
+}
+
+.lp-footer__company small {
+  color: var(--text-tertiary, var(--text-secondary));
+}

@@ -12,12 +12,33 @@ import { arrangeClips } from '../../lib/arrange-clips';
 import { SourcePicker } from './SourcePicker';
 import { useMediaStore } from '../../stores/media-store';
 import { PresetSearch, matchesPreset } from './PresetSearch';
+import { TemplateGallery } from './TemplateGallery';
 
 function Badge({ children }: { children: React.ReactNode }) {
     return <span className="ke-tpl__badge">{children}</span>;
 }
 
 export function TemplatesView() {
+    const [mode, setMode] = useState<'json' | 'auto'>('json');
+    return (
+        <div className="ke-view">
+            <div className="ke-view__head">
+                <h3>Templates</h3>
+            </div>
+            <div className="ke-chip-row" role="tablist">
+                <button role="tab" aria-selected={mode === 'json'} className={`ke-chip ${mode === 'json' ? 'is-active' : ''}`} onClick={() => setMode('json')}>
+                    Fill-in templates
+                </button>
+                <button role="tab" aria-selected={mode === 'auto'} className={`ke-chip ${mode === 'auto' ? 'is-active' : ''}`} onClick={() => setMode('auto')}>
+                    Auto-cut from one video
+                </button>
+            </div>
+            {mode === 'json' ? <TemplateGallery /> : <AutoCutTemplates />}
+        </div>
+    );
+}
+
+function AutoCutTemplates() {
     const { plan } = useAuth();
     const sourceMediaId = useAiStore((s) => s.sourceMediaId);
     const notify = useUiStore((s) => s.notify);
@@ -88,10 +109,7 @@ export function TemplatesView() {
     };
 
     return (
-        <div className="ke-view">
-            <div className="ke-view__head">
-                <h3>Video templates</h3>
-            </div>
+        <div className="ke-stack">
             <SourcePicker allowImages={!!selected.recipe} videoOnly={!selected.recipe} disabled={!!running} />
             <PresetSearch query={query} onQuery={setQuery} collection={collection} onCollection={setCollection} count={visible.length} />
 

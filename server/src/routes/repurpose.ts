@@ -1,3 +1,4 @@
+import { features, YOUTUBE_LINK_IMPORT_OFF } from '../utils/features';
 import express from 'express';
 import type { Request, Response } from 'express';
 import { withWorkspace } from '../middleware/withWorkspace';
@@ -39,6 +40,7 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('aiCalls'), async (r
         let content = '';
         let origin: Record<string, string> | null = null;
         if (source.type === 'url' && isYouTubeUrl(source.url)) {
+            if (!features.youtubeLinkImport()) return res.status(403).json({ error: YOUTUBE_LINK_IMPORT_OFF, code: 'YOUTUBE_LINK_IMPORT_OFF' });
             if (body.rightsConfirmed !== true) {
                 return res.status(400).json({ error: 'Confirm that you own this video or have permission to repurpose it.' });
             }

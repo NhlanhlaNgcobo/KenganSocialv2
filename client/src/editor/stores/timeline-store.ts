@@ -5,6 +5,8 @@
 import { create } from 'zustand';
 import { CAPTION_STYLES, DEFAULT_TEXT, TIMELINE } from '../constants';
 import { generateId, getElementEnd, getElementLength } from '../lib/time';
+import { retimeKeyframes } from '../lib/keyframes.js';
+import { toTimelineBeats } from '../lib/beats.js';
 import { CAPTION_TEMPLATE_MAP, captionLook, captionText } from '../lib/caption-templates';
 import { useProjectStore } from './project-store';
 import type {
@@ -123,6 +125,8 @@ interface TimelineState {
     tracks: TimelineTrack[];
     selected: SelectedElement[];
     snappingEnabled: boolean;
+    /** Snap to music beats and beat markers (when snapping is on). */
+    beatSnapping: boolean;
     rippleEnabled: boolean;
     history: TimelineTrack[][];
     future: TimelineTrack[][];
@@ -138,6 +142,7 @@ interface TimelineState {
 
     // settings
     toggleSnapping: () => void;
+    toggleBeatSnapping: () => void;
     toggleRipple: () => void;
 
     // selection
@@ -212,6 +217,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
         tracks: [createTrack('media', true)],
         selected: [],
         snappingEnabled: true,
+        beatSnapping: true,
         rippleEnabled: false,
         history: [],
         future: [],
@@ -254,6 +260,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
         clearTimeline: () => set({ tracks: [createTrack('media', true)], history: [], future: [], selected: [] }),
 
         toggleSnapping: () => set((s) => ({ snappingEnabled: !s.snappingEnabled })),
+        toggleBeatSnapping: () => set((s) => ({ beatSnapping: !s.beatSnapping })),
         toggleRipple: () => set((s) => ({ rippleEnabled: !s.rippleEnabled })),
 
         selectElement: (trackId, elementId, multi = false) =>
@@ -381,12 +388,17 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
 
         updateElementTrim: (trackId, elementId, trimStart, trimEnd, startTime) => {
             writeTracks(
-                mapElement(trackId, elementId, (el) => ({
-                    ...el,
-                    trimStart: Math.max(0, trimStart),
-                    trimEnd: Math.max(0, trimEnd),
-                    ...(startTime !== undefined ? { startTime: Math.max(0, startTime) } : {}),
-                }))
+                mapElement(trackId, elementId, (el) => {
+                    const speed = el.type === 'media' ? el.speed || 1 : 1;
+                    const headShift = (Math.max(0, trimStart) - el.trimStart) / speed;
+                    return {
+                        ...el,
+                        trimStart: Math.max(0, trimStart),
+                        trimEnd: Math.max(0, trimEnd),
+                        ...(startTime !== undefined ? { startTime: Math.max(0, startTime) } : {}),
+                        ...(el.keyframes && Math.abs(headShift) > 1e-6 ? { keyframes: retimeKeyframes(el.keyframes, -headShift) } : {}),
+                    } as TimelineElement;
+                })
             );
         },
 
@@ -414,7 +426,13 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
                                       ? [el]
                                       : [
                                             { ...el, trimEnd: el.trimEnd + (sourceLength - relative) },
-                                            { ...el, id: rightId, startTime: time, trimStart: el.trimStart + relative },
+                                            {
+                                                ...el,
+                                                id: rightId,
+                                                startTime: time,
+                                                trimStart: el.trimStart + relative,
+                                                ...(el.keyframes ? { keyframes: retimeKeyframes(el.keyframes, -(time - el.startTime)) } : {}),
+                                            },
                                         ]
                               ),
                           }
@@ -695,6 +713,10 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
                     if (el.id === excludeElementId) continue;
                     points.add(el.startTime);
                     points.add(getElementEnd(el));
+                    if (get().beatSnapping && el.type === 'media' && el.beats) {
+                        for (const t of toTimelineBeats(el, 'beats')) points.add(t);
+                        for (const t of toTimelineBeats(el, 'markers')) points.add(t);
+                    }
                 }
             }
             return [...points];

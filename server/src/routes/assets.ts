@@ -48,10 +48,12 @@ router.get('/music', async (req: Request, res: Response) => {
             const { data } = await axios.get(`${OPENVERSE}/audio/`, {
                 // CC BY / CC0 / PD only. BY-SA is "commercial" too, but music synced to video is an
                 // adaptation under CC 4.0, so it would force the user's video under BY-SA.
-                params: { q, page_size: 20, license: OPENVERSE_AUDIO_LICENSES, extension: 'mp3', mature: false },
+                // Songs only: Jamendo's music catalogue (Openverse's other audio sources are sound
+                // effects and recordings), 30 s – 10 min long.
+                params: { q, page_size: 20, license: OPENVERSE_AUDIO_LICENSES, extension: 'mp3', mature: false, source: 'jamendo', category: 'music', length: 'short,medium' },
                 timeout: 15000,
             });
-            return (data.results || []).map((r: any) => ({
+            return (data.results || []).filter((r: any) => !r.duration || r.duration >= 30000).map((r: any) => ({
                 id: r.id,
                 title: r.title || 'Untitled track',
                 artist: r.creator || 'Unknown artist',

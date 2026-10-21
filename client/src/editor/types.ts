@@ -34,7 +34,18 @@ interface BaseTimelineElement {
     /** Seconds trimmed from the tail of the source. */
     trimEnd: number;
     hidden?: boolean;
+    /** Keyframed properties (lib/keyframes.js); times in seconds from the element's start. */
+    keyframes?: Keyframes;
 }
+
+export type EasingId = 'linear' | 'hold' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'expo-out' | 'expo-in-out' | 'back-out' | 'back-in' | 'elastic-out' | 'bounce-out';
+export type AnimatableProperty = 'x' | 'y' | 'scale' | 'rotation' | 'opacity';
+export interface Keyframe {
+    t: number;
+    v: number;
+    ease: EasingId;
+}
+export type Keyframes = Partial<Record<AnimatableProperty, Keyframe[]>>;
 
 export interface MediaElement extends BaseTimelineElement {
     type: 'media';
@@ -52,6 +63,18 @@ export interface MediaElement extends BaseTimelineElement {
     transitionIn?: ClipTransition | null;
     /** Lumetri-style colour (lib/color-pipeline.js), compiled to a 3D LUT for preview and export. */
     color?: ColorSettings | null;
+    /** Beats of this clip's sound (lib/beats.js), in SOURCE seconds; editor-only, not exported. */
+    beats?: BeatInfo | null;
+}
+
+export interface BeatInfo {
+    bpm: number;
+    /** 0..1: how steady the pulse is. */
+    confidence: number;
+    beats: number[];
+    downbeats: number[];
+    /** Markers the user placed by hand (source seconds). */
+    markers?: number[];
 }
 
 export interface CurvePoints {

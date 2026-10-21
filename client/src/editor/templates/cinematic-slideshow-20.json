@@ -1,0 +1,32 @@
+{
+    "schema": "kengan.template/1",
+    "id": "cinematic-slideshow-20",
+    "name": "Cinematic Slideshow 20",
+    "description": "Six shots in widescreen with slow camera moves, a teal and orange grade, long dissolves and a titled opening and close. 20 seconds; works with photos or video.",
+    "category": "slideshow",
+    "tags": ["cinematic", "photos", "travel"],
+    "canvas": { "ratio": "16:9", "fps": 30, "background": "#000000" },
+    "timing": { "unit": "seconds" },
+    "slots": [
+        { "id": "establish", "label": "Establishing shot", "length": 3.5, "camera": "push-in", "color": { "look": "teal-orange", "intensity": 0.8 }, "effects": [{ "type": "ks-halation", "amount": 0.3 }], "keyframes": { "opacity": [{ "t": 0, "v": 0, "ease": "ease-out" }, { "t": 1.2, "v": 1, "ease": "linear" }] } },
+        { "id": "place", "label": "Place", "length": 3.5, "camera": "pan-left", "color": { "look": "teal-orange", "intensity": 0.8 }, "transitionIn": { "type": "dissolve", "duration": 1 } },
+        { "id": "people", "label": "People", "length": 3, "camera": "pull-out", "color": { "look": "teal-orange", "intensity": 0.8 }, "transitionIn": { "type": "fadeblack", "duration": 0.8 } },
+        { "id": "detail", "label": "Detail", "length": 3, "camera": "tilt-up", "color": { "look": "teal-orange", "intensity": 0.8 }, "transitionIn": { "type": "ks-luma-bloom", "duration": 0.8 } },
+        { "id": "moment", "label": "Moment", "length": 3, "camera": "diagonal-rise", "color": { "look": "teal-orange", "intensity": 0.8 }, "transitionIn": { "type": "dissolve", "duration": 1 } },
+        { "id": "closing", "label": "Closing shot", "length": 4, "camera": "detail-approach", "color": { "look": "teal-orange", "intensity": 0.8 }, "effects": [{ "type": "ks-halation", "amount": 0.35 }], "transitionIn": { "type": "ks-focus-snap", "duration": 0.6 }, "keyframes": { "opacity": [{ "t": 3, "v": 1, "ease": "ease-in" }, { "t": 4, "v": 0, "ease": "linear" }] } }
+    ],
+    "texts": [
+        { "id": "title", "label": "Title", "content": "Somewhere Quiet", "start": 0.8, "length": 2.6, "motion": "title-rise", "style": { "fontSize": 110, "fontFamily": "Bebas Neue", "fontWeight": "normal", "color": "#ffffff", "y": -40 } },
+        { "id": "subtitle", "label": "Subtitle", "content": "a short film", "start": 1.4, "length": 2, "motion": "fade", "style": { "fontSize": 44, "fontFamily": "Poppins", "fontWeight": "normal", "color": "#e5e7eb", "y": 60 } },
+        { "id": "ending", "label": "Ending", "content": "until next time", "slot": "closing", "start": 0.8, "length": 2.4, "motion": "title-breathe", "style": { "fontSize": 72, "fontFamily": "Bebas Neue", "fontWeight": "normal", "color": "#ffffff", "y": 0 } }
+    ],
+    "music": { "source": "user", "volume": 0.7, "originalVolume": 0.15, "startAt": 0, "beatSync": false },
+    "params": [
+        { "id": "title", "type": "text", "label": "Title", "default": "Somewhere Quiet", "targets": ["texts.title.content"] },
+        { "id": "subtitle", "type": "text", "label": "Subtitle", "default": "a short film", "targets": ["texts.subtitle.content"] },
+        { "id": "ending", "type": "text", "label": "Ending", "default": "until next time", "targets": ["texts.ending.content"] },
+        { "id": "title-colour", "type": "color", "label": "Title colour", "default": "#ffffff", "targets": ["texts.title.style.color", "texts.ending.style.color"] },
+        { "id": "music-volume", "type": "number", "label": "Music volume", "min": 0, "max": 1.5, "default": 0.7, "targets": ["music.volume"] },
+        { "id": "pace", "type": "number", "label": "Pace", "min": 0.5, "max": 2, "default": 1, "targets": ["pace"] }
+    ]
+}

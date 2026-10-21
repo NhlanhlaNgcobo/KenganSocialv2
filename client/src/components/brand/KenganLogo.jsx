@@ -58,7 +58,7 @@ export function KenganMark({ size = 28, title = 'KenganSocial' }) {
     );
 }
 
-/** Mark plus "Kengansocial" wordmark, matching the concept's two-weight lockup. */
+/** Mark plus "KenganSocial" wordmark, matching the concept's two-weight lockup. */
 export function KenganLogo({ size = 28, showWordmark = true }) {
     return (
         <span className="kengan-logo">
@@ -66,7 +66,7 @@ export function KenganLogo({ size = 28, showWordmark = true }) {
             {showWordmark ? (
                 <span className="kengan-logo__word">
                     <span className="kengan-logo__word-strong">Kengan</span>
-                    <span className="kengan-logo__word-light">social</span>
+                    <span className="kengan-logo__word-light">Social</span>
                 </span>
             ) : null}
         </span>

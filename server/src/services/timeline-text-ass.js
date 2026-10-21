@@ -1,6 +1,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { captionFrames } from './caption-motion.js';
+import { evaluateKeyframes, keyframeTimes } from './keyframes.js';
 
 /**
  * Editor text elements → one ASS subtitle script, burned in with a single libass filter.
@@ -55,9 +56,9 @@ const EM_TO_ASS = 1.16;
  * @param {number} W canvas width
  * @param {number} H canvas height
  */
-export function buildTextAss(items, W, H) {
+export function buildTextAss(items, W, H, fps = 30) {
     let expandedCount = 0;
-    const expanded = items.flatMap((t, index) => {
+    const motionExpanded = items.flatMap((t, index) => {
         if (!t.captionMotion) return [{ ...t, layer: index }];
         if (t.captionDuration > 30) throw new Error('Animated captions must be 30 seconds or shorter. Split the caption first.');
         const frames = captionFrames(t.content, t.captionWords, t.captionMotion, t.captionDuration, `#${t.color.hex}`, `#${t.accentColor.hex}`);
@@ -70,11 +71,38 @@ export function buildTextAss(items, W, H) {
             return [{ ...t, layer: index, timelineStart: t.timelineStart + from, timelineEnd: t.timelineStart + to, motionFrame: frame }];
         });
     });
+    // Keyframed text: one event per frame across the animated range, each with the exact values the
+    // preview computes (keyframes.js). Before the first and after the last keyframe the text holds.
+    const expanded = motionExpanded.flatMap((t) => {
+        if (!t.keyframes) return [t];
+        const times = keyframeTimes(t.keyframes);
+        const base = t.elementStart ?? t.timelineStart;
+        const animFrom = base + times[0];
+        const animTo = base + times[times.length - 1];
+        const out = [];
+        const step = 1 / fps;
+        let cursor = t.timelineStart;
+        while (cursor < t.timelineEnd - 1e-6) {
+            let next;
+            if (cursor < animFrom - 1e-6) next = Math.min(animFrom, t.timelineEnd);
+            else if (cursor >= animTo - 1e-6) next = t.timelineEnd;
+            else next = Math.min(t.timelineEnd, animTo, base + (Math.floor((cursor - base) / step + 1e-6) + 1) * step);
+            if (next <= cursor + 1e-6) next = Math.min(t.timelineEnd, cursor + step);
+            out.push({ ...t, timelineStart: cursor, timelineEnd: next, kfFrame: evaluateKeyframes(t.keyframes, cursor - base) });
+            cursor = next;
+            expandedCount += 1;
+            if (expandedCount > 120000) throw new Error('Too many animated text frames. Shorten the keyframed text or export a shorter selection.');
+        }
+        return out;
+    });
     const events = expanded.map((t) => {
         const lines = t.content.split(/\r?\n/);
         const size = Math.round(t.fontSize * EM_TO_ASS);
-        const centreX = W / 2 + t.x;
-        const centreY = H / 2 + t.y + (t.motionFrame?.y || 0);
+        const kf = t.kfFrame || {};
+        const opacity = t.opacity * (kf.opacity ?? 1);
+        t = { ...t, opacity };
+        const centreX = W / 2 + (kf.x ?? t.x);
+        const centreY = H / 2 + (kf.y ?? t.y) + (t.motionFrame?.y || 0);
         const blockWidth = Math.max(...lines.map((l) => l.length)) * t.fontSize * 0.52;
         const [an, x] = t.align === 'left' ? [4, centreX - blockWidth / 2] : t.align === 'right' ? [6, centreX + blockWidth / 2] : [5, centreX];
         const boxed = t.background.alpha > 0;
@@ -94,13 +122,16 @@ export function buildTextAss(items, W, H) {
         } else {
             tags.push('\\bord0', `\\shad${Math.max(1, Math.round(t.fontSize / 30))}`, `\\4a${assAlpha(0.6 * t.opacity)}`);
         }
-        if (t.rotation) tags.push(`\\frz${(-t.rotation).toFixed(2)}`);
+        const rotation = kf.rotation ?? t.rotation;
+        if (rotation) tags.push(`\\frz${(-rotation).toFixed(2)}`);
+        if (kf.scale !== undefined && !t.motionFrame) tags.push(`\\fscx${(kf.scale * 100).toFixed(2)}\\fscy${(kf.scale * 100).toFixed(2)}`);
         if (t.animation === 'fade') tags.push('\\fad(250,0)');
         if (t.animation === 'pop') tags.push('\\fad(90,0)\\fscx72\\fscy72\\t(0,140,\\fscx100\\fscy100)');
         let content = clean(t.content);
         if (t.motionFrame) {
             const frame = t.motionFrame;
-            tags.push(`\\fscx${(frame.scale * 100).toFixed(2)}\\fscy${(frame.scale * 100).toFixed(2)}`);
+            const s = frame.scale * (kf.scale ?? 1);
+            tags.push(`\\fscx${(s * 100).toFixed(2)}\\fscy${(s * 100).toFixed(2)}`);
             content = frame.chunks.map((chunk, i) => {
                 const alpha = assAlpha(t.opacity * t.color.alpha * frame.opacity * chunk.opacity);
                 const tokenColor = chunk.color.replace('#', '');

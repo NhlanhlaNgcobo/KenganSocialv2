@@ -224,7 +224,8 @@ async function searchOpenverse({ genre, vocals, q, page }) {
     const query = [genreTerm, q].filter(Boolean).join(' ') || 'vocal';
     try {
         const { data } = await axios.get(`${OPENVERSE}/`, {
-            params: { q: query, license: [...ALLOWED_OPENVERSE_LICENSES].join(','), category: 'music', mature: false, page_size: 20, page },
+            // Jamendo is Openverse's music catalogue; its other audio sources are effects and recordings.
+            params: { q: query, license: [...ALLOWED_OPENVERSE_LICENSES].join(','), category: 'music', source: 'jamendo', mature: false, page_size: 20, page },
             timeout: 15000,
         });
         const tracks = (data?.results || [])

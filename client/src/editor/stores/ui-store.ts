@@ -7,6 +7,9 @@ interface UiState {
     zoom: number;
     exportOpen: boolean;
     toast: { id: number; message: string; tone: 'info' | 'error' | 'success' } | null;
+    /** Cuts picked for transitions (ids of the clip AFTER each cut). Empty: use the selection or playhead. */
+    transitionCuts: string[];
+    setTransitionCuts: (ids: string[]) => void;
     setActiveTab: (tab: PanelTab) => void;
     setZoom: (zoom: number) => void;
     setExportOpen: (open: boolean) => void;
@@ -19,6 +22,8 @@ export const useUiStore = create<UiState>((set) => ({
     zoom: 1,
     exportOpen: false,
     toast: null,
+    transitionCuts: [],
+    setTransitionCuts: (transitionCuts) => set({ transitionCuts }),
     setActiveTab: (activeTab) => set({ activeTab }),
     setZoom: (zoom) => set({ zoom }),
     setExportOpen: (exportOpen) => set({ exportOpen }),

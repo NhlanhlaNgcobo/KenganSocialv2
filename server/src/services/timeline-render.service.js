@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { buildTextAss, FONTS_DIR } from './timeline-text-ass.js';
+import { evaluateTrack, normalizeKeyframes, trackExpression } from './keyframes.js';
 import { effectFilters, gradeFilters, LOOKS, normalizeEffects, normalizeGrade, normalizeTransition, TRANSITIONS } from './timeline-fx.js';
 import crypto from 'crypto';
 import sharp from 'sharp';
@@ -127,6 +128,8 @@ function normalizeMedia(item, ownerId) {
         effects: normalizeEffects(item.effects),
         transitionIn: normalizeTransition(item.transitionIn),
         color: item.color && typeof item.color === 'object' ? normalizeColor(item.color) : null,
+        // Keyframes (seconds from the element's start); they override the static/camera value per property.
+        keyframes: normalizeKeyframes(item.keyframes, 'media'),
     };
 }
 
@@ -162,6 +165,8 @@ function normalizeText(item) {
         captionOffset: num(item.captionOffset, 0, 0, 600),
         captionDuration: num(item.captionDuration, timelineEnd - timelineStart, 0.05, 600),
         accentColor: parseColor(item.accentColor) || { hex: 'a3e635', alpha: 1 },
+        elementStart: timelineStart,
+        keyframes: normalizeKeyframes(item.keyframes, 'text'),
     };
 }
 
@@ -211,7 +216,17 @@ export function normalizeTimelineConfig(config, ownerId) {
         luts[id] = { size, data: Float32Array.from(lut.data, (v) => Math.min(1, Math.max(0, Number(v) || 0))) };
     }
 
-    return { ...preset, fps, background, duration, main, overlays, audio, text, luts };
+    // Exact preview: render only [start, end] of the timeline through the same pipeline.
+    let range = null;
+    if (config.range && typeof config.range === 'object') {
+        const start = num(config.range.start, 0, 0, duration);
+        const end = num(config.range.end, start + 3, 0, duration);
+        if (!(end - start >= 0.1)) throw new RenderInputError('The preview range is empty.');
+        if (end - start > 30) throw new RenderInputError('Exact preview covers at most 30 seconds.');
+        range = { start, end };
+    }
+
+    return { ...preset, fps, background, duration, main, overlays, audio, text, luts, range };
 }
 
 /**
@@ -351,25 +366,187 @@ function fitFilter(W, H, bgHex, filterName, grade = null, lutPath = null) {
  * preview: flip, zoom about the centre (animated over the clip), move, rotate about the centre.
  * Padding before the crop lets zoom-out and large moves reveal the background colour.
  */
-function transformFilters(t, W, H, length, bgHex) {
-    if (!t) return '';
+function transformFilters(t, W, H, length, bgHex, kf = null, headShift = 0, ctx = null) {
+    if (!t && !kf) return '';
+    t = t || { scaleStart: 1, scaleEnd: 1, x: 0, y: 0, xEnd: 0, yEnd: 0, rotation: 0, flipH: false, flipV: false };
     const parts = [];
     if (t.flipH) parts.push('hflip');
     if (t.flipV) parts.push('vflip');
 
-    const animated = Math.abs(t.scaleEnd - t.scaleStart) > 1e-4;
-    const zoom = animated
-        ? `(${t.scaleStart.toFixed(4)}+${(t.scaleEnd - t.scaleStart).toFixed(4)}*min(t/${Math.max(length, 0.04).toFixed(3)},1))`
-        : t.scaleStart.toFixed(4);
-    if (animated || t.scaleStart !== 1 || t.x || t.y || t.xEnd || t.yEnd) {
-        const margin = 2 * Math.ceil(Math.max(Math.abs(t.x), Math.abs(t.y), Math.abs(t.xEnd), Math.abs(t.yEnd)) / 2) + 2;
+    // Element time: segment time minus footage borrowed for a transition before the clip.
+    const et = headShift > 1e-4 ? `(t-${headShift.toFixed(4)})` : 't';
+    const progress = `clip(${et}/${Math.max(length, 0.04).toFixed(3)},0,1)`;
+    const camera = Math.abs(t.scaleEnd - t.scaleStart) > 1e-4;
+    const maxZoom = zoomCeiling(kf?.scale, [t.scaleStart, t.scaleEnd]);
+    const zoom = kf?.scale
+        ? `min(${trackExpression(kf.scale, et)},${maxZoom.toFixed(4)})`
+        : camera
+          ? `(${t.scaleStart.toFixed(4)}+${(t.scaleEnd - t.scaleStart).toFixed(4)}*${progress})`
+          : t.scaleStart.toFixed(4);
+    const animated = camera || !!kf?.scale;
+    const travel = (a, b) => (Math.abs(b - a) > 1e-4 ? `${a.toFixed(1)}+${(b - a).toFixed(1)}*${progress}` : a.toFixed(1));
+    const xExpr = kf?.x ? trackExpression(kf.x, et) : travel(t.x, t.xEnd ?? t.x);
+    const yExpr = kf?.y ? trackExpression(kf.y, et) : travel(t.y, t.yEnd ?? t.y);
+    const moving = animated || kf?.x || kf?.y || t.scaleStart !== 1 || t.x || t.y || t.xEnd || t.yEnd;
+    if (moving) {
+        const extent = (track, fallback) => (track ? Math.max(...track.map((k) => Math.abs(k.v))) : fallback);
+        const reach = Math.max(extent(kf?.x, Math.max(Math.abs(t.x), Math.abs(t.xEnd || 0))), extent(kf?.y, Math.max(Math.abs(t.y), Math.abs(t.yEnd || 0))));
+        const margin = 2 * Math.ceil(reach / 2) + 2;
+        // 4:4:4 while moving: with 4:2:0 colour, crop snaps to even pixels (and truncates), which made
+        // animated positions lag and step by up to 2 px. Positions round to the nearest pixel. The
+        // format filter sits after scale: scale would otherwise negotiate 4:2:0 output.
         parts.push(`scale=w='trunc(${W}*${zoom}/2)*2':h='trunc(${H}*${zoom}/2)*2'${animated ? ':eval=frame' : ''}`);
-        parts.push(`pad=w='max(iw,${W})+${2 * margin}':h='max(ih,${H})+${2 * margin}':x='(ow-iw)/2':y='(oh-ih)/2':color=0x${bgHex}${animated ? ':eval=frame' : ''}`);
-        const travel = (a, b) => `${a.toFixed(1)}+${(b - a).toFixed(1)}*min(t/${Math.max(length, 0.04).toFixed(3)},1)`;
-        parts.push(`crop=${W}:${H}:x='(iw-${W})/2-(${travel(t.x, t.xEnd)})':y='(ih-${H})/2-(${travel(t.y, t.yEnd)})'`);
+        parts.push('format=yuv444p');
+        // A constant padded size for every frame: with an animated zoom each scaled frame has a
+        // different size, and filters after it (crop) keep the first frame's size, so the picture
+        // drifted off-centre as the zoom changed. Pad evaluates per frame and centres each one.
+        const PW = 2 * Math.ceil((W * Math.max(1, maxZoom)) / 2) + 2 * margin;
+        const PH = 2 * Math.ceil((H * Math.max(1, maxZoom)) / 2) + 2 * margin;
+        parts.push(`pad=w=${PW}:h=${PH}:x='(ow-iw)/2':y='(oh-ih)/2':color=0x${bgHex}${animated ? ':eval=frame' : ''}`);
+        parts.push(`crop=${W}:${H}:x='round(${(PW - W) / 2}-(${xExpr}))':y='round(${(PH - H) / 2}-(${yExpr}))'`);
     }
-    if (t.rotation) parts.push(`rotate=a=${t.rotation.toFixed(3)}*PI/180:fillcolor=0x${bgHex}`);
+    if (kf?.rotation) parts.push(`rotate=a='(${trackExpression(kf.rotation, et)})*PI/180':fillcolor=0x${bgHex}`);
+    else if (t.rotation) parts.push(`rotate=a=${t.rotation.toFixed(3)}*PI/180:fillcolor=0x${bgHex}`);
+    if (kf?.opacity) {
+        // Fade towards the background colour.
+        const [r, g, b] = [0, 2, 4].map((i) => parseInt(bgHex.slice(i, i + 2), 16));
+        const fade = opacityFilters(kf.opacity, { ...ctx, shift: headShift, from: 0, to: length + headShift + 1, channels: { r, g, b } });
+        if (fade) parts.push(fade);
+    }
     return parts.length ? `,${parts.join(',')}` : '';
+}
+
+let opacitySeq = 0;
+/**
+ * Keyframed opacity as per-frame commands: sendcmd re-sets a 256-entry lookup table at each output
+ * frame to the value keyframes.js gives for that frame (what the preview shows). A per-pixel
+ * expression (geq) did the same about 20× slower. Stream time − `shift` = element time.
+ * channels {r,g,b}: blend the picture towards that colour (main track); null: scale alpha (overlays).
+ * Returns '' when the opacity is 1 throughout.
+ */
+function opacityFilters(track, { fps, dir, shift, from, to, channels }) {
+    const valueAt = (time) => Math.min(1, Math.max(0, evaluateTrack(track, time - shift)));
+    const first = Math.max(0, Math.ceil(from * fps - 1e-6));
+    const last = Math.floor(to * fps + 1e-6);
+    opacitySeq += 1;
+    const name = `${channels ? 'lutrgb' : 'lutyuv'}@op${opacitySeq}`;
+    const set = (o) =>
+        channels
+            ? ['r', 'g', 'b'].map((c) => [c, `val*${o.toFixed(5)}+${(channels[c] * (1 - o)).toFixed(4)}`])
+            : [['a', `val*${o.toFixed(5)}`]];
+    const start = valueAt(first / fps);
+    const lines = [];
+    let current = start;
+    let opaque = start > 0.9999;
+    for (let k = first + 1; k <= last; k += 1) {
+        const o = valueAt(k / fps);
+        if (Math.abs(o - current) < 1e-5) continue;
+        current = o;
+        if (o <= 0.9999) opaque = false;
+        // From half a frame before output frame k: the source frames fps= picks for frame k.
+        lines.push(`${((k - 0.5) / fps).toFixed(4)} ${set(o).map(([c, v]) => `${name} ${c} ${v}`).join(', ')};`);
+    }
+    if (opaque) return '';
+    const options = set(start).map(([c, v]) => `${c}='${v}'`).join(':');
+    const filter = channels ? `${name}=${options}` : `${name}=y=val:u=val:v=val:${options}`;
+    if (!lines.length) return filter;
+    const file = path.join(dir, `opacity_${opacitySeq}.cmd`);
+    fs.writeFileSync(file, lines.join('\n'));
+    return `sendcmd=f='${filterPath(file)}',${filter}`;
+}
+
+/**
+ * Framing in the SOURCE picture for a zoomed or moving main-track clip: crop the part of the
+ * source that can ever be visible, then scale only that to the zoom. The preview's geometry (fit
+ * inside the canvas, zoom about the centre, move) is unchanged, but nothing is scaled down and
+ * back up, and a fill zoom no longer scales the whole letterboxed canvas (≈3× the pixels for 16:9
+ * footage on a 9:16 canvas). Returns null when the source size is unknown (callers fall back).
+ * src: { w, h } display size of the source.
+ */
+function sourceFraming(t, W, H, length, bgHex, kf, headShift, src, colour) {
+    if (!src?.w || !src?.h) return null;
+    const et = headShift > 1e-4 ? `(t-${headShift.toFixed(4)})` : 't';
+    const progress = `clip(${et}/${Math.max(length, 0.04).toFixed(3)},0,1)`;
+    const camera = Math.abs(t.scaleEnd - t.scaleStart) > 1e-4;
+    const maxZoom = zoomCeiling(kf?.scale, [t.scaleStart, t.scaleEnd]);
+    const minZoom = zoomFloor(kf?.scale, [t.scaleStart, t.scaleEnd]);
+    const zoom = kf?.scale
+        ? `clip(${trackExpression(kf.scale, et)},${minZoom.toFixed(4)},${maxZoom.toFixed(4)})`
+        : camera
+          ? `(${t.scaleStart.toFixed(4)}+${(t.scaleEnd - t.scaleStart).toFixed(4)}*${progress})`
+          : t.scaleStart.toFixed(4);
+    const animated = camera || !!kf?.scale;
+    const travel = (a, b) => (Math.abs(b - a) > 1e-4 ? `${a.toFixed(1)}+${(b - a).toFixed(1)}*${progress}` : a.toFixed(1));
+    const xExpr = kf?.x ? trackExpression(kf.x, et) : travel(t.x, t.xEnd ?? t.x);
+    const yExpr = kf?.y ? trackExpression(kf.y, et) : travel(t.y, t.yEnd ?? t.y);
+    const extent = (track, fallback) => (track ? Math.max(...track.map((k) => Math.abs(k.v))) * 1.4 : fallback);
+    const reachX = extent(kf?.x, Math.max(Math.abs(t.x), Math.abs(t.xEnd || 0)));
+    const reachY = extent(kf?.y, Math.max(Math.abs(t.y), Math.abs(t.yEnd || 0)));
+
+    // Fit factor (source px → canvas px at zoom 1) and the source area ever visible (centred).
+    const k = Math.min(W / src.w, H / src.h);
+    const need = (canvas, reach) => (canvas / 2 + reach) / (minZoom * k);
+    const span = (size, half) => {
+        // Centred crop whose offset (size − span)/2 is even (4:2:0 crops snap to even pixels).
+        const wanted = Math.min(size, 2 * Math.ceil(half) + 4);
+        return Math.min(size, size - 4 * Math.floor((size - wanted) / 4));
+    };
+    const cw = span(src.w, need(W, reachX));
+    const ch = span(src.h, need(H, reachY));
+    const s = `(${zoom})*${k.toFixed(6)}`;
+    const sMax = maxZoom * k;
+    const margin = 2 * Math.ceil(Math.max(reachX, reachY) / 2) + 2;
+    const PW = 2 * Math.ceil(Math.max(W, cw * sMax) / 2) + 2 * margin;
+    const PH = 2 * Math.ceil(Math.max(H, ch * sMax) / 2) + 2 * margin;
+    const parts = [];
+    if (t.flipH) parts.push('hflip');
+    if (t.flipV) parts.push('vflip');
+    if (cw < src.w || ch < src.h) parts.push(`crop=${cw}:${ch}:${(src.w - cw) / 2}:${(src.h - ch) / 2}`);
+    if (colour) parts.push(colour);
+    parts.push(`scale=w='max(2,trunc(${cw}*${s}/2)*2)':h='max(2,trunc(${ch}*${s}/2)*2)'${animated ? ':eval=frame' : ''}`);
+    parts.push('format=yuv444p');
+    parts.push(`pad=w=${PW}:h=${PH}:x='(ow-iw)/2':y='(oh-ih)/2':color=0x${bgHex}${animated ? ':eval=frame' : ''}`);
+    parts.push(`crop=${W}:${H}:x='round(${(PW - W) / 2}-(${xExpr}))':y='round(${(PH - H) / 2}-(${yExpr}))'`);
+    return parts.join(',');
+}
+
+/** Smallest zoom an animated scale reaches (keyframes, with room for undershooting easings). */
+function zoomFloor(track, fixed = []) {
+    if (!track) return Math.max(1e-3, Math.min(...fixed.filter((v) => Number.isFinite(v))));
+    const values = track.map((k) => k.v);
+    const lo = Math.min(...values);
+    const overshoots = track.slice(0, -1).some((k) => /^(back|elastic)/.test(k.ease));
+    return Math.max(0.05, overshoots ? lo - 0.4 * (Math.max(...values) - lo) : lo);
+}
+
+/**
+ * Picture filters of a main-track clip: fit + colour + transform. Zoomed or moving clips frame in
+ * the source (sourceFraming); others fit, then rotate/fade as before.
+ */
+function pictureFilters(segment, W, H, bgHex, lut, fullLength, ctx, src) {
+    const t = segment.transform;
+    const kf = segment.keyframes;
+    const headShift = segment.headShift || 0;
+    const moving = !!(kf?.scale || kf?.x || kf?.y || (t && (t.scaleStart !== 1 || Math.abs(t.scaleEnd - t.scaleStart) > 1e-4 || t.x || t.y || t.xEnd || t.yEnd)));
+    // KENGAN_FRAMING=canvas forces the older canvas-zoom path (scripts compare the two).
+    if (moving && src && process.env.KENGAN_FRAMING !== 'canvas') {
+        const preset = segment.filter && segment.filter !== 'none' ? `${FILTER_PRESETS[segment.filter]}` : '';
+        const colour = [preset, gradeFilters(segment.grade).replace(/^,/, ''), lut ? `lut3d=file='${filterPath(lut)}':interp=tetrahedral` : ''].filter(Boolean).join(',');
+        const framed = sourceFraming(t || { scaleStart: 1, scaleEnd: 1, x: 0, y: 0, xEnd: 0, yEnd: 0, rotation: 0 }, W, H, fullLength, bgHex, kf, headShift, src, colour);
+        if (framed) {
+            // Rotation and opacity act on the framed canvas, exactly as in transformFilters.
+            const rest = transformFilters({ scaleStart: 1, scaleEnd: 1, x: 0, y: 0, xEnd: 0, yEnd: 0, rotation: t?.rotation || 0, flipH: false, flipV: false }, W, H, fullLength, bgHex, kf ? { rotation: kf.rotation, opacity: kf.opacity } : null, headShift, ctx);
+            return `${framed}${rest}`;
+        }
+    }
+    return `${fitFilter(W, H, bgHex, segment.filter, segment.grade, lut)}${transformFilters(t, W, H, fullLength, bgHex, kf, headShift, ctx)}`;
+}
+
+/** Display size of a clip's picture (rotation applied), or null when unknown or non-square pixels. */
+function displaySize(info) {
+    if (!info?.width || !info?.height || info.squarePixels === false) return null;
+    const turned = Math.abs(Math.round(info.rotation || 0)) % 180 === 90;
+    return turned ? { w: info.height, h: info.width } : { w: info.width, h: info.height };
 }
 
 /** Rotation for overlays keeps transparency, growing the frame to fit the rotated picture. */
@@ -380,6 +557,41 @@ function overlayRotation(t) {
 }
 
 /** Overlay-track version: zoom resizes the picture (below 100% = picture-in-picture). */
+/**
+ * Largest zoom an animated scale reaches: the highest keyframe plus room for easing overshoot
+ * (back/elastic curves pass the target by up to ~40% of the change). Zoom is clamped to it.
+ */
+function zoomCeiling(track, fixed = []) {
+    if (!track) return Math.max(1e-3, ...fixed.filter((v) => Number.isFinite(v)));
+    const values = track.map((k) => k.v);
+    const hi = Math.max(...values);
+    // Only back/elastic curves leave the keyframe range.
+    const overshoots = track.slice(0, -1).some((k) => /^(back|elastic)/.test(k.ease));
+    return overshoots ? hi + 0.4 * (hi - Math.min(...values)) : hi;
+}
+
+/** Overlay keyframes (scale, rotation, opacity) in terms of the overlay's element time `et`. */
+function overlayKeyframeFilters(kf, et, ctx) {
+    if (!kf) return '';
+    const parts = [];
+    if (kf.scale) {
+        // Constant-size output (transparent pad), so rotate and overlay see one frame size.
+        const maxZoom = zoomCeiling(kf.scale);
+        const z = `min(${trackExpression(kf.scale, et)},${maxZoom.toFixed(4)})`;
+        // Pad in 4:4:4 (exact centring) to canvas + a multiple of 4 px, so the overlay offset (W-w)/2
+        // stays even: overlay positions snap to even pixels on a 4:2:0 picture.
+        const grow = (size) => size + 4 * Math.ceil(Math.max(0, size * maxZoom - size) / 4) + 4;
+        parts.push(`scale=w='trunc(iw*(${z})/2)*2':h='trunc(ih*(${z})/2)*2':eval=frame`, 'format=yuva444p');
+        parts.push(`pad=w=${grow(ctx.width)}:h=${grow(ctx.height)}:x='(ow-iw)/2':y='(oh-ih)/2':color=black@0:eval=frame`);
+    }
+    if (kf.rotation) parts.push(`rotate=a='(${trackExpression(kf.rotation, et)})*PI/180':ow='hypot(iw,ih)':oh='hypot(iw,ih)':c=none`);
+    if (kf.opacity) {
+        const fade = opacityFilters(kf.opacity, { ...ctx, shift: ctx.start, from: ctx.start, to: ctx.end, channels: null });
+        if (fade) parts.push(fade);
+    }
+    return parts.length ? `,${parts.join(',')}` : '';
+}
+
 function overlayTransformFilters(t) {
     if (!t) return '';
     const parts = [];
@@ -393,6 +605,15 @@ async function renderSegment(segment, spec, outPath) {
     const { width: W, height: H, fps, background } = spec;
     const assets = segment.kind === 'gap' ? { lut: null, mask: null } : await colorAssets(segment.color, spec, path.dirname(outPath));
     const len = segment.length.toFixed(3);
+    // Whole frames, added as N/(fps·TB) so it is exact in any time base: a photo's time base is
+    // 1/fps, where "+0.433333/TB" truncated to 12 frames instead of 13.
+    const offsetFrames = segment.offset ? Math.round(segment.offset * fps) : 0;
+    const offset = offsetFrames / fps;
+    const offsetPts = `${offsetFrames}/(${fps}*TB)`;
+    // Animation progress runs over the clip's own length (as in the preview), not the length after
+    // transitions borrowed footage or an exact-preview range cut it.
+    const fullLength = segment.elementLength || segment.length;
+    const et = segment.headShift > 1e-4 ? `(t-${segment.headShift.toFixed(4)})` : 't';
     const args = ['-hide_banner', '-y'];
     const graph = [];
     let audioLabel = null;
@@ -405,14 +626,18 @@ async function renderSegment(segment, spec, outPath) {
     } else if (segment.kind === 'image') {
         args.push('-loop', '1', '-framerate', String(fps), '-t', len, '-i', segment.path);
         args.push('-f', 'lavfi', '-t', len, '-i', 'anullsrc=r=48000:cl=stereo');
-        graph.push(`[0:v]${fitFilter(W, H, background.hex, segment.filter, segment.grade, assets.lut)}${transformFilters(segment.transform, W, H, segment.length, background.hex)}${effectFilters(segment.effects, W, H, fps)},fps=${fps},format=yuv420p,setsar=1[v]`);
+        const src = displaySize(await probe(segment.path).catch(() => null));
+        graph.push(`[0:v]${offset ? `setpts=PTS-STARTPTS+${offsetPts},` : ''}${pictureFilters(segment, W, H, background.hex, assets.lut, fullLength, { fps, dir: path.dirname(outPath) }, src)}${effectFilters(segment.effects, W, H, fps, et)},fps=${fps}${offset ? ',setpts=PTS-STARTPTS' : ''},format=yuv420p,setsar=1[v]`);
         audioLabel = '1:a';
     } else {
         const info = await probe(segment.path);
-        const srcLen = (segment.sourceEnd - segment.sourceStart).toFixed(3);
-        args.push('-ss', segment.sourceStart.toFixed(3), '-t', srcLen, '-i', segment.path);
+        // A partial render (exact preview) starts `offset` seconds into the segment but keeps the
+        // segment's time base, so camera moves, keyframes and effects evaluate exactly as in a full render.
+        const srcFrom = segment.sourceStart + offset * segment.speed;
+        const srcLen = (segment.sourceEnd - srcFrom).toFixed(3);
+        args.push('-ss', srcFrom.toFixed(3), '-t', srcLen, '-i', segment.path);
         if (info.hasVideo) {
-            graph.push(`[0:v]setpts=(PTS-STARTPTS)/${segment.speed},${fitFilter(W, H, background.hex, segment.filter, segment.grade, assets.lut)}${transformFilters(segment.transform, W, H, segment.length, background.hex)}${effectFilters(segment.effects, W, H, fps)}${padFilter(segment)},fps=${fps},format=yuv420p,setsar=1[v]`);
+            graph.push(`[0:v]setpts=(PTS-STARTPTS)/${segment.speed}${offset ? `+${offsetPts}` : ''},${pictureFilters(segment, W, H, background.hex, assets.lut, fullLength, { fps, dir: path.dirname(outPath) }, displaySize(info))}${effectFilters(segment.effects, W, H, fps, et)}${padFilter(segment)},fps=${fps}${offset ? ',setpts=PTS-STARTPTS' : ''},format=yuv420p,setsar=1[v]`);
         } else {
             args.push('-f', 'lavfi', '-i', `color=c=0x${background.hex}:s=${W}x${H}:r=${fps}:d=${len}`);
             graph.push(`[1:v]format=yuv420p,setsar=1[v]`);
@@ -439,8 +664,13 @@ async function renderSegment(segment, spec, outPath) {
         }
     }
     args.push('-filter_complex', graph.join(';'));
+    // KENGAN_RENDER_DEBUG=1 prints each segment's filter graph (diagnosing export differences).
+    if (process.env.KENGAN_RENDER_DEBUG) console.log(`[render] segment ${path.basename(outPath)}: ${graph.join(';')}`);
     args.push('-map', '[v]', '-map', audioLabel === 'a' ? '[a]' : audioLabel);
-    args.push('-t', len, '-r', String(fps), ...ENCODE_VIDEO, ...ENCODE_AUDIO, '-video_track_timescale', '90000', outPath);
+    // Exactly `frames` pictures and the same length of sound. "-t <seconds to 3 decimals>" let in an
+    // extra frame for lengths like 1.5667 s, so later cuts drifted a frame behind titles and music.
+    const frames = segment.frameCount || Math.round(segment.length * fps);
+    args.push('-t', (frames / fps).toFixed(6), '-frames:v', String(frames), '-r', String(fps), ...ENCODE_VIDEO, ...ENCODE_AUDIO, '-video_track_timescale', '90000', outPath);
     await run(FFMPEG, args);
 }
 
@@ -475,11 +705,15 @@ async function prepareTransitions(segments) {
         const b = segments[i];
         const t = b.transitionIn;
         if (!t || a.kind === 'gap' || b.kind === 'gap') continue;
-        const d = Math.min(t.duration, a.length * 0.9, b.length * 0.9);
+        // From the clips' own lengths, so an exact-preview range (which renders only part of a clip)
+        // gets the same transition as the full export.
+        const d = Math.min(t.duration, (a.elementLength || a.length) * 0.9, (b.elementLength || b.length) * 0.9);
         if (d < 0.15) continue;
         const h = d / 2;
         for (const [seg, side] of [[a, 'tail'], [b, 'head']]) {
             if (seg.kind === 'image') {
+                // A photo held longer at its head: its animation still starts at the clip's own start.
+                if (side === 'head') seg.headShift = (seg.headShift || 0) + h;
                 seg.length += h;
                 continue;
             }
@@ -492,6 +726,8 @@ async function prepareTransitions(segments) {
             } else {
                 const extra = Math.max(0, Math.min(need, seg.sourceStart));
                 seg.sourceStart -= extra;
+                // Footage borrowed before the clip: its time 0 now lies this far into the segment.
+                seg.headShift = (seg.headShift || 0) + extra / seg.speed;
                 seg.padHead = (seg.padHead || 0) + (need - extra) / seg.speed;
             }
             seg.length += h;
@@ -505,43 +741,116 @@ async function prepareTransitions(segments) {
  * Joins rendered segments. Runs without a transition are stream-copied (concat demuxer); runs are
  * then joined with xfade (picture) and acrossfade (sound).
  */
-async function joinSegments(segmentPaths, boundaries, workDir, spec) {
+async function joinSegments(segmentPaths, boundaries, workDir, spec, frameCounts = []) {
     const cuts = new Map(boundaries.map((b) => [b.index, b]));
     const groups = [[]];
     segmentPaths.forEach((p, i) => {
         if (cuts.has(i)) groups.push([]);
-        groups[groups.length - 1].push(p);
+        groups[groups.length - 1].push({ file: p, frames: frameCounts[i] });
     });
     const groupFiles = [];
     for (const [g, files] of groups.entries()) {
         const list = `group_${g}.txt`;
-        fs.writeFileSync(path.join(workDir, list), files.map((f) => `file '${path.basename(f)}'`).join('\n'));
+        // Each file lasts exactly its picture: without "duration", concat starts the next file after
+        // the container length, which includes AAC padding (up to 21 ms), so every plain cut pushed the
+        // rest of the picture later than titles, overlays and music. outpoint drops the padding.
+        const entries = files.map(({ file, frames }) => {
+            const entry = `file '${path.basename(file)}'`;
+            if (!frames) return entry;
+            const seconds = (frames / spec.fps).toFixed(6);
+            return `${entry}\nduration ${seconds}\noutpoint ${seconds}`;
+        });
+        fs.writeFileSync(path.join(workDir, list), entries.join('\n'));
         const out = `group_${g}.mp4`;
         await run(FFMPEG, ['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', out], { cwd: workDir });
         groupFiles.push(out);
     }
     if (groupFiles.length === 1) {
-        fs.renameSync(path.join(workDir, groupFiles[0]), path.join(workDir, 'base.mp4'));
+        // Concat starts the picture after the audio's AAC encoder delay (~21 ms), which put every title,
+        // overlay and music cue that far out of step with the picture. Shift the video back to 0
+        // (stream copy, no re-encode).
+        const start = (await probe(path.join(workDir, groupFiles[0]))).videoStart;
+        if (start > 0.0005) {
+            await run(FFMPEG, ['-hide_banner', '-y', '-itsoffset', (-start).toFixed(6), '-i', groupFiles[0], '-i', groupFiles[0], '-map', '0:v', '-map', '1:a?', '-c', 'copy', 'base.mp4'], { cwd: workDir });
+        } else {
+            fs.renameSync(path.join(workDir, groupFiles[0]), path.join(workDir, 'base.mp4'));
+        }
         return;
     }
     const lengths = [];
-    for (const f of groupFiles) lengths.push((await probe(path.join(workDir, f))).duration);
+    // xfade offsets are picture time: use the video stream's length (the container length includes AAC
+    // padding and would start every transition a frame late).
+    for (const f of groupFiles) {
+        const info = await probe(path.join(workDir, f));
+        lengths.push(info.videoDuration || info.duration);
+    }
     const args = ['-hide_banner', '-y'];
     for (const f of groupFiles) args.push('-i', f);
     const graph = [];
-    let v = '[0:v]';
-    let a = '[0:a]';
+    // Each joined run starts at time 0 in the filter graph (stream copies can carry encoder-delay offsets).
+    groupFiles.forEach((_, i) => {
+        graph.push(`[${i}:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${spec.fps}[gv${i}]`);
+        graph.push(`[${i}:a]asetpts=PTS-STARTPTS,atrim=duration=${lengths[i].toFixed(4)},apad=whole_dur=${lengths[i].toFixed(4)}[ga${i}]`);
+    });
+    let v = '[gv0]';
+    let a = '[ga0]';
     let merged = lengths[0];
     boundaries.forEach((b, k) => {
         const offset = Math.max(0, merged - b.duration);
-        graph.push(`${v}[${k + 1}:v]xfade=transition=${b.type}:duration=${b.duration.toFixed(3)}:offset=${offset.toFixed(3)}[v${k + 1}]`);
-        graph.push(`${a}[${k + 1}:a]acrossfade=d=${b.duration.toFixed(3)}:c1=tri:c2=tri[a${k + 1}]`);
+        graph.push(`${v}[gv${k + 1}]xfade=transition=${b.type}:duration=${b.duration.toFixed(3)}:offset=${offset.toFixed(3)}[v${k + 1}]`);
+        graph.push(`${a}[ga${k + 1}]acrossfade=d=${b.duration.toFixed(3)}:c1=tri:c2=tri[a${k + 1}]`);
         v = `[v${k + 1}]`;
         a = `[a${k + 1}]`;
         merged = merged + lengths[k + 1] - b.duration;
     });
     args.push('-filter_complex', graph.join(';'), '-map', v, '-map', a, '-r', String(spec.fps), ...ENCODE_VIDEO, ...ENCODE_AUDIO, 'base.mp4');
     await run(FFMPEG, args, { cwd: workDir });
+}
+
+/** Seconds of context rendered around an exact-preview range (covers any transition half). */
+const RANGE_MARGIN = 1.05;
+
+/**
+ * Exact preview: keeps only the main-track work the range needs. Segments outside become gaps,
+ * a segment reaching into the range renders from `offset` (same time base), work after the range
+ * is dropped, and transitions on cuts away from the range are skipped. Also trims the other tracks.
+ */
+function limitToRange(segments, spec) {
+    // Whole frames, so the gap before a partial segment adds no rounding.
+    const from = Math.max(0, Math.floor((spec.range.start - RANGE_MARGIN) * spec.fps) / spec.fps);
+    // After the end: enough of the next clip for any transition that reaches into the range
+    // (its length limits the transition to 90% of it; transitions last at most 2 s).
+    const to = Math.min(spec.duration, Math.ceil((spec.range.end + RANGE_MARGIN + 2.25) * spec.fps) / spec.fps);
+    const out = [];
+    let cursor = 0;
+    for (const seg of segments) {
+        const s = cursor;
+        const e = cursor + seg.length;
+        cursor = e;
+        if (s >= to) break;
+        if (e <= from || seg.kind === 'gap') {
+            out.push({ kind: 'gap', length: Math.min(e, to) - s });
+            continue;
+        }
+        const next = { ...seg };
+        // Transitions only on cuts inside the rendered window.
+        if (s < from - 1e-6 || (next.transitionIn && s > to)) next.transitionIn = null;
+        const head = Math.max(0, from - s);
+        const tail = Math.max(0, e - to);
+        if (head > 0.01) {
+            out.push({ kind: 'gap', length: head });
+            next.offset = head;
+            next.transitionIn = null;
+        }
+        next.length = seg.length - (head > 0.01 ? head : 0) - tail;
+        if (seg.kind !== 'image') next.sourceEnd = seg.sourceEnd - tail * seg.speed;
+        out.push(next);
+    }
+    spec.duration = to;
+    spec.overlays = spec.overlays.filter((o) => o.timelineStart < to && o.timelineStart + o.length > from);
+    spec.audio = spec.audio.filter((a) => a.timelineStart < to && a.timelineStart + a.length > from);
+    spec.text = spec.text.filter((t) => t.timelineStart < to && t.timelineEnd > from);
+    return out;
 }
 
 /** Lays out the main track; overlapping clips are pushed back rather than dropped. Extends spec.duration if needed. */
@@ -552,7 +861,7 @@ function planMainTrack(spec) {
     for (const clip of sorted) {
         const start = Math.max(clip.timelineStart, cursor);
         if (start - cursor > 0.02) segments.push({ kind: 'gap', length: start - cursor });
-        segments.push({ ...clip });
+        segments.push({ ...clip, elementLength: clip.length });
         cursor = start + clip.length;
     }
     spec.duration = Math.min(LIMITS.maxDuration, Math.max(spec.duration, cursor));
@@ -580,12 +889,12 @@ async function composite(basePath, spec, workDir, outPath, onProgress) {
         const filter = `${ov.filter !== 'none' ? `,${FILTER_PRESETS[ov.filter]}` : ''}${gradeFilters(ov.grade)}${ovAssets.lut ? `,lut3d=file='${filterPath(ovAssets.lut)}':interp=tetrahedral` : ''}`;
         if (ov.kind === 'image') {
             args.push('-loop', '1', '-framerate', String(spec.fps), '-t', ov.length.toFixed(3), '-i', ov.path);
-            graph.push(`[${k}:v]setpts=PTS-STARTPTS+${t0}/TB,scale=${W}:${H}:force_original_aspect_ratio=decrease${filter}${overlayTransformFilters(ov.transform)},format=yuva420p${overlayRotation(ov.transform)}[ov${i}]`);
+            graph.push(`[${k}:v]setpts=PTS-STARTPTS+${t0}/TB,scale=${W}:${H}:force_original_aspect_ratio=decrease${filter}${overlayTransformFilters(ov.transform)},format=yuva420p${overlayRotation(ov.transform)}${overlayKeyframeFilters(ov.keyframes, `(t-${t0})`, { fps: spec.fps, dir: workDir, start: ov.timelineStart, end: ov.timelineStart + ov.length, width: W, height: H })}[ov${i}]`);
         } else {
             const info = await probe(ov.path);
             args.push('-ss', ov.sourceStart.toFixed(3), '-t', (ov.sourceEnd - ov.sourceStart).toFixed(3), '-i', ov.path);
             if (!info.hasVideo) continue;
-            graph.push(`[${k}:v]setpts=(PTS-STARTPTS)/${ov.speed}+${t0}/TB,scale=${W}:${H}:force_original_aspect_ratio=decrease${filter}${overlayTransformFilters(ov.transform)},format=yuva420p${overlayRotation(ov.transform)}[ov${i}]`);
+            graph.push(`[${k}:v]setpts=(PTS-STARTPTS)/${ov.speed}+${t0}/TB,scale=${W}:${H}:force_original_aspect_ratio=decrease${filter}${overlayTransformFilters(ov.transform)},format=yuva420p${overlayRotation(ov.transform)}${overlayKeyframeFilters(ov.keyframes, `(t-${t0})`, { fps: spec.fps, dir: workDir, start: ov.timelineStart, end: ov.timelineStart + ov.length, width: W, height: H })}[ov${i}]`);
             if (info.hasAudio && ov.volume > 0) {
                 const tempo = atempoChain(ov.speed);
                 const delay = Math.round(ov.timelineStart * 1000);
@@ -593,13 +902,15 @@ async function composite(basePath, spec, workDir, outPath, onProgress) {
                 mixInputs.push(`[oa${i}]`);
             }
         }
-        graph.push(`${current}[ov${i}]overlay=x='(W-w)/2+(${(ov.transform?.x || 0).toFixed(1)})':y='(H-h)/2+(${(ov.transform?.y || 0).toFixed(1)})':enable='between(t,${t0},${t1})':eof_action=pass[vo${i}]`);
+        const ovX = ov.keyframes?.x ? trackExpression(ov.keyframes.x, `(t-${t0})`) : (ov.transform?.x || 0).toFixed(1);
+        const ovY = ov.keyframes?.y ? trackExpression(ov.keyframes.y, `(t-${t0})`) : (ov.transform?.y || 0).toFixed(1);
+        graph.push(`${current}[ov${i}]overlay=x='(W-w)/2+(${ovX})':y='(H-h)/2+(${ovY})':enable='between(t,${t0},${t1})':eof_action=pass[vo${i}]`);
         current = `[vo${i}]`;
     }
 
     // All text in one libass pass when FFmpeg has it (fast, outlines, boxes, animations, fonts).
     if (spec.text.length && (await hasLibass())) {
-        fs.writeFileSync(path.join(workDir, 'text.ass'), buildTextAss(spec.text, W, H), 'utf8');
+        fs.writeFileSync(path.join(workDir, 'text.ass'), buildTextAss(spec.text, W, H, spec.fps), 'utf8');
         graph.push(`${current}subtitles=filename=text.ass:fontsdir='${filterPath(FONTS_DIR)}'[vtext]`);
         current = '[vtext]';
     }
@@ -674,14 +985,26 @@ async function composite(basePath, spec, workDir, outPath, onProgress) {
         audioOut = '[aout]';
     }
 
-    if (!graph.length) {
+    if (!graph.length && !spec.range) {
         fs.copyFileSync(basePath, outPath);
         return;
     }
 
-    const videoOut = current === '[0:v]' ? '0:v' : current;
-    args.push('-filter_complex', graph.join(';'), '-map', videoOut, '-map', audioOut);
-    args.push('-t', spec.duration.toFixed(3), ...ENCODE_VIDEO, ...ENCODE_AUDIO, '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outPath);
+    let videoOut = current === '[0:v]' ? '0:v' : current;
+    let window = ['-t', spec.duration.toFixed(3)];
+    if (spec.range) {
+        // Exact preview: cut to the range by frame number after every filter (frame-exact).
+        const first = Math.round(spec.range.start * spec.fps);
+        const last = Math.round(spec.range.end * spec.fps);
+        graph.push(`${current}trim=start_frame=${first}:end_frame=${last},setpts=PTS-STARTPTS[vrange]`);
+        graph.push(`${audioOut.startsWith('[') ? audioOut : `[${audioOut}]`}atrim=start=${(first / spec.fps).toFixed(4)}:end=${(last / spec.fps).toFixed(4)},asetpts=PTS-STARTPTS[arange]`);
+        videoOut = '[vrange]';
+        audioOut = '[arange]';
+        window = [];
+    }
+    args.push('-filter_complex', graph.join(';'));
+    args.push('-map', videoOut, '-map', audioOut);
+    args.push(...window, ...ENCODE_VIDEO, ...ENCODE_AUDIO, '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outPath);
     await run(FFMPEG, args, { cwd: workDir, duration: spec.duration, onProgress });
 }
 
@@ -695,9 +1018,19 @@ export async function renderTimeline(config, ownerId, onProgress = () => {}) {
     const report = (fraction) => onProgress(Math.min(99, Math.round(fraction * 100)));
 
     try {
-        const segments = planMainTrack(spec);
+        const planned = planMainTrack(spec);
+        const segments = spec.range ? limitToRange(planned, spec) : planned;
         const boundaries = await prepareTransitions(segments);
+        if (process.env.KENGAN_RENDER_DEBUG) console.log('[render] plan', JSON.stringify(segments.map((x) => ({ kind: x.kind, length: +x.length.toFixed(4), offset: x.offset, tr: x.transitionIn?.type || null }))), 'transitions', JSON.stringify(boundaries));
         const segmentPaths = [];
+        // Whole frames per segment with the rounding carried forward, so every cut lands on the frame
+        // nearest its timeline time however many clips there are.
+        let carry = 0;
+        for (const segment of segments) {
+            const exact = segment.length * spec.fps + carry;
+            segment.frameCount = Math.max(1, Math.round(exact));
+            carry = exact - segment.frameCount;
+        }
         for (const [i, segment] of segments.entries()) {
             const out = path.join(workDir, `seg_${String(i).padStart(4, '0')}.mp4`);
             await renderSegment(segment, spec, out);
@@ -706,7 +1039,7 @@ export async function renderTimeline(config, ownerId, onProgress = () => {}) {
         }
 
         const basePath = path.join(workDir, 'base.mp4');
-        await joinSegments(segmentPaths, boundaries, workDir, spec);
+        await joinSegments(segmentPaths, boundaries, workDir, spec, segments.map((s) => s.frameCount));
         report(0.65);
 
         const outPath = path.join(RENDER_DIR, `export_${uuidv4()}.mp4`);
@@ -714,7 +1047,8 @@ export async function renderTimeline(config, ownerId, onProgress = () => {}) {
         onProgress(100);
         return outPath;
     } finally {
-        fs.rm(workDir, { recursive: true, force: true }, () => {});
+        if (process.env.KENGAN_KEEP_WORKDIR) console.log(`[render] kept ${workDir}`);
+        else fs.rm(workDir, { recursive: true, force: true }, () => {});
     }
 }
 

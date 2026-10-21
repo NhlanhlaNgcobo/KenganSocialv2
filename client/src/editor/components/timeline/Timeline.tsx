@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Film, Music, Trash2, Type, Volume2, VolumeX } from 'lucide-react';
 import { TIMELINE, TRACK_HEIGHTS } from '../../constants';
+import { timelineBeats } from '../../lib/beat-sync';
+import { canTransition, TRANSITIONS } from '../../lib/fx';
 import { usePlaybackStore } from '../../stores/playback-store';
 import { useMediaStore } from '../../stores/media-store';
 import { useProjectStore } from '../../stores/project-store';
 import { useTimelineStore } from '../../stores/timeline-store';
 import { useUiStore } from '../../stores/ui-store';
-import { DRAG_MIME, type DragData, type MediaItem, type TimelineTrack } from '../../types';
+import { DRAG_MIME, type DragData, type MediaElement, type MediaItem, type TimelineTrack } from '../../types';
 import { TimelineElement } from './TimelineElement';
 import { TimelineRuler } from './TimelineRuler';
 import { TimelineToolbar } from './TimelineToolbar';
@@ -32,6 +34,10 @@ export function Timeline() {
     const [dropTarget, setDropTarget] = useState<string | null>(null);
 
     const pps = TIMELINE.PIXELS_PER_SECOND * zoom;
+    const beatMarks = useMemo(() => timelineBeats(tracks), [tracks]);
+    // Beat ticks thin out when zoomed far out (at least 4 px apart; downbeats and markers always show).
+    const downSet = useMemo(() => new Set(beatMarks.downbeats), [beatMarks]);
+    const showAllBeats = beatMarks.beats.length < 2 || (beatMarks.beats[1] - beatMarks.beats[0]) * pps >= 4;
     const visibleSeconds = Math.max(totalDuration + 10, TIMELINE.MIN_VISIBLE_SECONDS, (viewportWidth - LABEL_W) / pps);
     const contentWidth = visibleSeconds * pps;
 
@@ -151,6 +157,41 @@ export function Timeline() {
     };
 
     const selectedIds = new Set(selected.map((s) => s.elementId));
+    const pickedCuts = useUiStore((s) => s.transitionCuts);
+    const activeTab = useUiStore((s) => s.activeTab);
+
+    /** Markers on the main track's cuts: click to pick that cut for a transition (Ctrl/Shift adds). */
+    const cutMarkers = (track: TimelineTrack) => {
+        if (!track.isMain) return null;
+        const clips = (track.elements.filter((e) => e.type === 'media') as MediaElement[]).sort((a, b) => a.startTime - b.startTime);
+        return clips.slice(1).map((clip, i) => {
+            if (!canTransition(clips[i], clip)) return null;
+            const tr = clip.transitionIn;
+            const label = tr ? TRANSITIONS.find((t) => t.type === tr.type)?.label || 'Transition' : 'No transition';
+            const on = activeTab === 'transitions' && pickedCuts.includes(clip.id);
+            return (
+                <button
+                    key={`cut-${clip.id}`}
+                    className={`ke-cutmark ${tr ? 'has-tr' : ''} ${on ? 'is-on' : ''}`}
+                    style={{ left: clip.startTime * pps }}
+                    title={`${label}. Click to choose this cut's transition (Ctrl-click to pick several).`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        const ui = useUiStore.getState();
+                        const add = e.ctrlKey || e.metaKey || e.shiftKey;
+                        const current = ui.activeTab === 'transitions' ? ui.transitionCuts : [];
+                        useTimelineStore.getState().clearSelection();
+                        ui.setTransitionCuts(add ? (current.includes(clip.id) ? current.filter((x) => x !== clip.id) : [...current, clip.id]) : [clip.id]);
+                        ui.setActiveTab('transitions');
+                        usePlaybackStore.getState().seek(clip.startTime);
+                    }}
+                >
+                    {tr ? '◆' : '+'}
+                </button>
+            );
+        });
+    };
 
     return (
         <div className="ke-panel ke-timeline">
@@ -161,6 +202,16 @@ export function Timeline() {
                         <div className="ke-timeline__corner" style={{ width: LABEL_W }} />
                         <div className="ke-timeline__ruler" onPointerDown={startScrub}>
                             <TimelineRuler pixelsPerSecond={pps} visibleSeconds={visibleSeconds} />
+                            {beatMarks.beats.length || beatMarks.markers.length ? (
+                                <div className="ke-beats" aria-hidden>
+                                    {(showAllBeats ? beatMarks.beats : beatMarks.downbeats).map((t) => (
+                                        <i key={`b${t}`} className={`ke-beats__tick ${downSet.has(t) ? 'is-down' : ''}`} style={{ left: t * pps }} />
+                                    ))}
+                                    {beatMarks.markers.map((t) => (
+                                        <i key={`m${t}`} className="ke-beats__marker" style={{ left: t * pps }} title="Beat marker" />
+                                    ))}
+                                </div>
+                            ) : null}
                         </div>
                     </div>
 
@@ -211,6 +262,7 @@ export function Timeline() {
                                     {track.isMain && track.elements.length === 0 ? (
                                         <div className="ke-track__hint">Drag media here to start your edit</div>
                                     ) : null}
+                                    {cutMarkers(track)}
                                     {track.elements.map((el) => (
                                         <TimelineElement
                                             key={el.id}

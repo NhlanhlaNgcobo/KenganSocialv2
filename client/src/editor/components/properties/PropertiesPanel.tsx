@@ -9,6 +9,8 @@ import { useUiStore } from '../../stores/ui-store';
 import { FONT_FAMILIES, LOOK_LABELS, SPEED_PRESETS } from '../../constants';
 import { canTransition, DEFAULT_TRANSITION_SECONDS, EFFECTS, TRANSITION_GROUPS, TRANSITIONS } from '../../lib/fx';
 import { ColorPanel, colorFromLegacy } from './ColorPanel';
+import { KeyframePanel } from './KeyframePanel';
+import { BeatPanel } from './BeatPanel';
 import { LOOK_NAMES } from '../../lib/color-pipeline.js';
 import { formatTimecode, getElementLength } from '../../lib/time';
 import { useMediaStore } from '../../stores/media-store';
@@ -170,6 +172,7 @@ function TextProperties({ track, el }: { track: TimelineTrack; el: TextElement }
                     Reset position
                 </button>
             </section>
+            <KeyframePanel track={track} el={el} />
         </>
     );
 }
@@ -612,6 +615,8 @@ function MediaProperties({ track, el }: { track: TimelineTrack; el: MediaElement
                 </section>
             ) : null}
 
+            {hasAudio && media ? <BeatPanel track={track} el={el} /> : null}
+
             {media?.type !== 'image' ? (
                 <section className="ke-props-section">
                     <h4>Speed</h4>
@@ -626,6 +631,8 @@ function MediaProperties({ track, el }: { track: TimelineTrack; el: MediaElement
             ) : null}
 
             {hasPicture ? <TransformSection track={track} el={el} /> : null}
+
+            {hasPicture ? <KeyframePanel track={track} el={el} /> : null}
 
             {media?.type === 'video' || media?.type === 'audio' ? <EnhanceSection mediaId={el.mediaId} audioOnly={media.type === 'audio'} /> : null}
 

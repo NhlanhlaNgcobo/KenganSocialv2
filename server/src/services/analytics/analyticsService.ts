@@ -288,6 +288,16 @@ export async function fetchConnectionAnalytics(workspaceId: string, platform: st
     } catch {
         return unavailable(platform, periodDays, 'The saved sign-in for this account is unreadable. Reconnect it.');
     }
+    // Refresh first when the token is about to expire (YouTube tokens last an hour). Imported lazily:
+    // routes/connections imports this module.
+    if (Number(conn.tokenExpiry ?? 0) && Number(conn.tokenExpiry) <= Date.now() + 60_000) {
+        try {
+            const { getValidAccessToken } = await import('../../routes/connections');
+            token = (await getValidAccessToken(workspaceId, platform as any)).accessToken;
+        } catch {
+            return unavailable(platform, periodDays, 'The sign-in for this account has expired. Reconnect it.');
+        }
+    }
     try {
         return await fetcher(workspaceId, token, conn.accountId, periodDays);
     } catch (err) {
@@ -338,6 +348,27 @@ export async function syncWorkspaceAnalytics(workspaceId: string, plan: string) 
         oldSnaps.forEach(s => batch.delete(s.ref));
         await batch.commit();
     }
+
+    // YouTube API Services policy: stored YouTube data must be refreshed or deleted within 30 days.
+    await purgePlatformAnalytics(workspaceId, 'youtube', 30);
+}
+
+/**
+ * Removes one platform's figures from stored analytics snapshots: all of them (when it is
+ * disconnected), or those older than `olderThanDays` (YouTube's 30-day rule). Returns how many
+ * snapshots were changed.
+ */
+export async function purgePlatformAnalytics(workspaceId: string, platform: string, olderThanDays = 0): Promise<number> {
+    let query: FirebaseFirestore.Query = db.collection('analytics').doc(workspaceId).collection('snapshots');
+    if (olderThanDays > 0) query = query.where('createdAt', '<', new Date(Date.now() - olderThanDays * 86400000));
+    const snaps = await query.get();
+    let changed = 0;
+    for (const doc of snaps.docs) {
+        if (!doc.data()?.platforms?.[platform]) continue;
+        await doc.ref.update({ [`platforms.${platform}`]: admin.firestore.FieldValue.delete() });
+        changed += 1;
+    }
+    return changed;
 }
 
 export const BEST_TIMES_TIMEZONE = 'Africa/Johannesburg';
@@ -382,3 +413,6 @@ export function calculateBestPostingTimes(posts: AnalyticsPost[]): BestPostingTi
         .slice(0, 3);
     return { status: 'ok', ...base, slots };
 }
+
+/** @deprecated name kept for callers: YouTube figures only. */
+export const purgeYouTubeAnalytics = (workspaceId: string, olderThanDays = 0) => purgePlatformAnalytics(workspaceId, 'youtube', olderThanDays);

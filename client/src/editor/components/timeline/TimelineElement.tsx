@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
+import { keyframeTimes } from '../../lib/keyframes.js';
 import { EyeOff, Type, VolumeX } from 'lucide-react';
 import { TIMELINE } from '../../constants';
 import { getWaveformPeaks } from '../../lib/media-processing';
@@ -222,6 +223,20 @@ export const TimelineElement = memo(function TimelineElement({ element, track, p
             title={element.type === 'text' ? element.content : element.name}
         >
             {body}
+            {element.keyframes
+                ? (keyframeTimes(element.keyframes) as number[]).map((t) => (
+                      <i
+                          key={t}
+                          className="ke-el__kf"
+                          style={{ left: t * pixelsPerSecond }}
+                          title={`Keyframe at ${t.toFixed(2)}s`}
+                          onPointerDown={(e) => {
+                              e.stopPropagation();
+                              usePlaybackStore.getState().seek(element.startTime + t);
+                          }}
+                      />
+                  ))
+                : null}
             <div className="ke-el__flags">
                 {element.hidden ? <EyeOff size={11} /> : null}
                 {(element as MediaElement).muted ? <VolumeX size={11} /> : null}
