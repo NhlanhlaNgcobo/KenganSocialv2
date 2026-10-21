@@ -32,9 +32,15 @@ interface TikTokPublishConfig {
 
 const API = 'https://open.tiktokapis.com/v2/post/publish';
 
+/** Inbox mode by default: video.publish (direct post) is only granted after TikTok's audit. */
+export const DEFAULT_TIKTOK_SCOPES = 'user.info.basic,video.upload';
+
+export function tiktokScopes(): string[] {
+    return (process.env.TIKTOK_SCOPES || DEFAULT_TIKTOK_SCOPES).split(',').map((x) => x.trim()).filter(Boolean);
+}
+
 export function tiktokPostMode(): 'direct' | 'inbox' {
-    const scopes = (process.env.TIKTOK_SCOPES || 'user.info.basic,video.publish').split(',').map((x) => x.trim());
-    return scopes.includes('video.publish') ? 'direct' : 'inbox';
+    return tiktokScopes().includes('video.publish') ? 'direct' : 'inbox';
 }
 const SINGLE_CHUNK_MAX = 64 * 1024 * 1024;
 const CHUNK_SIZE = 10 * 1024 * 1024;

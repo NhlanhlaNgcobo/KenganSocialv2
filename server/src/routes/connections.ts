@@ -1,4 +1,4 @@
-import { tiktokPostMode } from '../services/publishers/tiktok';
+import { tiktokPostMode, tiktokScopes } from '../services/publishers/tiktok';
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import axios from 'axios';
@@ -66,8 +66,8 @@ const OAUTH_CONFIG = {
         tokenUrl: 'https://open.tiktokapis.com/v2/oauth/token/',
         // Login Kit + Content Posting API. research.data.basic belongs to the Research API and makes
         // TikTok reject the whole sign-in for normal apps. TIKTOK_SCOPES also picks the posting mode:
-        // with video.publish posts go straight to the profile, with only video.upload to the TikTok inbox.
-        scopes: (env('TIKTOK_SCOPES') || 'user.info.basic,video.publish').split(',').map((x) => x.trim()).filter(Boolean),
+        // with video.publish posts go straight to the profile, with only video.upload (the default) to the TikTok inbox.
+        scopes: tiktokScopes(),
         clientId: () => env('TIKTOK_CLIENT_KEY'),
         clientSecret: () => env('TIKTOK_CLIENT_SECRET'),
         redirectUri: () => `${REDIRECT_BASE}/api/connections/tiktok/callback`,

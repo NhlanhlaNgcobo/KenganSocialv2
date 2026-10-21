@@ -102,7 +102,7 @@ What to expect: videos post as **Reels**. Meta downloads the video from your tun
 1. Go to [developers.tiktok.com](https://developers.tiktok.com), log in, and open **Manage apps → Connect an app**. Create a **Web** app named "KenganSocial".
 2. Add the products **Login Kit** and **Content Posting API**. In Content Posting API, turn on **Direct Post**.
 3. **Login Kit → Redirect URI**: `<SERVER>/api/connections/tiktok/callback`
-4. Scopes: `user.info.basic` and `video.publish`. The app requests exactly these (it posts directly, so `video.upload` is not needed).
+4. Scopes: `user.info.basic` and `video.upload`. The app requests these by default (inbox mode: videos arrive in the creator's TikTok inbox to finish posting). After TikTok approves Direct Post, add the `video.publish` scope, set `TIKTOK_SCOPES=user.info.basic,video.publish` and update the TikTok text in `client/src/content/platform-permissions.js`.
 5. Open the **Sandbox** tab and create a sandbox. Under **Target users**, add your TikTok account.
 6. Copy the sandbox **Client key** and **Client secret** into `server/.env`:
    ```

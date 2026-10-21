@@ -90,7 +90,7 @@ After launch, complete Meta's yearly Data Use Checkup.
 ## 5. TikTok
 
 - **Products:** Login Kit and the Content Posting API.
-- **Posting mode:** until Direct Post is approved, request `video.upload` (inbox mode) and set `TIKTOK_SCOPES=user.info.basic,video.upload`. Then switch to `video.publish`.
+- **Posting mode:** the app requests `video.upload` (inbox mode) by default. Once Direct Post is approved, set `TIKTOK_SCOPES=user.info.basic,video.publish` and update the TikTok text in `client/src/content/platform-permissions.js`.
 - **Website:** must be a finished public site with Terms and Privacy visible without opening a menu. The footer satisfies this.
 - **Name and icon:** the app name must be KenganSocial and must not mention TikTok.
 - **Demo videos:** record 1–5 videos (up to 50 MB each) in the sandbox. The browser address bar must show your submitted domain. Show the sign-in and the TikTok post settings:
