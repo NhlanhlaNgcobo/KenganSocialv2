@@ -7,6 +7,19 @@ import { db } from '../utils/firestore';
 import { encrypt, decrypt } from '../utils/tokenEncryption';
 import { FieldValue } from 'firebase-admin/firestore';
 import { publishToYouTube } from '../services/publishers/youtube';
+import { deleteConnection } from '../services/data-deletion.service';
+import { graphUrl } from '../config/meta';
+
+/** App-scoped Facebook user id of a Meta login; Meta's data-deletion callback identifies people by it. */
+async function metaUserIdFor(userToken: string): Promise<string | null> {
+    try {
+        const me = await axios.get(graphUrl('me'), { params: { fields: 'id', access_token: userToken } });
+        return me.data?.id || null;
+    } catch (err: any) {
+        console.warn('[Meta] Could not read the Facebook user id:', err.response?.data?.error?.message || err.message);
+        return null;
+    }
+}
 
 const router = express.Router();
 
@@ -186,7 +199,8 @@ async function getConnectionDoc(workspaceId: string, platform: Platform) {
     return { ref: docRef, data: snap.data()! };
 }
 
-async function getValidAccessToken(workspaceId: string, platform: Platform) {
+/** Access token for a connection, refreshed first when it expires within a minute. Used by the post queue too. */
+export async function getValidAccessToken(workspaceId: string, platform: Platform) {
     let connection = await getConnectionDoc(workspaceId, platform);
     if (!connection) {
         throw new Error('NOT_CONNECTED');
@@ -445,6 +459,7 @@ router.get('/instagram/callback', async (req: Request, res: Response) => {
             followersCount: igFollowers,
             scope: cfg.scopes,
             meta: {
+                metaUserId: await metaUserIdFor(access_token),
                 instagramAccountId: igAccountId,
                 username: igUsername,
                 // Used to send DMs (services/instagram-dm.ts). Page tokens from a long-lived user token don't expire.
@@ -561,7 +576,7 @@ router.get('/facebook/callback', async (req: Request, res: Response) => {
             followersCount: page.followers_count ?? page.fan_count ?? 0,
             accountAvatar: page.picture?.data?.url || undefined,
             scope: cfg.scopes,
-            meta: { pageId: page.id, pageName: page.name, pageCount: (pagesRes.data?.data || []).length },
+            meta: { metaUserId: await metaUserIdFor(userToken), pageId: page.id, pageName: page.name, pageCount: (pagesRes.data?.data || []).length },
         });
         back('connected=facebook');
     } catch (err) {
@@ -736,31 +751,22 @@ router.delete('/youtube/videos/:videoId', withWorkspace, async (req: Request, re
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//   DELETE /api/connections/:platform  — revoke + delete
+//   DELETE /api/connections/:platform  — revoke with the platform, delete token and fetched data
 // ─────────────────────────────────────────────────────────────────────────────
 router.delete('/:platform', withWorkspace, async (req: Request, res: Response) => {
-    const { platform } = req.params;
+    const platform = String(req.params.platform);
     const workspaceId = (req as any).workspaceId;
+    if (!workspaceId) return res.status(403).json({ error: 'NO_WORKSPACE' });
+    if (!OAUTH_CONFIG[platform as Platform]) return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
 
-    const docRef = db
-        .collection('workspaces').doc(workspaceId)
-        .collection('connections').doc(platform as string);
-
-    const snap = await docRef.get();
-    if (!snap.exists) return res.status(404).json({ error: 'NOT_CONNECTED' });
-
-    // Best-effort token revocation (platforms vary; YouTube supports it)
     try {
-        const { accessToken } = snap.data()!;
-        if (platform === 'youtube' && accessToken) {
-            await axios.post(
-                `https://oauth2.googleapis.com/revoke?token=${decrypt(accessToken)}`
-            );
-        }
-    } catch { /* ignore revocation failure */ }
-
-    await docRef.delete();
-    res.json({ success: true, platform });
+        const result = await deleteConnection(workspaceId, platform, { revoke: true });
+        if (!result.existed) return res.status(404).json({ error: 'NOT_CONNECTED' });
+        res.json({ success: true, platform, revoked: result.revoked });
+    } catch (err: any) {
+        console.error(`[Disconnect ${platform}]`, err.message);
+        res.status(500).json({ error: 'DISCONNECT_FAILED', message: 'The account could not be disconnected. Please try again.' });
+    }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -850,6 +856,7 @@ async function refreshPlatformToken(workspaceId: string, platform: Platform): Pr
         refreshToken: encrypt(newRefreshToken),
         tokenExpiry,
         status: 'active',
+        expiredAt: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -860,57 +867,80 @@ async function refreshPlatformToken(workspaceId: string, platform: Platform): Pr
 //   TOKEN AUTO-REFRESH CRON  (every 6 hours)
 //   Scans all connections expiring within 24 hours
 // ─────────────────────────────────────────────────────────────────────────────
+const EXPIRED_RETENTION_MS = 6 * 86400 * 1000;
+
+/**
+ * Renews tokens expiring within 24 hours, marks ones that can't be renewed as expired, and deletes
+ * connections left expired for EXPIRED_RETENTION_MS. Each workspace has only a few connections, so
+ * they are read whole and filtered here (no composite index needed); one workspace's failure
+ * doesn't stop the others.
+ */
+export async function runTokenMaintenance() {
+    const expiryThreshold = Date.now() + 86400 * 1000; // within 24 hours
+    const workspacesSnap = await db.collection('workspaces').select('ownerId').get();
+    for (const wsDoc of workspacesSnap.docs) {
+        const workspaceId = wsDoc.id;
+        const ownerId = wsDoc.data().ownerId;
+        try {
+            const all = (await db.collection('workspaces').doc(workspaceId).collection('connections').get()).docs;
+            const expiring = all.filter((d) => d.data().status === 'active' && Number(d.data().tokenExpiry || 0) > 0 && Number(d.data().tokenExpiry) < expiryThreshold);
+
+            for (const connDoc of expiring) {
+                const platform = connDoc.id as Platform;
+                if (!PLATFORMS.includes(platform)) continue;
+
+                try {
+                    await refreshPlatformToken(workspaceId, platform);
+                    console.log(`[TokenRefreshCron] ✅ Refreshed ${platform} for workspace ${workspaceId}`);
+                } catch (err: any) {
+                    // Only the platform refusing the token (4xx, or TikTok's error body) means access is gone;
+                    // network errors and outages are retried on the next run.
+                    const httpStatus = Number(err.response?.status || 0);
+                    const refused = (httpStatus >= 400 && httpStatus < 500) || /invalid_grant|invalid|revoked|expired/i.test(String(err.message));
+                    console.error(`[TokenRefreshCron] ❌ Failed to refresh ${platform} for ${workspaceId}${refused ? '' : ' (will retry)'}:`, err.response?.data || err.message);
+                    if (!refused) continue;
+
+                    // Mark as expired and notify user. If it isn't reconnected, the sweep below deletes it.
+                    await connDoc.ref.update({
+                        status: 'expired',
+                        expiredAt: Date.now(),
+                        updatedAt: FieldValue.serverTimestamp(),
+                    });
+
+                    // Send re-auth email (using your existing email utility)
+                    try {
+                        const userSnap = await db.collection('users').doc(ownerId).get();
+                        const email = userSnap.data()?.email;
+                        if (email) {
+                            // Stub: replace with your sendEmail(email, ...) call
+                            console.warn(`[TokenRefreshCron] Re-auth required: ${email} → ${platform}`);
+                        }
+                    } catch { /* ignore email failure */ }
+                }
+            }
+
+            // Access refused for 6 days and not reconnected: delete the token and the account's data
+            // (the Privacy Policy promises within 7 days; this job runs every 6 hours).
+            for (const connDoc of all.filter((d) => d.data().status === 'expired')) {
+                const expiredAt = Number(connDoc.data().expiredAt || 0);
+                if (!expiredAt) {
+                    await connDoc.ref.update({ expiredAt: Date.now() }); // marked expired before this rule existed
+                } else if (expiredAt < Date.now() - EXPIRED_RETENTION_MS) {
+                    await deleteConnection(workspaceId, connDoc.id, { revoke: false }).catch((err) =>
+                        console.error(`[TokenRefreshCron] Could not delete expired ${connDoc.id} for ${workspaceId}:`, err.message)
+                    );
+                }
+            }
+        } catch (err: any) {
+            console.error(`[TokenRefreshCron] Workspace ${workspaceId} failed:`, err.message);
+        }
+    }
+}
+
 export function startTokenRefreshCron() {
     cron.schedule('0 */6 * * *', async () => {
         console.log('[TokenRefreshCron] Scanning for expiring tokens…');
-        const expiryThreshold = Date.now() + 86400 * 1000; // within 24 hours
-
-        try {
-            // Scan all workspace connection sub-collections
-            const workspacesSnap = await db.collection('workspaces').get();
-
-            for (const wsDoc of workspacesSnap.docs) {
-                const workspaceId = wsDoc.id;
-                const ownerId = wsDoc.data().ownerId;
-
-                const connectionsSnap = await db
-                    .collection('workspaces').doc(workspaceId)
-                    .collection('connections')
-                    .where('tokenExpiry', '<', expiryThreshold)
-                    .where('status', '==', 'active')
-                    .get();
-
-                for (const connDoc of connectionsSnap.docs) {
-                    const platform = connDoc.id as Platform;
-                    if (!PLATFORMS.includes(platform)) continue;
-
-                    try {
-                        await refreshPlatformToken(workspaceId, platform);
-                        console.log(`[TokenRefreshCron] ✅ Refreshed ${platform} for workspace ${workspaceId}`);
-                    } catch (err) {
-                        console.error(`[TokenRefreshCron] ❌ Failed to refresh ${platform} for ${workspaceId}`, err);
-
-                        // Mark as expired and notify user
-                        await connDoc.ref.update({
-                            status: 'expired',
-                            updatedAt: FieldValue.serverTimestamp(),
-                        });
-
-                        // Send re-auth email (using your existing email utility)
-                        try {
-                            const userSnap = await db.collection('users').doc(ownerId).get();
-                            const email = userSnap.data()?.email;
-                            if (email) {
-                                // Stub: replace with your sendEmail(email, ...) call
-                                console.warn(`[TokenRefreshCron] Re-auth required: ${email} → ${platform}`);
-                            }
-                        } catch { /* ignore email failure */ }
-                    }
-                }
-            }
-        } catch (err) {
-            console.error('[TokenRefreshCron] Cron error:', err);
-        }
+        await runTokenMaintenance().catch((err) => console.error('[TokenRefreshCron] Cron error:', err.message));
     });
 
     console.log('[TokenRefreshCron] Scheduled — runs every 6 hours');

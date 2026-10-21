@@ -77,6 +77,10 @@ export async function renderLaunchVideo({ plan, source, format, music, sfx = {},
         scenes,
     };
 
+    const mb = (v) => (JSON.stringify(v ?? null).length / 1048576).toFixed(1);
+    console.log(
+        `[Brag] Render input ${mb(inputProps)} MB (scenes ${mb(scenes)}, music ${mb(inputProps.music)}, sfx ${mb(sfx)}, icon ${mb(inputProps.iconData)})`
+    );
     const composition = await selectComposition({ serveUrl, id: 'LaunchVideo', inputProps, timeoutInMilliseconds: 120000 });
     const id = uuidv4();
     const outputPath = path.join(RENDER_DIR, `launch_${id}.mp4`);
@@ -89,6 +93,10 @@ export async function renderLaunchVideo({ plan, source, format, music, sfx = {},
         crf: 18,
         pixelFormat: 'yuv420p',
         timeoutInMilliseconds: 120000,
+        // Tutorial frames hold full-page app screenshots; rendering several tabs at once can exhaust
+        // Chrome's memory ("Target closed" / ERR_INSUFFICIENT_RESOURCES), so they render one tab at a time.
+        // RENDER_CONCURRENCY overrides both.
+        concurrency: Number(process.env.RENDER_CONCURRENCY) || (kind === 'tutorial' ? 1 : 2),
         onProgress: ({ progress }) => onProgress(progress),
     });
 

@@ -1,3 +1,4 @@
+import PublicFooter from '../components/layout/PublicFooter';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import LandingNavbar from '../components/layout/LandingNavbar';
@@ -124,6 +125,7 @@ export default function PricingPage() {
                     Questions about billing? Email <a href={`mailto:${supportEmail}`} style={{ color: 'var(--accent-text)' }}>{supportEmail}</a>.
                 </p>
             </main>
+            <PublicFooter />
         </div>
     );
 }

@@ -273,3 +273,33 @@
 .auth-page__orb {
     display: none;
 }
+
+/* Consent step (ConsentPage.jsx): a wider card with the key points before the checkboxes. */
+.auth-card--wide {
+    max-width: 580px;
+}
+.consent-points {
+    margin: 0 0 16px;
+    padding-left: 20px;
+    display: grid;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+.consent-docs {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0 0 20px;
+    line-height: 1.6;
+}
+.consent-docs a,
+.auth-card__footer a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+@media (max-width: 480px) {
+    .auth-card--wide {
+        padding: 28px 20px;
+    }
+}

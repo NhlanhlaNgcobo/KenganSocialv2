@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import admin from 'firebase-admin';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { processInstagramWebhook, sendInstagramDM, validSignature, verifyToken } from '../services/instagram-dm';
+import { sendInstagramDM } from '../services/instagram-dm';
 
 const router = express.Router();
 
@@ -103,23 +103,6 @@ router.post('/queue/:id/dismiss', ...guard, route(async (req, res) => {
     res.json({ success: true });
 }));
 
-// ─────────────────────────────────────────────────────────────────────────────
-// INSTAGRAM WEBHOOK (same handler as /api/webhooks/meta)
-// ─────────────────────────────────────────────────────────────────────────────
-
-router.get('/webhook/instagram', (req: Request, res: Response) => {
-    const token = verifyToken();
-    if (req.query['hub.mode'] === 'subscribe' && token && req.query['hub.verify_token'] === token) {
-        return res.status(200).send(req.query['hub.challenge']);
-    }
-    res.sendStatus(403);
-});
-
-router.post('/webhook/instagram', (req: Request, res: Response) => {
-    if (!validSignature((req as any).rawBody, req.headers['x-hub-signature-256'] as string)) return res.sendStatus(401);
-    // Acknowledge at once; Meta retries slow or failed deliveries.
-    res.sendStatus(200);
-    processInstagramWebhook(req.body).catch((error) => console.error('[Instagram DM] Webhook failed:', error.message));
-});
+// Incoming Instagram messages arrive on the shared Meta webhook: /api/webhooks/meta (routes/webhooks.routes.js).
 
 export default router;

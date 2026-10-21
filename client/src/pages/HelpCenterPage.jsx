@@ -1,3 +1,4 @@
+import PublicFooter from '../components/layout/PublicFooter';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import LandingNavbar from '../components/layout/LandingNavbar';
@@ -5,8 +6,8 @@ import { Search, Mail, BookOpen } from 'lucide-react';
 import { BILLING_EMAIL } from '../utils/planLimits';
 import './LandingPage.css';
 
-const SUPPORT_EMAIL = 'info@kengansocial.com';
-const PRIVACY_EMAIL = 'privacy@kengansocial.com';
+const SUPPORT_EMAIL = 'support@kengansocial.co.za';
+const PRIVACY_EMAIL = 'privacy@kengansocial.co.za';
 
 const FAQ = [
     {
@@ -141,10 +142,11 @@ export default function HelpCenterPage() {
                     )}
 
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '32px', textAlign: 'center' }}>
-                        See also <Link to="/pricing" style={{ color: 'var(--accent-text)' }}>Pricing</Link>, <Link to="/privacy" style={{ color: 'var(--accent-text)' }}>Privacy</Link> and <Link to="/legal" style={{ color: 'var(--accent-text)' }}>Terms</Link>.
+                        See also <Link to="/pricing" style={{ color: 'var(--accent-text)' }}>Pricing</Link>, <Link to="/privacy" style={{ color: 'var(--accent-text)' }}>Privacy</Link> and <Link to="/terms" style={{ color: 'var(--accent-text)' }}>Terms</Link>.
                     </p>
                 </section>
             </main>
+            <PublicFooter />
         </div>
     );
 }

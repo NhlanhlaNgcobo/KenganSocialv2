@@ -2,74 +2,24 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Helper functions ──────────────────────────────────────────────────────
-
-    function isWorkspaceMember(wsId) {
-      return request.auth != null &&
-        request.auth.uid in get(/databases/$(database)/documents/workspaces/$(wsId)).data.members;
-    }
-
-    function isWorkspaceOwner(wsId) {
-      return request.auth != null &&
-        request.auth.uid == get(/databases/$(database)/documents/workspaces/$(wsId)).data.ownerId;
-    }
-
-    function isAgencyPlan(wsId) {
-      return get(/databases/$(database)/documents/workspaces/$(wsId)).data.plan == 'agency';
-    }
+    // The web app reads and writes everything through the API (server/, Admin SDK, which these
+    // rules do not apply to), so the browser can't write anything: no client can read encrypted
+    // social tokens, change its plan, rewrite its consent records, or reach another workspace's data.
 
     // ── Users ─────────────────────────────────────────────────────────────────
     match /users/{userId} {
-      allow read, write: if request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
 
-      // Consent audit trail (POPIA): the user can record and read their own consents.
+      // Consent audit trail (POPIA), written by the server (POST /api/auth/consent) with time and IP.
       match /consents/{consentId} {
-        allow read, create, update: if request.auth.uid == userId;
+        allow read: if request.auth != null && request.auth.uid == userId;
       }
     }
 
-    // ── Workspaces ────────────────────────────────────────────────────────────
-    match /workspaces/{wsId} {
-      allow read:  if isWorkspaceMember(wsId);
-      allow write: if isWorkspaceOwner(wsId);
-      
-      // Nested collections inside workspaces
-      match /connections/{platform} {
-        allow read, write: if isWorkspaceOwner(wsId);
-      }
-      
-      match /leads/{leadId} {
-        allow read, write: if isWorkspaceOwner(wsId) && isAgencyPlan(wsId);
-      }
-      
-      match /dmAutomations/{autoId} {
-        allow read, write: if isWorkspaceOwner(wsId);
-      }
-      
-      match /dmQueue/{msgId} {
-        allow read, write: if isWorkspaceOwner(wsId);
-      }
-      
-      match /content/{contentId} {
-        allow read, write: if isWorkspaceMember(wsId);
-      }
-    }
-
-    // ── Scheduled Posts ───────────────────────────────────────────────────────
-    match /scheduled_posts/{postId} {
-      allow read, write: if isWorkspaceMember(resource.data.workspaceId);
-    }
-
-    // ── Render Jobs (server-side writes only) ─────────────────────────────────
-    match /render_jobs/{jobId} {
-      allow read:  if request.auth.uid == resource.data.userId;
-      allow write: if false; // server-side logic only
-    }
-
-    // ── Shared Cache (Trending) ────────────────────────────────────────────────
-    match /trending_cache/{niche} {
-      allow read: if request.auth != null;
-      allow write: if false; // server-side refresh only
+    // Everything else (workspaces, connections, inbox, schedules, jobs, deletion requests)
+    // is server-only.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

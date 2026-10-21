@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
+import ConnectPermissions from '../components/connections/ConnectPermissions';
 import { BILLING_EMAIL, fetchPlanCatalog, formatZar } from '../utils/planLimits';
 import './Onboarding.css';
 
@@ -75,28 +76,21 @@ function StepSetup({ onNext }) {
     const [fullName, setFullName] = useState(user?.displayName || '');
     const [workspaceName, setWorkspaceName] = useState('');
     const [industry, setIndustry] = useState('');
-    const [popiaConsent, setPopiaConsent] = useState(false);
-    const [marketingConsent, setMarketingConsent] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
 
-    const valid =
-        fullName.trim().length > 0 &&
-        workspaceName.trim().length >= 3 &&
-        workspaceName.trim().length <= 50 &&
-        industry !== '' &&
-        popiaConsent;
+    // Terms, Privacy Policy and POPIA consent are accepted on the consent step (/consent) before onboarding.
+    const valid = fullName.trim().length > 0 && workspaceName.trim().length >= 3 && workspaceName.trim().length <= 50 && industry !== '';
 
     const handleNext = async () => {
         if (!valid) return;
         setSaving(true);
         setError('');
         try {
-            // The server saves the profile, the consent record (POPIA audit trail) and the
-            // workspace name together.
+            // The server saves the profile and the workspace name together.
             await apiClient('/auth/onboarding', {
                 method: 'POST',
-                body: { fullName: fullName.trim(), niche: industry, workspaceName: workspaceName.trim(), popiaConsent, marketingConsent },
+                body: { fullName: fullName.trim(), niche: industry, workspaceName: workspaceName.trim() },
             });
 
             onNext({ fullName: fullName.trim(), workspaceName: workspaceName.trim(), industry });
@@ -169,50 +163,6 @@ function StepSetup({ onNext }) {
                     </div>
                 </div>
 
-                {/* Consent Section (South African Law Requirement) */}
-                <div className="onboarding-fields" style={{ marginTop: 24 }}>
-                    <label
-                        className={`consent-box required ${popiaConsent ? 'checked' : ''}`}
-                        htmlFor="ob-popia"
-                    >
-                        <div className="consent-box__check">
-                            <input
-                                id="ob-popia"
-                                type="checkbox"
-                                style={{ opacity: 0, position: 'absolute', cursor: 'pointer' }}
-                                checked={popiaConsent}
-                                onChange={(e) => setPopiaConsent(e.target.checked)}
-                            />
-                            {popiaConsent && '✓'}
-                        </div>
-                        <div className="consent-box__text">
-                            <strong>Privacy & POPIA Consent <span className="popia-badge">POPIA</span></strong>
-                            I consent to KenganSocial processing my personal information in accordance with the
-                            <Link to="/privacy" target="_blank" style={{ color: 'var(--brand)', textDecoration: 'underline', marginLeft: 4 }}>Privacy Policy</Link>
-                            and POPIA. I am 18 or older.
-                        </div>
-                    </label>
-
-                    <label
-                        className={`consent-box ${marketingConsent ? 'checked' : ''}`}
-                        htmlFor="ob-marketing"
-                    >
-                        <div className="consent-box__check">
-                            <input
-                                id="ob-marketing"
-                                type="checkbox"
-                                style={{ opacity: 0, position: 'absolute', cursor: 'pointer' }}
-                                checked={marketingConsent}
-                                onChange={(e) => setMarketingConsent(e.target.checked)}
-                            />
-                            {marketingConsent && '✓'}
-                        </div>
-                        <div className="consent-box__text">
-                            <strong>Optional: Marketing Updates</strong>
-                            I agree to receive product updates, tips, and marketing communications from KenganSocial.
-                        </div>
-                    </label>
-                </div>
             </div>
 
             <div className="onboarding-actions onboarding-actions--end">
@@ -233,6 +183,8 @@ function StepSetup({ onNext }) {
 function StepConnect({ onNext, onBack }) {
     const [connecting, setConnecting] = useState(null);
     const [error, setError] = useState('');
+    // Explain what the platform will be asked for before its sign-in (ConnectPermissions).
+    const [pending, setPending] = useState(null);
 
     const handleConnect = async (platform) => {
         setConnecting(platform.id);
@@ -249,6 +201,7 @@ function StepConnect({ onNext, onBack }) {
                     : err.message || 'Could not start the connection. Try again.'
             );
             setConnecting(null);
+            setPending(null);
         }
     };
 
@@ -277,7 +230,10 @@ function StepConnect({ onNext, onBack }) {
                         <button
                             id={`ob-connect-${p.id}`}
                             className="platform-card__btn platform-card__btn--connect"
-                            onClick={() => handleConnect(p)}
+                            onClick={() => {
+                                setError('');
+                                setPending(p);
+                            }}
                             disabled={Boolean(connecting)}
                         >
                             {connecting === p.id ? 'Opening…' : 'Connect'}
@@ -285,6 +241,10 @@ function StepConnect({ onNext, onBack }) {
                     </div>
                 ))}
             </div>
+
+            {pending && (
+                <ConnectPermissions platform={pending.id} busy={connecting === pending.id} onCancel={() => setPending(null)} onContinue={() => handleConnect(pending)} />
+            )}
 
             <div className="onboarding-actions">
                 <button className="btn btn-ghost" onClick={onBack} id="ob-connect-back">
@@ -497,7 +457,7 @@ function WelcomeModal({ name, onClose }) {
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
                     By using KenganSocial you agree to our{' '}
                     <Link
-                        to="/legal"
+                        to="/terms"
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{ color: 'var(--brand)', textDecoration: 'underline' }}

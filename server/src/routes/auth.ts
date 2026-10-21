@@ -6,6 +6,7 @@ import { redis } from '../utils/redis';
 import { PLAN_LIMITS } from '../utils/planLimits';
 import { getMonth } from '../utils/dateUtils';
 import { applyDevPlanOverride } from '../utils/devPlan';
+import { LEGAL_VERSIONS, hasCurrentConsent } from '../config/legal';
 
 const router = express.Router();
 
@@ -332,6 +333,53 @@ router.put('/profile', async (req: Request, res: Response) => {
     }
 });
 
+// ─── POST /api/auth/consent ──────────────────────────────────────────────────
+// Records acceptance of the current Terms of Service and Privacy Policy (POPIA audit trail).
+// Body: { termsVersion, privacyVersion, acceptTerms: true, confirmAge: true, marketing?: boolean, source? }
+// Each version pair gets its own record, so earlier acceptances stay in the trail.
+router.post('/consent', async (req: Request, res: Response) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) return sendAuthError(res, 'MISSING_TOKEN');
+        const decoded = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
+        const body = req.body || {};
+        if (body.acceptTerms !== true) return res.status(400).json({ error: 'Accept the Terms of Service and Privacy Policy to continue.' });
+        if (body.confirmAge !== true) return res.status(400).json({ error: 'You must be 18 or older to use KenganSocial.' });
+        if (body.termsVersion !== LEGAL_VERSIONS.terms || body.privacyVersion !== LEGAL_VERSIONS.privacy) {
+            // The page was loaded before the documents changed: reload to see and accept the current ones.
+            return res.status(409).json({ error: 'The Terms or Privacy Policy changed while this page was open. Reload the page to see the current versions.', code: 'OUTDATED_VERSION', current: LEGAL_VERSIONS });
+        }
+
+        const now = new Date().toISOString();
+        const marketingConsent = body.marketing === true;
+        const source = ['signup', 'first_login', 'update'].includes(body.source) ? body.source : 'first_login';
+        const userRef = db.collection('users').doc(decoded.uid);
+        const recordId = `legal_${LEGAL_VERSIONS.terms}_${LEGAL_VERSIONS.privacy}`.replace(/[^A-Za-z0-9_]+/g, '-');
+        await userRef.collection('consents').doc(recordId).set({
+            termsVersion: LEGAL_VERSIONS.terms,
+            privacyVersion: LEGAL_VERSIONS.privacy,
+            termsAccepted: true,
+            privacyAccepted: true,
+            popiaProcessingConsent: true,
+            ageConfirmed: true,
+            marketingConsent,
+            source,
+            acceptedAt: now,
+            ip: req.ip || null,
+            userAgent: String(req.headers['user-agent'] || '').slice(0, 300),
+        });
+        await userRef.set(
+            { legal: { termsVersion: LEGAL_VERSIONS.terms, privacyVersion: LEGAL_VERSIONS.privacy, acceptedAt: now, marketingConsent }, updatedAt: now },
+            { merge: true }
+        );
+        const user = await userRef.get();
+        return res.status(200).json({ user: { uid: decoded.uid, ...user.data() } });
+    } catch (err: any) {
+        console.error('Consent save error:', err.message);
+        return res.status(500).json({ error: 'Your answer could not be saved. Try again.' });
+    }
+});
+
 // ─── POST /api/auth/onboarding ───────────────────────────────────────────────
 // Saves onboarding answers server-side (the browser never writes profiles directly).
 // Step 1: { fullName, niche, workspaceName, popiaConsent, marketingConsent }
@@ -355,15 +403,12 @@ router.post('/onboarding', async (req: Request, res: Response) => {
             const workspaceName = typeof body.workspaceName === 'string' ? body.workspaceName.trim() : '';
             if (!fullName) return res.status(400).json({ error: 'Add your name.' });
             if (workspaceName.length < 3 || workspaceName.length > 50) return res.status(400).json({ error: 'Workspace names are 3–50 characters.' });
-            if (body.popiaConsent !== true) return res.status(400).json({ error: 'Consent to the privacy policy is required to continue.' });
+            // Consent is given on the consent step (POST /consent) before onboarding.
+            const profile = (await userRef.get()).data();
+            if (!hasCurrentConsent(profile)) return res.status(409).json({ error: 'Accept the Terms of Service and Privacy Policy first.', code: 'CONSENT_REQUIRED' });
 
-            const consents = { popia: true, marketing: body.marketingConsent === true, timestamp: now, version: '1.0' };
+            const consents = { popia: true, marketing: profile?.legal?.marketingConsent === true, timestamp: profile?.legal?.acceptedAt || now, version: LEGAL_VERSIONS.terms };
             Object.assign(updates, { displayName: fullName, fullName, niche: String(body.niche || '').slice(0, 60), consents });
-            // POPIA audit trail, recorded by the server with the request IP.
-            await userRef.collection('consents').doc('initial').set(
-                { popiaConsent: true, marketingConsent: consents.marketing, acceptedAt: now, version: '1.0', ip: req.ip || null, userAgent: String(req.headers['user-agent'] || '').slice(0, 300) },
-                { merge: true }
-            );
             const owned = await db.collection('workspaces').where('ownerId', '==', decoded.uid).limit(1).get();
             if (!owned.empty) await owned.docs[0].ref.update({ name: workspaceName, niche: updates.niche, updatedAt: now });
         }

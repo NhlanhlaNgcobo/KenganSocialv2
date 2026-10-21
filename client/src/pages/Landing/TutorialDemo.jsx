@@ -245,7 +245,7 @@ export default function TutorialDemo() {
                         <i />
                         <i />
                     </span>
-                    <span className="td-url">app.kengansocial.com/{STEPS[step].id === 'schedule' ? 'calendar' : 'repurpose'}</span>
+                    <span className="td-url">kengansocial.co.za/dashboard/{STEPS[step].id === 'schedule' ? 'calendar' : 'repurpose'}</span>
                     <span className="td-step-count">
                         {step + 1}/{STEPS.length}
                     </span>

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
+import ConnectPermissions from '../components/connections/ConnectPermissions';
 import './Connections.css';
 
 const PLATFORM_META = {
@@ -203,7 +204,14 @@ export default function ConnectionsPage() {
         }
     };
 
-    const handleConnect = async (platformId, source) => {
+    // Connecting first explains what the platform will be asked for (ConnectPermissions); Continue starts the sign-in.
+    const [pendingConnect, setPendingConnect] = useState(null); // { platformId, source }
+    const handleConnect = (platformId, source) => {
+        setConnectError(null);
+        setPendingConnect({ platformId, source });
+    };
+
+    const startConnect = async (platformId, source) => {
         setConnecting(platformId);
         setConnectSource(source);
         setConnectError(null);
@@ -229,6 +237,7 @@ export default function ConnectionsPage() {
                     : error.message || 'Could not start the connection. Try again.',
             });
             setConnecting(null);
+            setPendingConnect(null);
         }
     };
 
@@ -704,6 +713,15 @@ export default function ConnectionsPage() {
                     <p>KenganSocial uses official OAuth APIs to connect to your accounts. We never store your passwords and only request the minimum permissions needed to publish content.</p>
                 </div>
             </section>
+
+            {pendingConnect && (
+                <ConnectPermissions
+                    platform={pendingConnect.platformId}
+                    busy={connecting === pendingConnect.platformId}
+                    onCancel={() => setPendingConnect(null)}
+                    onContinue={() => startConnect(pendingConnect.platformId, pendingConnect.source)}
+                />
+            )}
         </div>
     );
 }

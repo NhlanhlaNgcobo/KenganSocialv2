@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import PublicFooter from '../components/layout/PublicFooter';
 import {
     ArrowRight,
     Bot,
@@ -357,16 +358,7 @@ export default function LandingPage() {
                 </section>
             </main>
 
-            <footer className="lp-footer container">
-                <span>© {new Date().getFullYear()} KenganSocial</span>
-                <nav>
-                    <Link to="/pricing">Pricing</Link>
-                    <Link to="/about">About</Link>
-                    <Link to="/help">Help</Link>
-                    <Link to="/privacy">Privacy</Link>
-                    <Link to="/legal">Terms</Link>
-                </nav>
-            </footer>
+            <PublicFooter />
         </div>
     );
 }

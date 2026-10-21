@@ -26,7 +26,8 @@ import LandingPage from './pages/LandingPage';
 import PricingPage from './pages/PricingPage';
 import AboutPage from './pages/AboutPage';
 import HelpCenterPage from './pages/HelpCenterPage';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import DeletionStatusPage from './pages/DeletionStatusPage';
+import ConsentPage from './pages/ConsentPage';
 import ConnectionsPage from './pages/ConnectionsPage';
 import ContentStudioPage from './pages/ContentStudioPage';
 import CalendarPage from './pages/Calendar/CalendarPage';
@@ -60,8 +61,11 @@ function App() {
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/help" element={<HelpCenterPage />} />
-              <Route path="/privacy" element={<PrivacyPolicyPage />} />
-              <Route path="/legal" element={<LegalPage />} />
+              <Route path="/privacy" element={<LegalPage docSlug="privacy" />} />
+              <Route path="/terms" element={<LegalPage docSlug="terms" />} />
+              <Route path="/legal" element={<LegalPage docSlug="terms" />} />
+              <Route path="/data-deletion" element={<LegalPage docSlug="data-deletion" />} />
+              <Route path="/data-deletion/status" element={<DeletionStatusPage />} />
 
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
@@ -69,6 +73,11 @@ function App() {
               <Route path="/review/:token" element={<ReviewPage />} />
 
               {/* Onboarding — requires auth, shown before dashboard */}
+              <Route path="/consent" element={
+                <AuthGuard>
+                  <ConsentPage />
+                </AuthGuard>
+              } />
               <Route path="/onboarding" element={
                 <AuthGuard>
                   <OnboardingPage />

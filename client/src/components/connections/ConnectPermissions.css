@@ -1,0 +1,60 @@
+.cp-modal {
+    padding: 24px;
+    max-width: 560px;
+}
+.cp-lead {
+    margin: 0;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.cp-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+}
+.cp-list li {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+.cp-list li svg {
+    flex: none;
+    margin-top: 3px;
+    color: var(--success, #22c55e);
+}
+.cp-list strong {
+    color: var(--text-primary);
+}
+.cp-list--never li svg {
+    color: var(--text-muted);
+}
+.cp-note {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+.cp-note--text {
+    display: block;
+}
+.cp-note svg {
+    flex: none;
+    margin-top: 2px;
+}
+.cp-note a {
+    color: var(--accent-text);
+    text-decoration: underline;
+}
+@media (max-width: 480px) {
+    .cp-modal {
+        padding: 18px;
+    }
+}

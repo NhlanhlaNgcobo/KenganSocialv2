@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../lib/api';
 import { auth } from '../lib/firebase';
+import DeleteAccount from '../components/settings/DeleteAccount';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -334,7 +335,7 @@ export default function SettingsPage() {
                     {/* Footer link to Legal page */}
                     <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
                         <Link
-                            to="/legal"
+                            to="/terms"
                             className="settings-nav-item"
                             style={{ fontSize: '0.82rem', opacity: 0.65, textDecoration: 'none' }}
                         >
@@ -630,6 +631,8 @@ export default function SettingsPage() {
                             )}
                         </div>
                     )}
+
+                    {activeTab === 'security' && <DeleteAccount ownsWorkspace={!!ownWorkspace} />}
                 </main>
             </div>
         </div>

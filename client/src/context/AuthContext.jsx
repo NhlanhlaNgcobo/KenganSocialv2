@@ -10,8 +10,15 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
 import { apiClient } from '../lib/api';
+import { PRIVACY, TERMS } from '../content/legal';
 
 const AuthContext = createContext(null);
+
+/** True when a signed-in user hasn't accepted the current Terms and Privacy Policy (first sign-in or after an update). */
+function requiresConsent(profile) {
+    if (!profile) return false;
+    return profile.legal?.termsVersion !== TERMS.effectiveDate || profile.legal?.privacyVersion !== PRIVACY.effectiveDate;
+}
 
 /**
  * True when a signed-in user still has to finish onboarding. New profiles are created with
@@ -138,6 +145,18 @@ export function AuthProvider({ children }) {
         return { user: result.user, needsOnboarding: requiresOnboarding(data?.user) };
     };
 
+    /**
+     * Records acceptance of the current Terms and Privacy Policy, then reloads the session.
+     * source: 'signup' | 'first_login' | 'update' (kept in the consent record).
+     */
+    const acceptLegal = async ({ marketing = false, source = 'first_login' } = {}) => {
+        await apiClient('/auth/consent', {
+            method: 'POST',
+            body: { termsVersion: TERMS.effectiveDate, privacyVersion: PRIVACY.effectiveDate, acceptTerms: true, confirmAge: true, marketing, source },
+        });
+        return refreshProfile();
+    };
+
     /** Emails a password reset link. Firebase does not reveal whether the account exists. */
     const resetPassword = async (email) => {
         if (!auth) throw new Error('Firebase is not configured');
@@ -160,6 +179,8 @@ export function AuthProvider({ children }) {
         plan,
         loading,
         needsOnboarding: requiresOnboarding(profile),
+        needsConsent: requiresConsent(profile),
+        acceptLegal,
         isFirebaseConfigured,
         login,
         register,

@@ -14,6 +14,7 @@ import { decrypt } from '../utils/tokenEncryption';
 
 import { redis } from '../utils/redis';
 import { publicMediaUrl } from '../services/storage.service.js';
+import { getValidAccessToken } from '../routes/connections';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 // Reusing shared client
@@ -79,11 +80,18 @@ async function processJob(job: Job<PublishPayload>) {
 // Multiplex platform routing to specific adapters
 async function publishMultiplexer(platform: string, workspaceId: string, options: any): Promise<string> {
     // Fetch token for this platform dynamically
-    const connSnap = await db.collection('workspaces').doc(workspaceId).collection('connections').doc(platform).get();
-    if (!connSnap.exists) throw new Error(`${platform} connection missing`);
-
-    const connRaw = connSnap.data()!;
-    const accessToken = decrypt ? decrypt(connRaw.accessToken) : connRaw.accessToken; // Assumes token encryption is available
+    // Refreshes the token first when it is about to expire (TikTok access tokens last 24 hours,
+    // YouTube's an hour), so a post scheduled long after connecting still goes out.
+    let accessToken: string;
+    let connRaw: any;
+    try {
+        const valid = await getValidAccessToken(workspaceId, platform as any);
+        accessToken = valid.accessToken;
+        connRaw = valid.connection;
+    } catch (error: any) {
+        if (error.message === 'NOT_CONNECTED') throw new Error(`${platform} is not connected. Connect it on the Connections page.`);
+        throw new Error(`${platform} sign-in has expired and could not be renewed (${error.message}). Reconnect it on the Connections page.`);
+    }
 
     if (!accessToken) throw new Error(`${platform} access token missing or expired`);
 

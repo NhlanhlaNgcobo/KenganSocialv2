@@ -6,6 +6,7 @@ import { redis } from '../utils/redis';
 import { decrypt } from '../utils/tokenEncryption';
 import { CHAT_MODEL, chatClient } from './llm-client.js';
 import { processLeadScore } from './leads/scoreService';
+import { findConnections } from './connection-lookup';
 
 /**
  * Instagram DMs through the Messenger API for Instagram.
@@ -81,12 +82,10 @@ export async function sendInstagramDM(workspaceId: string, recipientId: string, 
     redis.incr(`dm:sent:${workspaceId}:${new Date().toISOString().slice(0, 10)}`).catch(() => {});
 }
 
-/** Finds the workspace whose Instagram connection is this account (collection-group query on accountId). */
+/** Finds the workspace whose Instagram connection is this account. */
 async function findInstagramConnection(igAccountId: string) {
-    const snap = await db.collectionGroup('connections').where('accountId', '==', igAccountId).limit(5).get();
-    const doc = snap.docs.find((d) => d.id === 'instagram' || d.data().platform === 'instagram');
-    const ws = doc?.ref.parent.parent;
-    return doc && ws ? { workspaceId: ws.id, connectionId: doc.id } : null;
+    const [match] = await findConnections('accountId', igAccountId, ['instagram']);
+    return match ? { workspaceId: match.workspaceId, connectionId: match.platform } : null;
 }
 
 async function senderProfile(workspaceId: string, senderId: string) {
@@ -185,15 +184,20 @@ async function runInboxAutoReply(workspaceId: string, senderId: string, text: st
     return false;
 }
 
-async function handleMessage(igAccountId: string, event: any) {
+/**
+ * One incoming Instagram message (webhook event "instagram.message", via services/webhooks).
+ * Runs the Automations page rules, then Inbox auto-replies, otherwise queues an AI-suggested reply.
+ * Returns the workspace it belonged to, or null if no workspace has this account.
+ */
+export async function handleInstagramMessage(igAccountId: string, event: any): Promise<string | null> {
     const senderId = String(event.sender?.id || '');
     const original = String(event.message?.text || '').trim();
-    if (!senderId || !original || event.message?.is_echo || senderId === igAccountId) return;
+    if (!senderId || !original || event.message?.is_echo || senderId === igAccountId) return null;
 
     const match = await findInstagramConnection(igAccountId);
     if (!match) {
         console.log(`[Instagram DM] No workspace is connected to Instagram account ${igAccountId}`);
-        return;
+        return null;
     }
     const { workspaceId, connectionId } = match;
     const text = original.toLowerCase();
@@ -201,13 +205,13 @@ async function handleMessage(igAccountId: string, event: any) {
 
     if (OPT_OUT_WORDS.includes(text)) {
         await optOuts.doc(senderId).set({ addedAt: admin.firestore.FieldValue.serverTimestamp() });
-        return;
+        return workspaceId;
     }
-    if ((await optOuts.doc(senderId).get()).exists) return;
+    if ((await optOuts.doc(senderId).get()).exists) return workspaceId;
 
     const profile = await senderProfile(workspaceId, senderId);
     const ruleReplied = await runAutomationRules(workspaceId, connectionId, senderId, text, profile);
-    if (ruleReplied || (await runInboxAutoReply(workspaceId, senderId, text, profile))) return;
+    if (ruleReplied || (await runInboxAutoReply(workspaceId, senderId, text, profile))) return workspaceId;
 
     await workspaceRef(workspaceId).collection('dmQueue').add({
         senderId,
@@ -219,34 +223,5 @@ async function handleMessage(igAccountId: string, event: any) {
         status: 'pending',
         receivedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-}
-
-/** Processes a Meta webhook payload. Errors are logged per message so one bad event can't block the rest. */
-export async function processInstagramWebhook(body: any) {
-    if (body?.object !== 'instagram') return;
-    for (const entry of body.entry || []) {
-        for (const event of entry.messaging || []) {
-            try {
-                await handleMessage(String(entry.id), event);
-            } catch (error) {
-                console.error('[Instagram DM] Webhook event failed:', (error as Error).message);
-            }
-        }
-    }
-}
-
-/** Webhook verification token: META_VERIFY_TOKEN (or the older META_WEBHOOK_VERIFY_TOKEN). */
-export function verifyToken() {
-    return process.env.META_VERIFY_TOKEN || process.env.META_WEBHOOK_VERIFY_TOKEN || '';
-}
-
-/** Checks X-Hub-Signature-256 against the raw body when META_APP_SECRET is set. */
-export function validSignature(rawBody: string | undefined, signature: string | undefined) {
-    const secret = process.env.META_APP_SECRET || process.env.FACEBOOK_APP_SECRET || '';
-    if (!secret) return process.env.NODE_ENV !== 'production';
-    if (!signature || !rawBody) return false;
-    const expected = `sha256=${crypto.createHmac('sha256', secret).update(rawBody).digest('hex')}`;
-    const a = Buffer.from(expected);
-    const b = Buffer.from(signature);
-    return a.length === b.length && crypto.timingSafeEqual(a, b);
+    return workspaceId;
 }
