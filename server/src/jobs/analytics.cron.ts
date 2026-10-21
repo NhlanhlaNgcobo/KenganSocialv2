@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { db } from '../utils/firestore';
+import { effectivePlan } from '../utils/trial';
 import { syncWorkspaceAnalytics } from '../services/analytics/analyticsService';
 
 /**
@@ -25,7 +26,7 @@ export function startAnalyticsCron() {
                 try {
                     const workspaceId = wsDoc.id;
                     const wsData = wsDoc.data();
-                    const plan = wsData.plan || 'starter';
+                    const plan = effectivePlan(wsData);
 
                     console.log(`⚡ [Cron] Syncing workspace: ${workspaceId} (Plan: ${plan})...`);
                     await syncWorkspaceAnalytics(workspaceId, plan);

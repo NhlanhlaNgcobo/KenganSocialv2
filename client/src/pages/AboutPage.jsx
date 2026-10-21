@@ -180,12 +180,8 @@ export default function AboutPage() {
                             </p>
                             <dl className="about-facts">
                                 <div>
-                                    <dt>Registration number</dt>
-                                    <dd>{COMPANY.registration}</dd>
-                                </div>
-                                <div>
-                                    <dt>Country</dt>
-                                    <dd>South Africa</dd>
+                                    <dt>Location</dt>
+                                    <dd>{COMPANY.address}</dd>
                                 </div>
                                 <div>
                                     <dt>Website</dt>
@@ -207,12 +203,6 @@ export default function AboutPage() {
                                         <a href={`mailto:${COMPANY.privacyEmail}`}>{COMPANY.privacyEmail}</a>
                                     </dd>
                                 </div>
-                                {COMPANY.address && (
-                                    <div>
-                                        <dt>Address</dt>
-                                        <dd>{COMPANY.address}</dd>
-                                    </div>
-                                )}
                             </dl>
                         </div>
                     </div>

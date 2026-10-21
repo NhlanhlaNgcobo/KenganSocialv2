@@ -144,8 +144,11 @@ export default function BillingPage() {
     }
 
     const supportEmail = catalog?.supportEmail || status?.supportEmail || BILLING_EMAIL;
-    const currentTier = status?.plan || null;
-    const currentPlanId = status?.planId || null;
+    // On the full-access trial nothing is paid for yet: every paid plan can be bought.
+    const onTrial = status?.paymentStatus === 'trial';
+    const trialEnds = formatDate(status?.trialEndsAt);
+    const currentTier = status ? (onTrial ? 'starter' : status.plan) : null;
+    const currentPlanId = status ? (onTrial ? 'starter' : status.planId) : null;
     const currentRank = currentTier ? PLAN_RANK[currentTier] ?? 0 : null;
     const discount = catalog?.annualDiscountPercent || 0;
     const paidUntil = formatDate(status?.currentPeriodEnd);
@@ -223,12 +226,14 @@ export default function BillingPage() {
                 <div className="card usage-card">
                     <div className="usage-header">
                         <span className="label">Current plan</span>
-                        <span className="val">{loading && !status ? '…' : status?.planName || '—'}</span>
+                        <span className="val">{loading && !status ? '…' : onTrial ? `${status.planName} trial` : status?.planName || '—'}</span>
                     </div>
                     <span className="usage-hint">
                         {!status
                             ? ' '
-                            : isPaid
+                            : onTrial
+                                ? `Full access until ${trialEnds}, then the free plan unless you upgrade.`
+                                : isPaid
                                 ? paidUntil
                                     ? `Paid until ${paidUntil}${status.billingInterval === 'yearly' ? ' (annual)' : ''}`
                                     : `Payment status: ${status.paymentStatus}`

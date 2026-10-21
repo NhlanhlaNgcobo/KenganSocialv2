@@ -9,8 +9,8 @@
     <script>
       // Apply the saved theme before React mounts so there is no dark/light flash.
       (function () {
-        var pref = 'system';
-        try { pref = localStorage.getItem('kengan-theme') || 'system'; } catch (e) {}
+        var pref = 'dark';
+        try { pref = localStorage.getItem('kengan-theme') || 'dark'; } catch (e) {}
         var theme = pref;
         if (pref !== 'light' && pref !== 'dark') {
           theme = 'dark';

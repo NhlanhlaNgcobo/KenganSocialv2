@@ -14,11 +14,12 @@ export const COMPANY = {
     privacyEmail: 'privacy@kengansocial.co.za',
     supportEmail: 'support@kengansocial.co.za',
     billingEmail: 'billing@kengansocial.co.za',
-    // Registered address as it appears on the CoR 14.1. Shown in the documents once filled in.
-    address: 'M1143 Ziqgaje Road, Umlazi, Durban, 4031',
+    // Where the company is based, shown on public pages and in the legal documents. The registration
+    // number appears only in the legal documents (Terms, Privacy Policy, Data deletion).
+    address: 'Durban, KwaZulu-Natal, South Africa',
 };
 
-const OPERATOR_LINE = `${COMPANY.product} is operated by ${COMPANY.operator} (registration number ${COMPANY.registration}), a company registered in the Republic of South Africa${COMPANY.address ? `, ${COMPANY.address}` : ''}.`;
+const OPERATOR_LINE = `${COMPANY.product} is operated by ${COMPANY.operator} (registration number ${COMPANY.registration}), a company registered in the Republic of South Africa${COMPANY.address ? ` and based in ${COMPANY.address}` : ''}.`;
 
 const EFFECTIVE = '20 October 2026';
 

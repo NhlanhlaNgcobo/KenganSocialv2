@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import admin from 'firebase-admin';
 import { db } from '../utils/firestore';
 import { applyDevPlanOverride } from '../utils/devPlan';
+import { effectivePlan } from '../utils/trial';
 
 async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: string) {
     if (requestedWorkspaceId) {
@@ -12,7 +13,7 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
 
         const workspaceData = workspaceDoc.data() as any;
         if (workspaceData.ownerId === uid) {
-            return { id: workspaceDoc.id, plan: workspaceData.plan || 'starter' };
+            return { id: workspaceDoc.id, plan: effectivePlan(workspaceData) };
         }
 
         const memberDoc = await db
@@ -26,7 +27,7 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
             return null;
         }
 
-        return { id: workspaceDoc.id, plan: workspaceData.plan || 'starter' };
+        return { id: workspaceDoc.id, plan: effectivePlan(workspaceData) };
     }
 
     const ownedWorkspace = await db
@@ -38,7 +39,7 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
     if (!ownedWorkspace.empty) {
         const workspaceDoc = ownedWorkspace.docs[0];
         const workspaceData = workspaceDoc.data() as any;
-        return { id: workspaceDoc.id, plan: workspaceData.plan || 'starter' };
+        return { id: workspaceDoc.id, plan: effectivePlan(workspaceData) };
     }
 
     // Member of someone else's workspace: workspaces keep a `members` uid array (see workspace.controller.js).
@@ -49,7 +50,7 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
 
     const workspaceDoc = memberOf.docs[0];
     const workspaceData = workspaceDoc.data() as any;
-    return { id: workspaceDoc.id, plan: workspaceData.plan || 'starter' };
+    return { id: workspaceDoc.id, plan: effectivePlan(workspaceData) };
 }
 
 export async function withWorkspace(req: Request, res: Response, next: NextFunction) {

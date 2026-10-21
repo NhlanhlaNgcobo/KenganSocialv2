@@ -16,9 +16,10 @@ const ThemeContext = createContext(null);
 function readStoredPreference() {
     try {
         const saved = localStorage.getItem(STORAGE_KEY);
-        return PREFERENCES.includes(saved) ? saved : 'system';
+        // Dark until the person picks another theme.
+        return PREFERENCES.includes(saved) ? saved : 'dark';
     } catch {
-        return 'system';
+        return 'dark';
     }
 }
 

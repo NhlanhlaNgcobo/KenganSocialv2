@@ -7,7 +7,7 @@ export default function PublicFooter() {
     return (
         <footer className="lp-footer container">
             <span>
-                © {new Date().getFullYear()} {COMPANY.product} · operated by {COMPANY.operator} ({COMPANY.registration}){COMPANY.address ? ` · ${COMPANY.address}` : ''}
+                © {new Date().getFullYear()} {COMPANY.product} · operated by {COMPANY.operator} · {COMPANY.address}
             </span>
             <nav aria-label="Footer">
                 <Link to="/pricing">Pricing</Link>

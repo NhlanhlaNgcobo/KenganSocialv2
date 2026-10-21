@@ -6,6 +6,7 @@ import { redis } from '../utils/redis';
 import { PLAN_LIMITS } from '../utils/planLimits';
 import { getMonth } from '../utils/dateUtils';
 import { applyDevPlanOverride } from '../utils/devPlan';
+import { effectivePlan, newWorkspaceTrial } from '../utils/trial';
 import { LEGAL_VERSIONS, hasCurrentConsent } from '../config/legal';
 
 const router = express.Router();
@@ -69,7 +70,7 @@ async function buildSession(uid: string, user: Record<string, unknown>) {
 
     const workspaceDoc = workspaceSnap.docs[0];
     const workspace = { ...workspaceDoc.data(), id: workspaceDoc.id };
-    const plan = applyDevPlanOverride((workspace as any).plan ?? 'starter') as keyof typeof PLAN_LIMITS;
+    const plan = applyDevPlanOverride(effectivePlan(workspace)) as keyof typeof PLAN_LIMITS;
 
     let usage: Record<string, number>;
     try {
@@ -117,7 +118,7 @@ router.post('/verify', async (req: Request, res: Response) => {
 
         const workspaceDoc = workspaceSnap.docs[0];
         const workspace = { id: workspaceDoc.id, ...workspaceDoc.data() };
-        const plan = applyDevPlanOverride((workspace as any).plan ?? 'starter');
+        const plan = applyDevPlanOverride(effectivePlan(workspace));
 
         return res.status(200).json({ user, workspace, plan });
     } catch (err: any) {
@@ -158,11 +159,14 @@ router.post('/workspace/create', async (req: Request, res: Response) => {
         const workspaceRef = db.collection('workspaces').doc();
         const now = new Date().toISOString();
 
+        // A user's first workspace starts with the full-access trial (utils/trial.ts).
+        const trial = newWorkspaceTrial();
         await workspaceRef.set({
             name: name.trim(),
             ownerId: decoded.uid,
             members: [decoded.uid],
             plan: 'starter',
+            ...trial,
             createdAt: now,
             updatedAt: now,
             onboardingComplete: false
@@ -179,10 +183,11 @@ router.post('/workspace/create', async (req: Request, res: Response) => {
             name: name.trim(),
             ownerId: decoded.uid,
             plan: 'starter',
+            ...trial,
             createdAt: now
         };
 
-        return res.status(201).json({ workspace, plan: 'starter' });
+        return res.status(201).json({ workspace, plan: effectivePlan(workspace) });
     } catch (err) {
         console.error('Workspace create error:', err);
         return res.status(500).json({ error: 'Could not create the workspace. Try again.', code: 'SERVER_ERROR' });
@@ -226,6 +231,8 @@ router.post('/profile', async (req: Request, res: Response) => {
                 ownerId: decoded.uid,
                 members: [decoded.uid],
                 plan: 'starter',
+                // New accounts start with the full-access trial (utils/trial.ts).
+                ...newWorkspaceTrial(),
                 createdAt: now,
                 updatedAt: now,
                 onboardingComplete: false

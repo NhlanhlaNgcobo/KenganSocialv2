@@ -4,10 +4,14 @@ import axios from 'axios';
 import admin from 'firebase-admin';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { MAX_CLIENTS, MAX_SOURCE_MINUTES, PLAN_LIMITS, PLAN_DISPLAY_NAMES, Plan, PlanFeature } from '../utils/planLimits';
+import { PLAN_LIMITS, PLAN_DISPLAY_NAMES, Plan, PlanFeature } from '../utils/planLimits';
 import { redis } from '../utils/redis';
 import { getMonth } from '../utils/dateUtils';
 import { calculateWorkspaceStorage } from '../utils/storage';
+import { ANNUAL_DISCOUNT, BILLING_EMAIL, PLAN_CATALOG, publicCatalog } from '../config/plan-catalog';
+import { activeTrial } from '../utils/trial';
+
+export { BILLING_EMAIL };
 
 const router = express.Router();
 
@@ -16,58 +20,8 @@ const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
 const PAYSTACK_PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY || '';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const PAYSTACK_CALLBACK_URL = process.env.PAYSTACK_CALLBACK_URL || `${FRONTEND_URL}/dashboard/billing`;
-export const BILLING_EMAIL = 'billing@kengansocial.co.za';
 const BILLING_SUPPORT_URL = process.env.PAYSTACK_BILLING_SUPPORT_URL || `mailto:${BILLING_EMAIL}`;
-// Annual billing charges 12 months at this fraction of the monthly price (0.9 = 10% off; deeper
-// discounts push the full-use margin below 50%).
-const ANNUAL_DISCOUNT = 0.9;
-const ANNUAL_DISCOUNT_PERCENT = Math.round((1 - ANNUAL_DISCOUNT) * 100);
 const PAYMENTS_NOT_CONFIGURED = "Payments aren't set up yet. Contact us to upgrade and we'll sort it out.";
-
-type CatalogEntry = {
-    label: string;
-    amountZar: number;
-    /** Internal tier (key of PLAN_LIMITS) the workspace gets once this plan is paid for. */
-    tier: Plan;
-    description: string;
-    /** Sold through a conversation, not self-serve checkout. */
-    contactOnly?: boolean;
-    popular?: boolean;
-    /** Extra lines shown after the limits-derived features. Only list what the product actually does. */
-    extras?: string[];
-};
-
-// Single source of truth for paid plan prices (ZAR, monthly).
-const PLAN_CATALOG: Record<string, CatalogEntry> = {
-    creator_starter: {
-        label: 'Creator Starter',
-        amountZar: 299,
-        tier: 'nano',
-        description: 'For creators posting regularly who want AI help and a taste of AI clips.',
-    },
-    creator_pro: {
-        label: 'Creator Pro',
-        amountZar: 699,
-        tier: 'creator',
-        description: 'For full-time creators running several channels.',
-        popular: true,
-    },
-    agency: {
-        label: 'Agency',
-        amountZar: 3499,
-        tier: 'agency',
-        description: 'For teams and agencies managing several client brands.',
-        extras: ['Leads board'],
-    },
-    enterprise: {
-        label: 'Enterprise',
-        amountZar: 8999,
-        tier: 'agency',
-        description: 'For larger organisations with custom needs.',
-        contactOnly: true,
-        extras: ['Everything in Agency', 'Limits agreed with you'],
-    },
-};
 
 // Which paid plan a workspace on each internal tier is shown as (used when the workspace has no billingPlanId).
 const TIER_TO_CATALOG: Partial<Record<Plan, string>> = {
@@ -87,68 +41,6 @@ function toTier(value: unknown): Plan {
     if (isPlan(value)) return value;
     if (value === 'enterprise') return 'agency';
     return 'starter';
-}
-
-function formatCount(n: number) {
-    return n.toLocaleString('en-ZA');
-}
-
-/** Headline features derived from PLAN_LIMITS so prices and limits never drift apart. */
-function featuresForTier(tier: Plan): string[] {
-    const l = PLAN_LIMITS[tier];
-    const line = (value: number, unit: string, unlimited: string) =>
-        value === -1 ? unlimited : value > 0 ? `${formatCount(value)} ${unit}` : null;
-
-    return [
-        line(l.posts, 'scheduled posts / month', 'Unlimited scheduled posts'),
-        line(l.exports, 'video exports / month', 'Unlimited video exports'),
-        line(l.connections, 'connected accounts', 'Unlimited connected accounts'),
-        line(l.aiCalls, 'AI credits / month', 'Unlimited AI credits'),
-        line(l.renders, 'launch & tutorial videos / month', 'Unlimited launch & tutorial videos'),
-        l.clipAnalysis > 0 ? `${formatCount(l.clipAnalysis)} AI clip projects / month (videos up to ${MAX_SOURCE_MINUTES[tier]} min)` : null,
-        line(l.transcribeHrs, 'hrs transcription / month', 'Unlimited transcription'),
-        MAX_CLIENTS[tier] === -1 ? 'Client approvals, unlimited clients' : MAX_CLIENTS[tier] > 0 ? `Client approvals for up to ${MAX_CLIENTS[tier]} clients` : null,
-        `${l.storageGB} GB storage`,
-    ].filter(Boolean) as string[];
-}
-
-function publicCatalog() {
-    const free = {
-        id: 'starter',
-        name: PLAN_DISPLAY_NAMES.starter,
-        tier: 'starter' as Plan,
-        monthlyPriceZar: 0,
-        annualMonthlyPriceZar: 0,
-        description: 'Try KenganSocial with no card needed.',
-        features: featuresForTier('starter'),
-        limits: PLAN_LIMITS.starter,
-        purchasable: false,
-        contactOnly: false,
-        popular: false,
-    };
-
-    const paid = Object.entries(PLAN_CATALOG).map(([id, p]) => ({
-        id,
-        name: p.label,
-        tier: p.tier,
-        monthlyPriceZar: p.amountZar,
-        annualMonthlyPriceZar: Math.round(p.amountZar * ANNUAL_DISCOUNT),
-        description: p.description,
-        features: [...(p.contactOnly ? [] : featuresForTier(p.tier)), ...(p.extras || [])],
-        limits: PLAN_LIMITS[p.tier],
-        purchasable: !p.contactOnly,
-        contactOnly: Boolean(p.contactOnly),
-        popular: Boolean(p.popular),
-    }));
-
-    return {
-        currency: 'ZAR',
-        annualDiscountPercent: ANNUAL_DISCOUNT_PERCENT,
-        paymentsConfigured: Boolean(PAYSTACK_SECRET_KEY),
-        supportEmail: BILLING_EMAIL,
-        supportUrl: BILLING_SUPPORT_URL,
-        plans: [free, ...paid],
-    };
 }
 
 function computeAmount(planId: string, interval: 'monthly' | 'yearly') {
@@ -291,7 +183,7 @@ function safeJson(value: string) {
 
 // ─── GET /api/billing/plans (public) ─────────────────────────────────────────
 router.get('/plans', (_req: Request, res: Response) => {
-    res.json({ success: true, ...publicCatalog() });
+    res.json({ success: true, ...publicCatalog({ paymentsConfigured: Boolean(PAYSTACK_SECRET_KEY), supportUrl: BILLING_SUPPORT_URL }) });
 });
 
 // ─── POST /api/billing/create-checkout ───────────────────────────────────────
@@ -456,6 +348,8 @@ router.get('/status', withWorkspace, async (req: Request, res: Response) => {
         const ws = wsDoc.data() || {};
         // req.plan is what the plan gates enforce (it includes the development-only override).
         const tier = toTier((req as any).plan || ws.plan);
+        const trial = activeTrial(ws);
+        const trialOnly = Boolean(trial && trial.plan === tier && toTier(ws.plan) !== tier);
         const catalogId = tier === 'starter'
             ? null
             : (PLAN_CATALOG[ws.billingPlanId]?.tier === tier ? ws.billingPlanId : TIER_TO_CATALOG[tier]) || null;
@@ -484,7 +378,9 @@ router.get('/status', withWorkspace, async (req: Request, res: Response) => {
             storageGB,
             billingInterval: ws.billingInterval || null,
             currentPeriodEnd: ws.currentPeriodEnd || null,
-            paymentStatus: tier === 'starter' ? 'free' : (ws.paymentStatus || 'inactive'),
+            // A running full-access trial (utils/trial.ts) that is above the paid plan.
+            paymentStatus: tier === 'starter' ? 'free' : trialOnly ? 'trial' : (ws.paymentStatus || 'inactive'),
+            trialEndsAt: trial?.endsAt || null,
             pendingPlan: ws.pendingPlan || null,
             paystackCustomerCode: ws.paystackCustomerCode || null,
             supportEmail: BILLING_EMAIL,

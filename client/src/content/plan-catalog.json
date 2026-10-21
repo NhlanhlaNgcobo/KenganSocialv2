@@ -1,0 +1,162 @@
+{
+  "currency": "ZAR",
+  "annualDiscountPercent": 10,
+  "paymentsConfigured": false,
+  "supportEmail": "billing@kengansocial.co.za",
+  "supportUrl": "mailto:billing@kengansocial.co.za",
+  "plans": [
+    {
+      "id": "starter",
+      "name": "Free",
+      "tier": "starter",
+      "monthlyPriceZar": 0,
+      "annualMonthlyPriceZar": 0,
+      "description": "Try KenganSocial with no card needed.",
+      "features": [
+        "10 scheduled posts / month",
+        "3 video exports / month",
+        "2 connected accounts",
+        "0.5 GB storage"
+      ],
+      "limits": {
+        "posts": 10,
+        "exports": 3,
+        "connections": 2,
+        "dms": 0,
+        "transcribeHrs": 0,
+        "clipAnalysis": 0,
+        "aiCalls": 0,
+        "renders": 0,
+        "storageGB": 0.5
+      },
+      "purchasable": false,
+      "contactOnly": false,
+      "popular": false
+    },
+    {
+      "id": "creator_starter",
+      "name": "Creator Starter",
+      "tier": "nano",
+      "monthlyPriceZar": 299,
+      "annualMonthlyPriceZar": 269,
+      "description": "For creators posting regularly who want AI help and a taste of AI clips.",
+      "features": [
+        "30 scheduled posts / month",
+        "10 video exports / month",
+        "3 connected accounts",
+        "100 AI credits / month",
+        "6 launch & tutorial videos / month",
+        "3 AI clip projects / month (videos up to 30 min)",
+        "3 hrs transcription / month",
+        "2 GB storage"
+      ],
+      "limits": {
+        "posts": 30,
+        "exports": 10,
+        "connections": 3,
+        "dms": 10,
+        "transcribeHrs": 3,
+        "clipAnalysis": 3,
+        "aiCalls": 100,
+        "renders": 6,
+        "storageGB": 2
+      },
+      "purchasable": true,
+      "contactOnly": false,
+      "popular": false
+    },
+    {
+      "id": "creator_pro",
+      "name": "Creator Pro",
+      "tier": "creator",
+      "monthlyPriceZar": 699,
+      "annualMonthlyPriceZar": 629,
+      "description": "For full-time creators running several channels.",
+      "features": [
+        "100 scheduled posts / month",
+        "30 video exports / month",
+        "6 connected accounts",
+        "250 AI credits / month",
+        "25 launch & tutorial videos / month",
+        "12 AI clip projects / month (videos up to 90 min)",
+        "10 hrs transcription / month",
+        "Client approvals for up to 5 clients",
+        "10 GB storage"
+      ],
+      "limits": {
+        "posts": 100,
+        "exports": 30,
+        "connections": 6,
+        "dms": 50,
+        "transcribeHrs": 10,
+        "clipAnalysis": 12,
+        "aiCalls": 250,
+        "renders": 25,
+        "storageGB": 10
+      },
+      "purchasable": true,
+      "contactOnly": false,
+      "popular": true
+    },
+    {
+      "id": "agency",
+      "name": "Agency",
+      "tier": "agency",
+      "monthlyPriceZar": 3499,
+      "annualMonthlyPriceZar": 3149,
+      "description": "For teams and agencies managing several client brands.",
+      "features": [
+        "Unlimited scheduled posts",
+        "150 video exports / month",
+        "25 connected accounts",
+        "1 300 AI credits / month",
+        "150 launch & tutorial videos / month",
+        "40 AI clip projects / month (videos up to 180 min)",
+        "40 hrs transcription / month",
+        "Client approvals, unlimited clients",
+        "50 GB storage",
+        "Leads board"
+      ],
+      "limits": {
+        "posts": -1,
+        "exports": 150,
+        "connections": 25,
+        "dms": -1,
+        "transcribeHrs": 40,
+        "clipAnalysis": 40,
+        "aiCalls": 1300,
+        "renders": 150,
+        "storageGB": 50
+      },
+      "purchasable": true,
+      "contactOnly": false,
+      "popular": false
+    },
+    {
+      "id": "enterprise",
+      "name": "Enterprise",
+      "tier": "agency",
+      "monthlyPriceZar": 8999,
+      "annualMonthlyPriceZar": 8099,
+      "description": "For larger organisations with custom needs.",
+      "features": [
+        "Everything in Agency",
+        "Limits agreed with you"
+      ],
+      "limits": {
+        "posts": -1,
+        "exports": 150,
+        "connections": 25,
+        "dms": -1,
+        "transcribeHrs": 40,
+        "clipAnalysis": 40,
+        "aiCalls": 1300,
+        "renders": 150,
+        "storageGB": 50
+      },
+      "purchasable": false,
+      "contactOnly": true,
+      "popular": false
+    }
+  ]
+}
