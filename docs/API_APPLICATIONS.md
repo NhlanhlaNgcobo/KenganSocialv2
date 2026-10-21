@@ -37,7 +37,7 @@ In inbox mode (`video.upload` only), the creator finishes the post in TikTok and
 
 1. **Registered address.** Fill in `COMPANY.address` in `client/src/content/legal.js` (exactly as on the CoR 14.1), then run `node scripts/build-legal-html.mjs`. Meta Business Verification checks that the name, address, phone and website match the CIPC records.
 2. **Information Officer and PAIA manual.** Register the Information Officer with the Information Regulator, and publish the PAIA manual on the website.
-3. **Production domain.** Deploy the website and API on your real domain over HTTPS:
+3. **Production domain.** Deploy the website and API on your real domain over HTTPS (`docs/DEPLOY.md`):
    - Set `CLIENT_URL` and `SERVER_URL` on the API.
    - Set `VITE_API_URL` on the website.
    - Check that `https://<site>/privacy`, `/terms` and `/data-deletion` load as static pages.

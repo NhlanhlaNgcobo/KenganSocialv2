@@ -32,14 +32,14 @@ Not yet usable by testers:
 
 ### 2.1 Hosting
 
-Four parts need to run somewhere other than your laptop:
+Four parts need to run somewhere other than your laptop. The step-by-step setup is in `docs/DEPLOY.md`.
 
 | Part | Folder | Host | Notes |
 | --- | --- | --- | --- |
 | Web app | `client/` | **Vercel** (or Firebase Hosting, already configured in `firebase.json`) | Static Vite build. Set the `VITE_*` variables in the Vercel project, with `VITE_API_URL` pointing at the API's HTTPS domain |
-| API + video service | `server/` + `python-service/` | **One** Google Compute Engine VM in the `kengansocialv2` project, 4 vCPU / 8 GB | Must share a disk: the API passes local file paths to the video service (`/process/stabilize`, `/process/autoframe`, clip transcription). Needs FFmpeg, Chrome (Remotion) and Python 3.11+. A VM in the Firebase project gets Firestore access from its attached service account, no key file needed. Run **one instance** for now, see 2.6 |
-| Queue | Redis | **Upstash** free tier | Set `REDIS_URL` (the `rediss://` URL). The same URL works locally and in production |
-| Media storage | – | VM disk (`STORAGE_DRIVER=local`) for the pilot; Backblaze B2 (`STORAGE_DRIVER=s3`) when scaling | The project has no Firebase Storage bucket (needs the Blaze plan) |
+| API + video service | `server/` + `python-service/` | **One** Google Compute Engine VM in the `kengansocialv2` project (`e2-standard-4`: 4 vCPU / 16 GB), running `docker-compose.yml` with Caddy for HTTPS | Must share a disk: the API passes local file paths to the video service (`/process/stabilize`, `/process/autoframe`, clip transcription). Needs FFmpeg, Chrome (Remotion) and Python 3.11+. A VM in the Firebase project gets Firestore access from its attached service account, no key file needed. Run **one instance** for now, see 2.6 |
+| Queue | Redis | A Redis container on the same VM (`docker-compose.yml`, saved to disk) | BullMQ polls Redis constantly, which would use up a pay-per-request plan such as Upstash's. Locally, use any Redis on `REDIS_URL` |
+| Media storage | – | VM disk (`STORAGE_DRIVER=local`, a docker volume) for the pilot; Backblaze B2 (`STORAGE_DRIVER=s3`) when scaling | Back up with a daily disk snapshot (`docs/DEPLOY.md`) |
 
 Vercel cannot run the API or the video service: they run FFmpeg, Whisper and Remotion jobs that take minutes and keep files on disk, beyond what serverless functions allow. Put the API behind a domain with HTTPS (for example `api.kengansocial.com`); the social platforms will not redirect to plain `http`.
 
@@ -47,11 +47,11 @@ Vercel cannot run the API or the video service: they run FFmpeg, Whisper and Rem
 
 In the production `server/.env` (never commit it):
 
-- `NODE_ENV=production`. This also turns off `DEV_PLAN_OVERRIDE` and locks CORS to `CLIENT_URL`.
+- `NODE_ENV=production`. This also turns off `DEV_PLAN_OVERRIDE` and locks CORS to `CLIENT_URL` (plus `CORS_EXTRA_ORIGINS`).
 - Remove `DEV_PLAN_OVERRIDE` entirely.
 - `CLIENT_URL` / `FRONTEND_URL` = the web app's URL; `SERVER_URL` = the API's public URL (used to build OAuth redirect URIs).
 - `TOKEN_ENCRYPTION_KEY` = 32+ random characters. It encrypts social tokens; changing it later disconnects every account.
-- `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY`; `PYTHON_API_URL` pointing at the video service.
+- `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY`. `docker-compose.yml` sets `PYTHON_API_URL`, `REDIS_URL` and the shared temp folder.
 
 In `client/.env` before building: `VITE_API_URL=https://<api-domain>/api` and the Firebase web config.
 

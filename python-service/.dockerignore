@@ -6,3 +6,5 @@ __pycache__
 .env.*
 serviceAccountKey.json
 *.pem
+serviceAccount*.json
+*.log

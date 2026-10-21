@@ -52,12 +52,20 @@ import dataDeletionRoutes from './src/routes/data-deletion.ts';
 import './src/services/webhooks/handlers.ts';
 import { startWebhookWorker } from './src/services/webhooks/dispatcher.ts';
 import { planRateLimit } from './src/middleware/planGate.ts';
+import { startTempSweeper } from './src/jobs/temp-sweeper.js';
 import { logDevPlanOverride } from './src/utils/devPlan.ts';
 
 logDevPlanOverride();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Behind a reverse proxy (Caddy on the VM): use the client's address from X-Forwarded-For, so
+// rate limits and consent records see real IPs. TRUST_PROXY = number of proxy hops (default 1
+// in production, 0 = off).
+const trustProxy = Number(process.env.TRUST_PROXY ?? (isProduction ? 1 : 0));
+if (trustProxy > 0) app.set('trust proxy', trustProxy);
 
 // ---------------------
 // Global Middleware
@@ -66,21 +74,21 @@ const PORT = process.env.PORT || 5000;
 // Security headers
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
-// CORS — allow multiple dev origins
+// CORS: the web app (CLIENT_URL) plus any CORS_EXTRA_ORIGINS, comma-separated (e.g. the www
+// domain). The localhost dev ports are allowed outside production only.
 const allowedOrigins = [
     process.env.CLIENT_URL,
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175',
-].filter(Boolean);
+    ...(process.env.CORS_EXTRA_ORIGINS || '').split(','),
+    ...(isProduction ? [] : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:4173']),
+].map((o) => (o || '').trim().replace(/[/]+$/, '')).filter(Boolean);
 
 app.use(cors({
     origin: (origin, callback) => {
         // Allow requests with no origin (mobile apps, curl, etc.)
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
-        } else if (process.env.NODE_ENV === 'production') {
-            // Production: only CLIENT_URL (and the localhost dev ports) may call the API.
+        } else if (isProduction) {
+            // Production: only the CLIENT_URL origins may call the API.
             callback(null, false);
         } else {
             callback(null, true); // Any origin in development
@@ -110,7 +118,7 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: true }));
 
 // Logging
-app.use(morgan('dev'));
+app.use(morgan(isProduction ? 'combined' : 'dev'));
 
 // ---------------------
 // Routes
@@ -218,4 +226,7 @@ app.listen(PORT, () => {
 
     // Webhook retries and stale-event recovery (every minute), purge of old events (daily)
     startWebhookWorker();
+
+    // Old renders and uploads in the temp folder (hourly)
+    startTempSweeper();
 });

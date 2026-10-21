@@ -1,0 +1,22 @@
+# HTTPS front door for the API (docker-compose.yml). Caddy gets and renews the TLS certificate
+# itself once API_DOMAIN's DNS A record points at this VM and ports 80/443 are open.
+{$API_DOMAIN} {
+	encode gzip
+
+	# Uploads up to 2 GB (editor source videos); renders can take minutes to stream.
+	request_body {
+		max_size 2GB
+	}
+
+	reverse_proxy api:5000 {
+		transport http {
+			read_timeout 30m
+			write_timeout 30m
+		}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

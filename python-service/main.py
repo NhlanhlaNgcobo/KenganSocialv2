@@ -105,6 +105,10 @@ def init_firebase():
         cred_path = str(server_relative)
     if Path(cred_path).exists():
         cred = credentials.Certificate(cred_path)
+    elif not os.getenv("FIREBASE_PRIVATE_KEY"):
+        # No key file and no key in the environment: Application Default Credentials (the
+        # service account attached to the Google Cloud VM, or `gcloud auth application-default login`).
+        cred = credentials.ApplicationDefault()
     else:
         cred = credentials.Certificate(
             {
@@ -120,12 +124,10 @@ def init_firebase():
                 "client_x509_cert_url": os.getenv("FIREBASE_CLIENT_X509_CERT_URL", ""),
             }
         )
-    firebase_admin.initialize_app(
-        cred,
-        {
-            "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET", ""),
-        },
-    )
+    options = {"storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET", "")}
+    if os.getenv("FIREBASE_PROJECT_ID"):
+        options["projectId"] = os.getenv("FIREBASE_PROJECT_ID")
+    firebase_admin.initialize_app(cred, options)
 
 
 @asynccontextmanager

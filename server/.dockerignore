@@ -6,3 +6,7 @@ serviceAccountKey.json
 uploads
 .cache
 npm-debug.log
+serviceAccount*.json
+# Unused older video service (not part of the API image)
+python-editor
+*.log

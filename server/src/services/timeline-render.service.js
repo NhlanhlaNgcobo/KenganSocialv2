@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { FFMPEG, probe, run } from './ffmpeg-runner.js';
 import { getUploadPath } from './manual-edit.service.js';
 import { CAPTION_MOTIONS, TEXT_ANIMATIONS } from './caption-motion.js';
+import { TREND_XFADE } from './trend-transitions.js';
 
 /**
  * Renders a multi-track editor timeline (edit config v2) to a single MP4.
@@ -245,22 +246,29 @@ async function colorAssets(color, spec, workDir) {
     const vig = color.vignette;
     if (vig?.amount) {
         mask = { path: path.join(workDir, `vignette_${key}.png`), mode: vig.amount < 0 ? 'multiply' : 'screen' };
-        if (!fs.existsSync(mask.path)) {
-            const { width: W, height: H } = spec;
-            // Built at a quarter size and scaled up: vignettes are smooth.
-            const w = Math.ceil(W / 4);
-            const h = Math.ceil(H / 4);
-            const px = Buffer.alloc(w * h);
-            for (let y = 0; y < h; y += 1) {
-                for (let x = 0; x < w; x += 1) {
-                    const { dark, light } = vignetteAt(vig, (x + 0.5) / w, (y + 0.5) / h, W / H);
-                    px[y * w + x] = Math.round((vig.amount < 0 ? dark : light) * 255);
-                }
-            }
-            await sharp(px, { raw: { width: w, height: h, channels: 1 } }).resize(W, H, { kernel: 'cubic' }).toColourspace('srgb').png().toFile(mask.path);
+        // Segments render in parallel: a mask being written is awaited, not written twice.
+        if (!fs.existsSync(mask.path) && !maskWrites.has(mask.path)) {
+            maskWrites.set(mask.path, writeVignetteMask(vig, spec, mask.path).finally(() => maskWrites.delete(mask.path)));
         }
+        await maskWrites.get(mask.path);
     }
     return { lut, mask };
+}
+
+const maskWrites = new Map();
+async function writeVignetteMask(vig, spec, file) {
+    const { width: W, height: H } = spec;
+    // Built at a quarter size and scaled up: vignettes are smooth.
+    const w = Math.ceil(W / 4);
+    const h = Math.ceil(H / 4);
+    const px = Buffer.alloc(w * h);
+    for (let y = 0; y < h; y += 1) {
+        for (let x = 0; x < w; x += 1) {
+            const { dark, light } = vignetteAt(vig, (x + 0.5) / w, (y + 0.5) / h, W / H);
+            px[y * w + x] = Math.round((vig.amount < 0 ? dark : light) * 255);
+        }
+    }
+    await sharp(px, { raw: { width: w, height: h, channels: 1 } }).resize(W, H, { kernel: 'cubic' }).toColourspace('srgb').png().toFile(file);
 }
 
 // ---------------------------------------------------------------------------
@@ -732,10 +740,16 @@ async function prepareTransitions(segments) {
             }
             seg.length += h;
         }
-        boundaries.push({ index: i, type: TRANSITIONS[t.type], duration: d });
+        boundaries.push({ index: i, id: t.type, type: TRANSITIONS[t.type], duration: d });
     }
     return boundaries;
 }
+
+/**
+ * Transitions rendered at half size over their own frames only (see joinSegments).
+ * KENGAN_FULL_RES_TRANSITIONS=1 renders them at full size (for comparing).
+ */
+const HALF_RES_TRANSITIONS = new Set(Object.keys(TREND_XFADE));
 
 /**
  * Joins rendered segments. Runs without a transition are stream-copied (concat demuxer); runs are
@@ -797,7 +811,27 @@ async function joinSegments(segmentPaths, boundaries, workDir, spec, frameCounts
     let merged = lengths[0];
     boundaries.forEach((b, k) => {
         const offset = Math.max(0, merged - b.duration);
-        graph.push(`${v}[gv${k + 1}]xfade=transition=${b.type}:duration=${b.duration.toFixed(3)}:offset=${offset.toFixed(3)}[v${k + 1}]`);
+        const startFrame = Math.round(offset * spec.fps);
+        const frames = Math.round(b.duration * spec.fps);
+        if (HALF_RES_TRANSITIONS.has(b.id) && startFrame > 0 && frames > 1 && !process.env.KENGAN_FULL_RES_TRANSITIONS) {
+            // The Kengan motion transitions sample each source pixel several times in an FFmpeg
+            // expression (about 1-2 s per 1080p frame). Only the transition's frames go through
+            // xfade, at half size, then are scaled back and spliced between the untouched picture.
+            const n = k + 1;
+            const half = 'scale=trunc(iw/4)*2:trunc(ih/4)*2';
+            graph.push(`${v}split[xa${n}][xb${n}]`);
+            graph.push(`[xa${n}]trim=end_frame=${startFrame},setpts=PTS-STARTPTS[xpre${n}]`);
+            // Two cloned frames in case rounding left the outgoing side a frame short; xfade drops extras.
+            graph.push(`[xb${n}]trim=start_frame=${startFrame},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop=2,${half}[xw${n}]`);
+            graph.push(`[gv${n}]split[ya${n}][yb${n}]`);
+            graph.push(`[ya${n}]trim=end_frame=${frames},setpts=PTS-STARTPTS,${half}[yw${n}]`);
+            graph.push(`[yb${n}]trim=start_frame=${frames},setpts=PTS-STARTPTS[ypost${n}]`);
+            graph.push(`[xw${n}][yw${n}]xfade=transition=${b.type}:duration=${(frames / spec.fps).toFixed(6)}:offset=0,scale=${spec.width}:${spec.height}[tw${n}]`);
+            // concat outputs microsecond timestamps; the next xfade needs the 1/fps time base of the others.
+            graph.push(`[xpre${n}][tw${n}][ypost${n}]concat=n=3:v=1:a=0,settb=1/${spec.fps}[v${n}]`);
+        } else {
+            graph.push(`${v}[gv${k + 1}]xfade=transition=${b.type}:duration=${b.duration.toFixed(3)}:offset=${offset.toFixed(3)}[v${k + 1}]`);
+        }
         graph.push(`${a}[ga${k + 1}]acrossfade=d=${b.duration.toFixed(3)}:c1=tri:c2=tri[a${k + 1}]`);
         v = `[v${k + 1}]`;
         a = `[a${k + 1}]`;
@@ -805,6 +839,13 @@ async function joinSegments(segmentPaths, boundaries, workDir, spec, frameCounts
     });
     args.push('-filter_complex', graph.join(';'), '-map', v, '-map', a, '-r', String(spec.fps), ...ENCODE_VIDEO, ...ENCODE_AUDIO, 'base.mp4');
     await run(FFMPEG, args, { cwd: workDir });
+}
+
+/** Segments rendered at once: SEGMENT_CONCURRENCY, or half the CPU cores (1-3). */
+function segmentConcurrency() {
+    const configured = Number(process.env.SEGMENT_CONCURRENCY);
+    if (Number.isInteger(configured) && configured > 0) return configured;
+    return Math.max(1, Math.min(3, Math.floor(os.cpus().length / 2)));
 }
 
 /** Seconds of context rendered around an exact-preview range (covers any transition half). */
@@ -1031,12 +1072,20 @@ export async function renderTimeline(config, ownerId, onProgress = () => {}) {
             segment.frameCount = Math.max(1, Math.round(exact));
             carry = exact - segment.frameCount;
         }
-        for (const [i, segment] of segments.entries()) {
-            const out = path.join(workDir, `seg_${String(i).padStart(4, '0')}.mp4`);
-            await renderSegment(segment, spec, out);
-            segmentPaths.push(out);
-            report(((i + 1) / segments.length) * 0.6);
-        }
+        // Several segments at once: each one's filters mostly use a single core.
+        let done = 0;
+        let next = 0;
+        const worker = async () => {
+            while (next < segments.length) {
+                const i = next++;
+                const out = path.join(workDir, `seg_${String(i).padStart(4, '0')}.mp4`);
+                segmentPaths[i] = out;
+                await renderSegment(segments[i], spec, out);
+                done += 1;
+                report((done / segments.length) * 0.6);
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(segmentConcurrency(), segments.length) }, worker));
 
         const basePath = path.join(workDir, 'base.mp4');
         await joinSegments(segmentPaths, boundaries, workDir, spec, segments.map((s) => s.frameCount));
