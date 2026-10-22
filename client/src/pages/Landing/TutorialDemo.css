@@ -948,3 +948,218 @@
     display: none;
   }
 }
+
+/* ---------- Real footage (public/landing) ---------- */
+.td-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #0b0b0d;
+}
+
+/* Upload: the file's real thumbnail, then frames being read */
+.td-file__thumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 9cqw;
+  aspect-ratio: 16 / 9;
+  border-radius: 0.7cqw;
+  overflow: hidden;
+  border: 1px solid var(--td-line);
+}
+
+.td-file__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.td-file__thumb i {
+  position: absolute;
+  right: 0.4cqw;
+  bottom: 0.4cqw;
+  padding: 0.1cqw 0.45cqw;
+  border-radius: 0.4cqw;
+  font-style: normal;
+  font-size: 0.95cqw;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.td-strip {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.8cqw;
+  margin-top: 1.8cqw;
+  border-radius: 1cqw;
+  overflow: hidden;
+}
+
+.td-strip img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 0.7cqw;
+  opacity: 0;
+  animation: tdRise 0.5s ease calc(3.2s + var(--i) * 0.18s) forwards;
+}
+
+.td-strip__scan,
+.td-scan__line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0.35cqw;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.95), transparent);
+  box-shadow: 0 0 1.6cqw rgba(255, 255, 255, 0.7);
+  animation: tdScan 1.6s cubic-bezier(0.45, 0, 0.55, 1) 3.9s infinite;
+  opacity: 0;
+}
+
+@keyframes tdScan {
+  0% { left: 0; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+
+/* Platforms: the real clip made for each */
+.td-card {
+  flex-direction: row;
+  align-items: center;
+  gap: 1.1cqw;
+  padding: 1cqw;
+}
+
+.td-card__shot {
+  flex-shrink: 0;
+  width: 5.4cqw;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  border-radius: 0.6cqw;
+  border: 1px solid var(--td-line);
+}
+
+.td-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3cqw;
+  min-width: 0;
+}
+
+.td-card--pick .td-card__shot {
+  box-shadow: 0 0 0 0.25cqw rgba(255, 255, 255, 0.85);
+}
+
+/* Moments: the source plays while it is scanned */
+.td-scan {
+  position: relative;
+  height: 9cqw;
+  border-radius: 1cqw;
+  overflow: hidden;
+  border: 1px solid var(--td-line);
+  margin-bottom: 1cqw;
+}
+
+.td-scan__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(0.9);
+}
+
+.td-scan__line {
+  animation-delay: 0.4s;
+}
+
+.td-moments .td-wave {
+  height: 4cqw;
+}
+
+img.td-clip__thumb {
+  width: 6.4cqw;
+  height: 3.6cqw;
+  object-fit: cover;
+  background: none;
+  border: 1px solid var(--td-line);
+}
+
+/* Framing: face boxes sit on the two hosts in the real footage */
+.td-source__frame {
+  background: #0b0b0d;
+}
+
+.td-face {
+  z-index: 2;
+  width: 4.6cqw;
+  height: 5.6cqw;
+  border-color: #4ade80;
+}
+
+.td-face--a {
+  left: 22%;
+  top: 25%;
+  right: auto;
+}
+
+.td-face--b {
+  left: 65%;
+  top: 26%;
+  right: auto;
+}
+
+.td-phone {
+  background: #0b0b0d;
+}
+
+.td-phone__badge {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 0.3cqw 0.8cqw;
+  border-radius: 999px;
+  font-size: 0.95cqw;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #0b0b0d;
+  background: rgba(255, 255, 255, 0.92);
+  opacity: 0;
+  animation: tdRise 0.5s ease 2.4s forwards;
+}
+
+/* Calendar: each post shows its clip */
+.td-post {
+  display: flex;
+  align-items: center;
+  gap: 0.5cqw;
+}
+
+.td-post img {
+  width: 2.2cqw;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  border-radius: 0.35cqw;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .td-strip img,
+  .td-phone__badge {
+    animation: none;
+    opacity: 1;
+  }
+
+  .td-strip__scan,
+  .td-scan__line {
+    display: none;
+  }
+}

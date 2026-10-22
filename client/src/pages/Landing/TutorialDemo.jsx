@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import './TutorialDemo.css';
 import { CalendarCheck, Check, Film, Instagram, Music2, Sparkles, Upload, Wand2, Youtube } from 'lucide-react';
+import LoopVideo from './LoopVideo';
 
 /**
- * A self-playing walkthrough of the app, drawn in HTML/CSS (no video file): each step is a
- * scene whose CSS animations restart when it mounts. Steps advance on a timer while the demo
- * is on screen and can be picked from the tabs underneath.
+ * A self-playing walkthrough of the app: each step is a scene whose CSS animations restart when it
+ * mounts. The footage is real: sample videos (Pexels) and the clips KenganSocial's own renderer
+ * made from them (public/landing, built by scripts/build-landing-media.mjs). Steps advance on a
+ * timer while the demo is on screen and can be picked from the tabs underneath.
  */
+
+const MEDIA = '/landing';
 
 const STEPS = [
     { id: 'drop', title: 'Drop in a long video', text: 'Upload a podcast, stream or talk you recorded.' },
@@ -30,7 +34,10 @@ function SceneDrop() {
         <div className="td-scene td-drop">
             <div className="td-label">Repurpose → Video → shorts</div>
             <div className="td-file">
-                <Film className="td-ico" />
+                <span className="td-file__thumb">
+                    <img src={`${MEDIA}/studio-still.jpg`} alt="" />
+                    <i>48:12</i>
+                </span>
                 <div>
                     <strong>podcast-episode-12.mp4</strong>
                     <small>48:12 · 1.2 GB · uploading</small>
@@ -39,6 +46,12 @@ function SceneDrop() {
                     <i />
                 </div>
             </div>
+            <div className="td-strip" aria-hidden="true">
+                {['moment-1', 'moment-2', 'studio-still', 'moment-3'].map((m, i) => (
+                    <img key={m} src={`${MEDIA}/${m}.jpg`} alt="" style={{ '--i': i }} />
+                ))}
+                <span className="td-strip__scan" />
+            </div>
             <Cursor path="drop" />
         </div>
     );
@@ -46,9 +59,9 @@ function SceneDrop() {
 
 function SceneTarget() {
     const cards = [
-        { icon: Music2, label: 'TikTok' },
-        { icon: Youtube, label: 'YouTube Shorts' },
-        { icon: Instagram, label: 'Instagram Reels' },
+        { icon: Music2, label: 'TikTok', shot: 'clip-split' },
+        { icon: Youtube, label: 'YouTube Shorts', shot: 'clip-karaoke' },
+        { icon: Instagram, label: 'Instagram Reels', shot: 'clip-track' },
     ];
     return (
         <div className="td-scene td-target">
@@ -56,9 +69,12 @@ function SceneTarget() {
             <div className="td-cards">
                 {cards.map((c, i) => (
                     <div key={c.label} className={`td-card ${i === 0 ? 'td-card--pick' : ''}`}>
-                        <c.icon className="td-ico" />
-                        <strong>{c.label}</strong>
-                        <small>9:16</small>
+                        <img className="td-card__shot" src={`${MEDIA}/${c.shot}.jpg`} alt="" />
+                        <span className="td-card__text">
+                            <c.icon className="td-ico" />
+                            <strong>{c.label}</strong>
+                            <small>9:16</small>
+                        </span>
                     </div>
                 ))}
             </div>
@@ -80,14 +96,18 @@ function SceneTarget() {
 
 function SceneMoments() {
     const clips = [
-        { score: 94, title: 'The one mistake that cost us R40k' },
-        { score: 88, title: '"Nobody expected this card"' },
-        { score: 81, title: 'Why we stopped running ads' },
+        { score: 94, title: 'We almost quit before episode one', thumb: 'moment-1' },
+        { score: 88, title: '"Nobody saw this coming"', thumb: 'moment-2' },
+        { score: 81, title: 'The habit that doubled our audience', thumb: 'moment-3' },
     ];
     return (
         <div className="td-scene td-moments">
             <div className="td-label">
                 <Sparkles className="td-ico td-ico--inline" /> Finding the best moments
+            </div>
+            <div className="td-scan" aria-hidden="true">
+                <LoopVideo name="studio-wide" className="td-scan__video" eager />
+                <span className="td-scan__line" />
             </div>
             <div className="td-wave" aria-hidden="true">
                 {Array.from({ length: 48 }, (_, i) => (
@@ -101,7 +121,7 @@ function SceneMoments() {
             <div className="td-clips">
                 {clips.map((c, i) => (
                     <div key={c.title} className="td-clip" style={{ '--i': i }}>
-                        <span className="td-clip__thumb" />
+                        <img className="td-clip__thumb" src={`${MEDIA}/${c.thumb}.jpg`} alt="" />
                         <span className="td-clip__title">{c.title}</span>
                         <span className={`td-score ${c.score > 90 ? 'is-high' : ''}`}>{c.score}</span>
                     </div>
@@ -111,24 +131,12 @@ function SceneMoments() {
     );
 }
 
-function Person({ tone }) {
-    return (
-        <span className={`td-person td-person--${tone}`}>
-            <i className="td-person__head" />
-            <i className="td-person__body" />
-            <i className="td-person__mic" />
-        </span>
-    );
-}
-
 function SceneFrame() {
-    const words = ['NOBODY', 'EXPECTED', 'THIS', 'CARD'];
     return (
         <div className="td-scene td-frame">
             <div className="td-source">
                 <div className="td-source__frame">
-                    <Person tone="a" />
-                    <Person tone="b" />
+                    <LoopVideo name="studio-wide" className="td-media" eager />
                     <span className="td-face td-face--a" />
                     <span className="td-face td-face--b" />
                 </div>
@@ -138,23 +146,8 @@ function SceneFrame() {
                 <Wand2 className="td-ico" />
             </div>
             <div className="td-phone">
-                <div className="td-phone__half">
-                    <Person tone="a" />
-                </div>
-                <div className="td-phone__half">
-                    <Person tone="b" />
-                </div>
-                <div className="td-phone__caption">
-                    {words.map((w, i) => (
-                        <span key={w} style={{ '--i': i }}>
-                            {w}
-                        </span>
-                    ))}
-                </div>
-                <div className="td-phone__hook">Nobody expected this</div>
-                <div className="td-phone__bar">
-                    <i />
-                </div>
+                <LoopVideo name="clip-split" className="td-media" eager />
+                <span className="td-phone__badge">Real output</span>
             </div>
         </div>
     );
@@ -163,11 +156,11 @@ function SceneFrame() {
 function SceneSchedule() {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
     const posts = [
-        { day: 0, row: 0, kind: 'tt', label: 'TikTok 18:00' },
-        { day: 1, row: 1, kind: 'yt', label: 'Shorts 12:30' },
-        { day: 2, row: 0, kind: 'ig', label: 'Reels 19:00' },
-        { day: 3, row: 1, kind: 'tt', label: 'TikTok 17:30' },
-        { day: 4, row: 0, kind: 'ig', label: 'Reels 18:15' },
+        { day: 0, row: 0, kind: 'tt', label: 'TikTok 18:00', shot: 'clip-split' },
+        { day: 1, row: 1, kind: 'yt', label: 'Shorts 12:30', shot: 'clip-karaoke' },
+        { day: 2, row: 0, kind: 'ig', label: 'Reels 19:00', shot: 'clip-track' },
+        { day: 3, row: 1, kind: 'tt', label: 'TikTok 17:30', shot: 'clip-neon' },
+        { day: 4, row: 0, kind: 'ig', label: 'Reels 18:15', shot: 'clip-split' },
     ];
     return (
         <div className="td-scene td-schedule">
@@ -182,6 +175,7 @@ function SceneSchedule() {
                             .filter((p) => p.day === di)
                             .map((p) => (
                                 <span key={p.label} className={`td-post td-post--${p.kind}`} style={{ '--i': p.day, marginTop: p.row ? '2.2cqw' : 0 }}>
+                                    <img src={`${MEDIA}/${p.shot}.jpg`} alt="" />
                                     {p.label}
                                 </span>
                             ))}

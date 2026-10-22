@@ -12,6 +12,8 @@ What we took from OpusClip (opus.pro) and how KenganSocial compares. Researched 
 | Row of feature chips under the hero | Chips: AI clips, face-tracked reframe, animated captions, brand kit, scheduling, inbox and automations, Meta Ads |
 | FAQ accordion | "Good to know": six questions, answered only with facts that are true of KenganSocial today |
 | Brand templates (logo, colours, fonts) applied to clips | "Apply my brand" in the shorts settings (Clips and Repurpose): the brand kit's logo in the top corner (inside the platform safe zone), captions, hook card and progress bar in the brand colour. Text on a light brand colour turns black |
+| Real stills and clips of creators in every product explainer | Real footage throughout the landing page, and better than stills: Pexels sample videos run through KenganSocial's own renderer, so every clip shown (split speakers, face tracking, four caption styles, hook card, launch video) is genuine output. The walkthrough's five steps, the feature cards and the captions showcase all use it, plus a "Made by KenganSocial, not mocked up" row of phones. Built by `scripts/build-landing-media.mjs` into `client/public/landing` (about 0.8 MB in all; videos load only when on screen) |
+| Animated buttons | Every button lifts on hover, squeezes on press, ripples from the click point; primary buttons get a light sweep; arrows slide forward. Off with reduced motion |
 
 Not adopted: creator testimonials, follower counts and brand-logo walls. KenganSocial has no testers yet, so showing them would be invented.
 

@@ -28,6 +28,7 @@ import {
 import LandingNavbar from '../components/layout/LandingNavbar';
 import { useAuth } from '../context/AuthContext';
 import CaptionShowcase from './Landing/CaptionShowcase';
+import LoopVideo from './Landing/LoopVideo';
 import TutorialDemo from './Landing/TutorialDemo';
 import { useReveal } from './Landing/useReveal';
 import './LandingPage.css';
@@ -85,6 +86,14 @@ const PLANS = [
         points: ['AI clips with face tracking', 'All caption templates', 'Inbox and automations'],
         featured: true,
     },
+];
+
+/** Real clips from KenganSocial's renderer (Pexels sample footage in, public/landing out). */
+const REEL = [
+    { name: 'clip-split', label: 'Two speakers, stacked', meta: 'Bold Pop captions · hook card · TikTok' },
+    { name: 'clip-track', label: 'Follows the speaker', meta: 'Highlighter captions · Reels' },
+    { name: 'clip-karaoke', label: 'Face kept in frame', meta: 'Karaoke Fill captions · Shorts' },
+    { name: 'clip-neon', label: 'Vertical source', meta: 'Neon captions · TikTok' },
 ];
 
 /** What KenganSocial does, at a glance under the hero. */
@@ -211,16 +220,13 @@ function RotatingWord() {
 function FeatureArt({ id }) {
     if (id === 'clips') {
         return (
-            <div className="lp-art lp-art--clips" aria-hidden="true">
+            <div className="lp-art lp-art--clips lp-art--real" aria-hidden="true">
                 <div className="lp-art__wide">
-                    <i className="lp-art__face" />
-                    <i className="lp-art__face" />
+                    <LoopVideo name="studio-wide" className="lp-art__media" />
                 </div>
                 <ArrowRight className="lp-art__arrow" />
                 <div className="lp-art__tall">
-                    <i className="lp-art__face" />
-                    <span>WAIT FOR IT</span>
-                    <i className="lp-art__face" />
+                    <LoopVideo name="clip-split" className="lp-art__media" />
                 </div>
             </div>
         );
@@ -244,11 +250,9 @@ function FeatureArt({ id }) {
     }
     if (id === 'launch') {
         return (
-            <div className="lp-art lp-art--launch" aria-hidden="true">
-                <span className="lp-art__url">yourbrand.co.za</span>
-                <span className="lp-art__play">
-                    <Play size={16} />
-                </span>
+            <div className="lp-art lp-art--launch lp-art--real" aria-hidden="true">
+                <LoopVideo name="launch" className="lp-art__media" />
+                <span className="lp-art__url">Made with KenganSocial</span>
             </div>
         );
     }
@@ -349,6 +353,30 @@ export default function LandingPage() {
                             </span>
                         ))}
                     </div>
+                </section>
+
+                <section className="lp-section container lp-reel" aria-labelledby="reel-title">
+                    <header className="lp-section__head" data-reveal>
+                        <span className="lp-kicker">Real output</span>
+                        <h2 id="reel-title">Made by KenganSocial, not mocked up</h2>
+                        <p>Every clip here was cut, framed and captioned by the same engine you get, from an ordinary landscape recording.</p>
+                    </header>
+                    <div className="lp-reel__row">
+                        {REEL.map((r, i) => (
+                            <figure key={r.name} className="lp-reel__phone" data-reveal style={{ '--i': i, '--delay': `${i * 110}ms` }}>
+                                <div className="lp-reel__screen">
+                                    <LoopVideo name={r.name} className="lp-reel__video" label={`Example clip: ${r.label}`} />
+                                </div>
+                                <figcaption>
+                                    <strong>{r.label}</strong>
+                                    <span>{r.meta}</span>
+                                </figcaption>
+                            </figure>
+                        ))}
+                    </div>
+                    <p className="lp-reel__note" data-reveal>
+                        Sample footage from Pexels; the people shown are not KenganSocial customers.
+                    </p>
                 </section>
 
                 <section className="lp-section container" id="integrations" aria-labelledby="integrations-title">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CAPTION_TEMPLATES } from '../../components/clips/shorts-options';
 import '../../components/clips/caption-fonts.css';
+import LoopVideo from './LoopVideo';
 
 /** Cycles through the real caption templates, lighting up one word at a time like the render does. */
 
@@ -36,6 +37,7 @@ export default function CaptionShowcase() {
     return (
         <div className="lp-captions" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
             <div className="lp-captions__stage">
+                <LoopVideo name="captions-bg" className="lp-captions__video" />
                 <span className={`lp-captions__text ${template.box ? 'has-box' : ''}`} style={style} key={template.id}>
                     {words.map((w, i) => {
                         const on = template.single || i === active;

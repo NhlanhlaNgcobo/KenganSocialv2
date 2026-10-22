@@ -29,6 +29,8 @@ npm-debug.log*
 
 # Media
 *.mp4
+# Landing page footage (small web loops, built by scripts/build-landing-media.mjs)
+!client/public/landing/*.mp4
 *.mov
 *.avi
 *.mkv
