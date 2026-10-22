@@ -371,7 +371,7 @@ export function pickBrandPalette(colors = {}, extra = []) {
     const qualifies = (g) => {
         const strong = [...g.sources].some((src) => STRONG.test(src));
         // Pale tints barely visible against the background are section fills, not the accent.
-        return contrast(g.color, bg) >= 1.6 && g.weight >= Math.max(4, (brandNeutral?.weight || 0) * (strong ? 0.05 : 0.3));
+        return contrast(g.color, bg) >= 1.6 && g.weight >= Math.max(strong ? 2.5 : 4, (brandNeutral?.weight || 0) * (strong ? 0.05 : 0.3));
     };
     const brandColour = chromatic.find(qualifies);
     if (brandColour) {

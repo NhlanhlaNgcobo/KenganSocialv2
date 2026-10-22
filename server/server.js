@@ -49,6 +49,8 @@ import { startAnalyticsCron } from './src/jobs/analytics.cron.ts';
 import { startTrendingCron } from './src/jobs/trending.cron.ts';
 import authRoutes from './src/routes/auth.ts';
 import dataDeletionRoutes from './src/routes/data-deletion.ts';
+import freeClipRoutes from './src/routes/free-clip.ts';
+import thumbnailRoutes from './src/routes/thumbnails.ts';
 import './src/services/webhooks/handlers.ts';
 import { startWebhookWorker } from './src/services/webhooks/dispatcher.ts';
 import { planRateLimit } from './src/middleware/planGate.ts';
@@ -142,6 +144,8 @@ app.use('/api/health', healthRoutes);
 // Feature switches the app needs before sign-in (e.g. whether YouTube link import is on).
 app.get('/api/features', (_req, res) => res.json({ youtubeLinkImport: features.youtubeLinkImport() }));
 app.use('/api/auth', authRoutes);
+// Landing page: one free starter clip per person, no account needed.
+app.use('/api/free-clip', freeClipRoutes);
 app.use('/api/data-deletion', dataDeletionRoutes);
 app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/workspaces/:workspaceId/connections', connectionRoutes);
@@ -171,6 +175,7 @@ app.use('/api/assets', assetsRoutes);
 app.use('/api/brag', bragRoutes);
 app.use('/api/music', musicRoutes);
 app.use('/api/clips', clipsRoutes);
+app.use('/api/thumbnails', thumbnailRoutes);
 app.use('/api/repurpose', repurposeRoutes);
 app.use('/api/marketing', marketingRoutes);
 app.use('/api/agency', agencyRoutes);

@@ -54,6 +54,8 @@ Information about other people: if you turn on comment or message automation, we
 
 Billing information: your plan and payment status. Card payments are handled by Paystack; we do not receive or store card numbers.
 
+Free starter clip (no account): if you use the free clip on our home page, we receive the video you upload and your email address. We keep only a one-way fingerprint (a keyed hash) of your email, so we can make sure each person gets one free clip; we keep the email address itself only if you ask us to send you product news. We also keep a fingerprint of your network address to limit free clips per network per day.
+
 Technical information: IP address, browser type, device type, pages used and error logs, kept to run, secure and fix the service.`,
         },
         {
@@ -141,6 +143,8 @@ Data fetched from a connected account (messages, comments, profile details, anal
 Your account and workspace content: kept while your account is active, and deleted within 30 days after you delete your workspace or account.
 
 Billing records: 5 years, as South African tax law requires.
+
+Free starter clip: the video you upload is deleted as soon as your clip is made (or the attempt fails), and the finished clip after 72 hours. The fingerprint of your email is kept so the free clip stays one per person; if you asked for product news, your email is kept until you unsubscribe or ask us to delete it.
 
 Security and error logs: up to 12 months.`,
         },

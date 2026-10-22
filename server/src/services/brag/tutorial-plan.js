@@ -82,6 +82,41 @@ function stepScene({ page, shotIndex = 0, target, action, headline, subline, typ
     return scene;
 }
 
+/** A heading as the section it introduces: the camera frames the heading and what sits under it. */
+function region(el) {
+    if (!el) return null;
+    if (el.kind !== 'heading') return el;
+    const x = Math.max(0, el.x - 3);
+    const y = Math.max(0, el.y - 4);
+    return { ...el, x, y, w: Math.min(100 - x, el.w + 6), h: Math.min(100 - y, Math.max(el.h + 40, 32)), kind: 'region' };
+}
+
+const NAV = /^(resources|products?|pricing|docs|documentation|blog|company|about|menu|language|en|log ?in|sign ?in|search|more|careers|contact|support|community|changelog)$/i;
+const DOABLE = /\b(new|create|add|start|open|share|invite|collab\w*|upload|import|export|draw|rectangle|text|record|publish|write|generate|try|templates?)\b/i;
+
+/** "Open Ctrl+O" → "Open", "Live collaboration..." → "Live collaboration" */
+const actionLabel = (text) => String(text || '').replace(/\s+(ctrl|cmd|shift|alt|⌘)\s*\+\s*\S+$/i, '').replace(/\s+\?$/, '').replace(/\.{2,}|…$/, '').trim();
+
+/** Buttons on the start page worth trying: real actions, not navigation. */
+function homeActions(elements, linkTexts) {
+    const list = elements.filter((e) => {
+        const label = actionLabel(e.text);
+        return e.kind === 'button' && label.length >= 3 && label.length <= 24 && !NAV.test(label) && !linkTexts.has(e.text.toLowerCase()) && DOABLE.test(`${label} ${e.hint || ''}`);
+    });
+    const top = list.filter((e) => e.y < 15).sort((a, b) => b.priority - a.priority || a.x - b.x);
+    const main = list.filter((e) => e.y >= 15).sort((a, b) => b.priority - a.priority || a.y - b.y);
+    return [main[0], top[0], ...main.slice(1)].filter(Boolean);
+}
+
+/** "at the top left of the screen", "in the middle of the screen" … */
+const where = (el) => {
+    const cx = el.x + el.w / 2;
+    const side = cx < 33 ? 'left' : cx > 66 ? 'right' : '';
+    if (el.y < 15) return `at the top${side ? ` ${side}` : ''} of the screen`;
+    if (el.y > 80) return `at the bottom${side ? ` ${side}` : ''} of the screen`;
+    return side ? `on the ${side} of the screen` : 'in the middle of the screen';
+};
+
 /** Steps built from the explored pages alone (no model needed). */
 export function fallbackTutorial(app) {
     const [home, ...rest] = app.pages;
@@ -90,21 +125,32 @@ export function fallbackTutorial(app) {
     const steps = [];
     const homeShot = shotOf(home);
     const hero = homeShot.elements.find((e) => e.tag === 'h1') || homeShot.elements.find((e) => e.kind === 'heading');
+    const pages = rest.slice(0, 3);
+    const linkTexts = new Set(pages.map((p) => String(p.via?.text || '').toLowerCase()));
 
     steps.push(
         stepScene({
             page: home,
-            target: hero,
+            target: region(hero),
             action: 'look',
-            headline: `Start at ${host}`,
-            subline: hero?.text ? `${name}: ${hero.text}` : app.description,
+            headline: `Open ${host}`,
+            subline: hero?.text && hero.text.split(' ').length <= 12 ? hero.text : app.description,
         })
     );
-    if (home.shots.length > 1) {
-        steps.push(stepScene({ page: home, action: 'scroll', headline: 'See what it does', subline: sentence(home.paragraphs[0] || home.headings[1] || app.description, 18) }));
+
+    // Things to do right on the start page (an editor's tools, "New", "Share"…), one near the top
+    // and one in the main area, so the tutorial shows the app itself, not only its links.
+    const actions = homeActions(homeShot.elements, linkTexts);
+    for (const el of actions.slice(0, pages.length >= 2 ? 1 : 2)) {
+        const label = actionLabel(el.text);
+        steps.push(stepScene({ page: home, target: { ...el, text: label }, action: 'click', headline: `Click “${words(label, 4)}”`, subline: el.hint && el.hint.length > label.length + 3 ? el.hint : `You'll find it ${where(el)}.` }));
     }
 
-    for (const page of rest.slice(0, 3)) {
+    if (home.shots.length > 1) {
+        steps.push(stepScene({ page: home, action: 'scroll', headline: 'Scroll to see what it does', subline: sentence(home.paragraphs[0] || home.headings[1] || app.description, 18) }));
+    }
+
+    for (const page of pages.slice(0, Math.max(1, 5 - steps.length))) {
         const link = page.via?.text;
         const fromShot = homeShot;
         const linkEl = page.via?.box ? { ...page.via.box, kind: 'link', text: link } : findElement(fromShot, link);
@@ -130,7 +176,7 @@ export function fallbackTutorial(app) {
             steps.push(
                 stepScene({
                     page,
-                    target: heading || button,
+                    target: heading ? region(heading) : button,
                     action: heading ? 'look' : 'click',
                     headline: headlineText(page.headings[0] || link || 'Explore', 7),
                     subline: sentence(page.paragraphs[0] || page.headings[1] || '', 18),

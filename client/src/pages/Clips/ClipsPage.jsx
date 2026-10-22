@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CalendarPlus, Check, Copy, Download, Film, Loader2, Lock, Play, RotateCcw, Scissors, Trash2, Upload, Wand2 } from 'lucide-react';
+import { ArrowLeft, CalendarPlus, Check, Copy, Download, Film, ImagePlus, Loader2, Lock, Play, RotateCcw, Scissors, Trash2, Upload, Wand2 } from 'lucide-react'
+import ThumbnailStudio from '../../components/thumbnails/ThumbnailStudio';
 import { useAuth } from '../../context/AuthContext';
 import ShortsSettings from '../../components/clips/ShortsSettings';
 import SaveToLibraryButton from '../../components/clients/SaveToLibraryButton';
@@ -370,7 +371,7 @@ function ProjectView({ id, onBack }) {
             {clips.length ? (
                 <div className={`clips-grid is-${(project.request?.ratio || '9:16').replace(':', 'x')}`}>
                     {clips.map((clip) => (
-                        <ClipCard key={clip.id} clip={clip} ratio={project.request?.ratio || '9:16'} platform={project.request?.platform} />
+                        <ClipCard key={clip.id} clip={clip} ratio={project.request?.ratio || '9:16'} platform={project.request?.platform} sourceUploadId={project.sourceUploadId} />
                     ))}
                 </div>
             ) : null}
@@ -378,13 +379,14 @@ function ProjectView({ id, onBack }) {
     );
 }
 
-function ClipCard({ clip, ratio, platform }) {
+function ClipCard({ clip, ratio, platform, sourceUploadId }) {
     const navigate = useNavigate();
     const setEditorVideo = useEditorStore((s) => s.setVideo);
     const [videoUrl, setVideoUrl] = useState(null);
     const [busy, setBusy] = useState('');
     const [copied, setCopied] = useState('');
     const [error, setError] = useState('');
+    const [thumbnail, setThumbnail] = useState(false);
     const blobRef = useRef(null);
 
     useEffect(() => () => videoUrl && URL.revokeObjectURL(videoUrl), [videoUrl]);
@@ -512,12 +514,32 @@ function ClipCard({ clip, ratio, platform }) {
                     <button className="btn btn-secondary btn-sm" onClick={edit} disabled={!!busy}>
                         {busy === 'edit' ? <Loader2 size={14} className="spin" /> : <Scissors size={14} />} Edit
                     </button>
+                    {clip.outputUploadId ? (
+                        <button className="btn btn-secondary btn-sm" onClick={() => setThumbnail(true)} disabled={!!busy}>
+                            <ImagePlus size={14} /> Thumbnail
+                        </button>
+                    ) : null}
                     <SaveToLibraryButton downloadUrl={clip.downloadUrl} title={clip.title} caption={clip.caption || ''} />
                     <button className="btn btn-ghost btn-sm" onClick={download} disabled={!!busy} aria-label="Download">
                         {busy === 'download' ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
                     </button>
                 </div>
             </div>
+            {thumbnail ? (
+                <ThumbnailStudio
+                    // Frames from the original video at this clip's times (no burned-in captions to
+                    // clash with the headline); the finished clip if the original has expired.
+                    uploadId={sourceUploadId && Number.isFinite(clip.start) ? sourceUploadId : clip.outputUploadId}
+                    start={sourceUploadId && Number.isFinite(clip.start) ? clip.start : 0}
+                    end={sourceUploadId && Number.isFinite(clip.end) ? clip.end : null}
+                    fallbackUploadId={sourceUploadId ? clip.outputUploadId : null}
+                    title={clip.title || ''}
+                    hook={clip.hook || ''}
+                    caption={clip.caption || ''}
+                    defaultFormat={ratio === '16:9' ? 'youtube' : 'tiktok'}
+                    onClose={() => setThumbnail(false)}
+                />
+            ) : null}
         </article>
     );
 }

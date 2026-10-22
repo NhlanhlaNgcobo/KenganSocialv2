@@ -220,6 +220,8 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('clipAnalysis'), asy
             progress: 0,
             request: settings,
             sourceName: request.sourceName,
+            // Kept so thumbnails can use clean frames from the original (before captions are burned in).
+            sourceUploadId,
             clips: [],
             createdAt: now,
             updatedAt: now,

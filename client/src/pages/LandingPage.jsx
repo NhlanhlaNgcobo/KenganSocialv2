@@ -29,6 +29,7 @@ import LandingNavbar from '../components/layout/LandingNavbar';
 import { useAuth } from '../context/AuthContext';
 import CaptionShowcase from './Landing/CaptionShowcase';
 import LoopVideo from './Landing/LoopVideo';
+import FreeClip from './Landing/FreeClip';
 import TutorialDemo from './Landing/TutorialDemo';
 import { useReveal } from './Landing/useReveal';
 import './LandingPage.css';
@@ -136,15 +137,16 @@ const FAQ = [
 
 /**
  * The hero's main action: drop or choose a long video. Signed-in people go straight to Clips with
- * the file chosen; visitors create a free account first.
+ * the file chosen; visitors get one free starter clip (FreeClip, one per email).
  */
 function HeroDrop({ user }) {
     const navigate = useNavigate();
     const inputRef = useRef(null);
     const [over, setOver] = useState(false);
+    const [freeFile, setFreeFile] = useState(null);
     const go = (file) => {
-        if (!user) navigate('/register');
-        else navigate('/dashboard/clips', file ? { state: { file } } : undefined);
+        if (user) navigate('/dashboard/clips', file ? { state: { file } } : undefined);
+        else if (file && /^video\//.test(file.type || 'video/')) setFreeFile(file);
     };
     return (
         <div
@@ -164,13 +166,54 @@ function HeroDrop({ user }) {
                 <Upload size={20} />
             </span>
             <span className="lp-drop__text">
-                <strong>Drop a long video here</strong>
-                <span>Podcast, interview, stream or vlog · MP4 or MOV up to 2 GB</span>
+                <strong>{user ? 'Drop a long video here' : 'Drop a long video. Your first clip is free.'}</strong>
+                <span>{user ? 'Podcast, interview, stream or vlog · MP4 or MOV up to 2 GB' : 'Podcast, interview, stream or vlog · no account needed'}</span>
             </span>
-            <button type="button" className="btn btn-primary btn-lg lp-cta-btn" onClick={() => (user ? inputRef.current?.click() : go())}>
-                Get my clips <ArrowRight size={17} />
+            <button type="button" className="btn btn-primary btn-lg lp-cta-btn" onClick={() => inputRef.current?.click()}>
+                {user ? 'Get my clips' : 'Get a free clip'} <ArrowRight size={17} />
             </button>
-            <input ref={inputRef} type="file" accept="video/*" hidden onChange={(e) => go(e.target.files?.[0])} />
+            <input
+                ref={inputRef}
+                type="file"
+                accept="video/*"
+                hidden
+                onChange={(e) => {
+                    go(e.target.files?.[0]);
+                    e.target.value = '';
+                }}
+            />
+            {freeFile ? <FreeClip file={freeFile} onClose={() => setFreeFile(null)} /> : null}
+        </div>
+    );
+}
+
+/**
+ * Motion behind the hero: a slow silver aurora and a fading perspective grid behind the headline,
+ * and on wide screens real clips in tilted phones drifting at the sides with small status badges.
+ */
+const SIDE_PHONES = [
+    { side: 'left', name: 'clip-karaoke', badge: 'Face tracked', y: 60, tilt: -8 },
+    { side: 'left', name: 'clip-split', badge: 'Score 94', y: 360, tilt: 5 },
+    { side: 'right', name: 'clip-track', badge: 'Captions on', y: 40, tilt: 7 },
+    { side: 'right', name: 'clip-neon', badge: 'Scheduled 18:00', y: 340, tilt: -5 },
+];
+
+function HeroBackdrop() {
+    return (
+        <div className="lp-fx" aria-hidden="true">
+            <div className="lp-fx__aurora">
+                <i />
+                <i />
+            </div>
+            <div className="lp-fx__grid" />
+            {SIDE_PHONES.map((p, i) => (
+                <div key={p.name} className={`lp-fx__phone lp-fx__phone--${p.side}`} style={{ '--y': `${p.y}px`, '--tilt': `${p.tilt}deg`, '--i': i }}>
+                    <div className="lp-fx__screen">
+                        <LoopVideo name={p.name} className="lp-fx__video" />
+                    </div>
+                    <span className="lp-fx__badge">{p.badge}</span>
+                </div>
+            ))}
         </div>
     );
 }
@@ -302,6 +345,7 @@ export default function LandingPage() {
 
             <main>
                 <section className="lp-hero container">
+                    <HeroBackdrop />
                     <Link to={primary.to} className="lp-pill" data-reveal>
                         <span className="lp-pill__tag">New</span> Face-tracked shorts for TikTok, Shorts and Reels <ArrowRight size={14} />
                     </Link>

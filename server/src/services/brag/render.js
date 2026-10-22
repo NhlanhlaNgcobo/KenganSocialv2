@@ -31,14 +31,38 @@ const SHOT_ASPECT = {
     tutorial: { landscape: 1366 / 768, vertical: 430 / 760, square: 1 },
 };
 
-/** The element a launch scene's screen acts on: a real call to action, else the main heading. */
-function pickTarget(elements = [], type) {
+const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Where a launch scene's camera goes: the element the plan names (`focus`), else a real call to
+ * action, else the main heading. A heading becomes the section it introduces (the heading and
+ * what sits under it), so the zoom shows the feature, not just its title.
+ */
+function pickTarget(elements = [], scene) {
     if (!elements.length) return null;
-    const cta = elements.find((e) => e.kind === 'button' && e.priority >= 5) || elements.find((e) => e.kind === 'button');
-    const heading = elements.find((e) => e.tag === 'h1') || elements.find((e) => e.kind === 'heading');
-    const el = type === 'reveal' ? heading || cta : cta || heading;
-    return el ? { x: el.x, y: el.y, w: el.w, h: el.h, kind: el.kind, text: el.text } : null;
+    const focus = norm(scene.focus);
+    const named = focus
+        ? elements.find((e) => norm(e.text) === focus) || elements.find((e) => focus.length > 6 && (norm(e.text).startsWith(focus.slice(0, 40)) || focus.startsWith(norm(e.text).slice(0, 40))))
+        : null;
+    const cta = elements.find((e) => e.kind === 'button' && e.priority >= 5);
+    const heading = elements.find((e) => e.tag === 'h1') || elements.find((e) => e.kind === 'heading' && e.y > 2 && e.y < 70);
+    const el = named || (focus ? null : cta) || heading || null;
+    if (!el) return null;
+    if (el.kind === 'heading') {
+        // At least 70% wide: the section's text and visuals usually sit beside and under its heading.
+        const w = Math.min(100, Math.max(el.w + 6, 70));
+        const x = Math.min(100 - w, Math.max(0, el.x + el.w / 2 - w / 2));
+        const y = Math.max(0, el.y - 4);
+        return { x, y, w, h: Math.min(100 - y, Math.max(el.h + 44, 40)), kind: 'region', text: el.text };
+    }
+    return { x: el.x, y: el.y, w: el.w, h: el.h, kind: el.kind, text: el.text };
 }
+
+/** For a product described in words only (no site to take colours from): quiet graphite and silver. */
+const NEUTRAL = { bg: '#0c0c0e', fg: '#f4f4f6', accent: '#dcdce2', accent2: '#8d8d97', accentText: '#0c0c0e', monochrome: true, sources: [] };
+
+const hasBrandSource = (source) =>
+    !!(source.screenshots?.length || source.iconData || source.logoData || Object.entries(source.colors || {}).some(([k, v]) => k !== 'candidates' && v) || source.colors?.candidates?.length);
 
 // Chrome Headless Shell sometimes takes longer than Remotion's fixed 25 s to start (a cold start,
 // or antivirus scanning the browser on Windows); one more try almost always works.
@@ -67,10 +91,10 @@ export async function renderLaunchVideo({ plan, source, format, music, sfx = {},
             ? plan.scenes
             : plan.scenes.map((s) => {
                   const shot = s.screenshot != null ? source.screenshots[s.screenshot] : null;
-                  const target = shot && s.type !== 'hook' && s.type !== 'outro' ? pickTarget(source.shotElements?.[s.screenshot], s.type) : null;
+                  const target = shot && s.type !== 'hook' && s.type !== 'outro' && s.type !== 'reveal' ? pickTarget(source.shotElements?.[s.screenshot], s) : null;
                   return { ...s, screenshotData: shot, target };
               });
-    const palette = await brandPalette(source);
+    const palette = hasBrandSource(source) ? await brandPalette(source) : NEUTRAL;
     console.log('[Brag] Brand palette:', JSON.stringify({ ...palette, sources: palette.sources.slice(0, 4) }));
     const inputProps = {
         format,

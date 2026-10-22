@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, Download, Keyboard, Wand2 } from 'lucide-react';
+import { ChevronLeft, Download, ImagePlus, Keyboard, Loader2, Wand2 } from 'lucide-react';
+import ThumbnailStudio from '../../components/thumbnails/ThumbnailStudio';
 import { useAiEditStore } from '../stores/ai-edit-store';
+import { useMediaStore } from '../stores/media-store';
+import { usePlaybackStore } from '../stores/playback-store';
+import { useTimelineStore } from '../stores/timeline-store';
 import { useProjectStore } from '../stores/project-store';
 import { useUiStore } from '../stores/ui-store';
 import { SHORTCUTS } from '../hooks/use-editor-shortcuts';
@@ -12,6 +16,32 @@ export function EditorHeader() {
     const openAiEdit = useAiEditStore((s) => s.openStudio);
     const aiEditBusy = useAiEditStore((s) => s.edit.running || s.analysis.running);
     const [showKeys, setShowKeys] = useState(false);
+    const ratio = useProjectStore((s) => s.ratio);
+    const notify = useUiStore((s) => s.notify);
+    const [thumb, setThumb] = useState<{ uploadId: string; start: number; end: number } | null>(null);
+    const [thumbBusy, setThumbBusy] = useState(false);
+
+    /** Thumbnail from the video under the playhead (or the first video), uploaded first if needed. */
+    const openThumbnail = async () => {
+        const media = useMediaStore.getState().items;
+        const t = usePlaybackStore.getState().currentTime;
+        const videos = useTimelineStore
+            .getState()
+            .tracks.flatMap((track) => track.elements)
+            .filter((el: any) => el.type === 'media' && media.find((m) => m.id === el.mediaId)?.type === 'video') as any[];
+        const visible = (el: any) => (el.duration - el.trimStart - el.trimEnd) / (el.speed || 1);
+        const el = videos.find((e) => t >= e.startTime && t < e.startTime + visible(e)) || videos[0];
+        if (!el) return notify('Add a video to the timeline first.', 'error');
+        setThumbBusy(true);
+        try {
+            const ids = await useMediaStore.getState().ensureUploaded([el.mediaId]);
+            setThumb({ uploadId: ids[el.mediaId], start: el.trimStart, end: el.duration - el.trimEnd });
+        } catch (error) {
+            notify(`The video could not be prepared: ${(error as Error).message}`, 'error');
+        } finally {
+            setThumbBusy(false);
+        }
+    };
 
     return (
         <header className="ke-header">
@@ -41,6 +71,9 @@ export function EditorHeader() {
                         </div>
                     ) : null}
                 </div>
+                <button className="ke-btn" onClick={openThumbnail} disabled={thumbBusy} title="Make a TikTok cover or YouTube thumbnail from your video">
+                    {thumbBusy ? <Loader2 size={15} className="ke-spin" /> : <ImagePlus size={15} />} Thumbnail
+                </button>
                 <button className={`ke-btn ke-btn--ai ${aiEditBusy ? 'is-busy' : ''}`} onClick={openAiEdit} title="Edit your footage in the style of a reference video">
                     <Wand2 size={15} /> AI edit{aiEditBusy ? '…' : ''}
                 </button>
@@ -48,6 +81,16 @@ export function EditorHeader() {
                     <Download size={15} /> Export
                 </button>
             </div>
+            {thumb ? (
+                <ThumbnailStudio
+                    uploadId={thumb.uploadId}
+                    start={thumb.start}
+                    end={thumb.end}
+                    title={name}
+                    defaultFormat={ratio === '16:9' ? 'youtube' : 'tiktok'}
+                    onClose={() => setThumb(null)}
+                />
+            ) : null}
         </header>
     );
 }

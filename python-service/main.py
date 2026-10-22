@@ -31,6 +31,7 @@ from pydantic import BaseModel
 from autoframe import parse_ratio, plan_crop_path
 from style_analysis import analyze_footage, analyze_reference
 from stabilizer import StabilizeOptions, stabilize_video
+from thumbnail_picker import pick_candidates
 
 try:
     from faster_whisper import WhisperModel
@@ -1287,6 +1288,30 @@ async def generate_thumbnail(req: ThumbnailRequest):
             return {"thumbnailUrl": thumb_url}
         finally:
             cleanup(thumb_path)
+
+
+class ThumbnailCandidatesRequest(BaseModel):
+    videoPath: str
+    start: float = 0.0
+    end: Optional[float] = None
+    count: int = 6
+    jobId: str = "thumb"
+
+
+@app.post("/process/thumbnail-candidates")
+async def thumbnail_candidates(req: ThumbnailCandidatesRequest):
+    """Frames most likely to make a high-converting thumbnail (thumbnail_picker.py), saved as JPEGs
+    next to the other working files; the API reads them by path."""
+    source = Path(req.videoPath)
+    if not source.exists():
+        raise HTTPException(status_code=404, detail="Video not found.")
+    async with job_semaphore:
+        try:
+            return await asyncio.to_thread(
+                pick_candidates, source, TMP, f"kengan-thumbcand-{req.jobId}", req.start, req.end, max(1, min(8, req.count))
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error))
 
 
 class AutoframeRequest(BaseModel):

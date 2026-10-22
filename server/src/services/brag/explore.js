@@ -48,12 +48,12 @@ async function snapshot(page) {
     const shots = [];
     const viewportH = page.viewport().height;
     for (const y of [...new Set([0, Math.min(viewportH * 0.9, Math.max(0, info.height - viewportH))])]) {
-        await page.evaluate((top) => window.scrollTo(0, top), y);
+        await page.evaluate((top) => window.scrollTo({ top, behavior: 'instant' }), y);
         await new Promise((r) => setTimeout(r, 600));
         const jpg = await page.screenshot({ type: 'jpeg', quality: 80 });
         shots.push({ data: `data:image/jpeg;base64,${Buffer.from(jpg).toString('base64')}`, elements: await page.evaluate(VISIBLE_ELEMENTS).catch(() => []) });
     }
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
     return { ...info, shots };
 }
 

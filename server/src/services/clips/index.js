@@ -60,6 +60,8 @@ export async function createClips(request, ctx, { onStage = () => {}, onClip = (
     const { min } = CLIP_LENGTHS[request.length];
     if (duration < Math.min(min, 10)) throw new Error('This video is too short to cut into clips.');
     onStage('Transcribing', 5, { duration });
+    // The video service requires a workspace id; free starter clips (no account) have none.
+    const pyWorkspace = workspaceId || 'free-clip';
 
     // The Python service reads and writes progress on a render_jobs document.
     const analysisJob = db.collection('render_jobs').doc(jobId);
@@ -75,7 +77,7 @@ export async function createClips(request, ctx, { onStage = () => {}, onClip = (
 
     let transcription = { words: [] };
     try {
-        const { data } = await axios.post(`${PYTHON_URL}/process/transcribe`, { videoUrl: sourcePath, jobId, workspaceId, plan, analysisPreferences: {} }, { timeout: 60 * 60 * 1000 });
+        const { data } = await axios.post(`${PYTHON_URL}/process/transcribe`, { videoUrl: sourcePath, jobId, workspaceId: pyWorkspace, plan, analysisPreferences: {} }, { timeout: 60 * 60 * 1000 });
         transcription = data || { words: [] };
         await analysisJob.update({ transcription, status: 'analyzing' });
     } catch (error) {
@@ -93,7 +95,7 @@ export async function createClips(request, ctx, { onStage = () => {}, onClip = (
             {
                 videoUrl: sourcePath,
                 jobId,
-                workspaceId,
+                workspaceId: pyWorkspace,
                 plan,
                 analysisPreferences: { mode: 'viral', keepCount: request.count * 2, minClipLength: Math.min(min, 20), maxClipLength: Math.min(max, 45) },
             },
