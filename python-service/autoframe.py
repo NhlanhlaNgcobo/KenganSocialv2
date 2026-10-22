@@ -23,6 +23,7 @@ Layouts (portrait/square targets):
 from __future__ import annotations
 
 import math
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -43,45 +44,43 @@ YUNET_SCORE = 0.6
 SPLIT_MIN_SHARE = 0.3         # fraction of sampled frames with a face on each half to choose "split"
 LAYOUTS = ("auto", "track", "split", "fit")
 
-_yunet = None
-_yunet_size: Optional[Tuple[int, int]] = None
-_haar = None
-_clahe_filter = None
+# OpenCV detectors and filters are not thread-safe and jobs run in parallel threads: one set per thread.
+_local = threading.local()
 
 
 def detect_faces(img: np.ndarray, gray: np.ndarray) -> List[Tuple[float, float, float, float, float]]:
     """Faces as (x, y, w, h, score) in the given image's pixels."""
-    global _yunet, _yunet_size, _haar
     h, w = img.shape[:2]
     if YUNET_MODEL.exists() and hasattr(cv2, "FaceDetectorYN"):
-        if _yunet is None:
-            _yunet = cv2.FaceDetectorYN.create(str(YUNET_MODEL), "", (w, h), YUNET_SCORE, 0.3, 5000)
-            _yunet_size = (w, h)
-        elif _yunet_size != (w, h):
-            _yunet.setInputSize((w, h))
-            _yunet_size = (w, h)
-        _, faces = _yunet.detect(img)
+        yunet = getattr(_local, "yunet", None)
+        if yunet is None:
+            yunet = _local.yunet = cv2.FaceDetectorYN.create(str(YUNET_MODEL), "", (w, h), YUNET_SCORE, 0.3, 5000)
+            _local.yunet_size = (w, h)
+        elif _local.yunet_size != (w, h):
+            yunet.setInputSize((w, h))
+            _local.yunet_size = (w, h)
+        _, faces = yunet.detect(img)
         if faces is None:
             return []
         min_w = w / 40
         return [(float(f[0]), float(f[1]), float(f[2]), float(f[3]), float(f[14])) for f in faces if f[2] >= min_w]
     if hasattr(cv2, "CascadeClassifier"):
-        if _haar is None:
-            _haar = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        haar = getattr(_local, "haar", None)
+        if haar is None:
+            haar = _local.haar = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
         min_size = (max(24, w // 20), max(24, w // 20))
-        found = _haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=min_size)
+        found = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=min_size)
         if not len(found):
             # Local contrast boost helps dark/backlit faces; global equalisation hurts flat scenes.
-            found = _haar.detectMultiScale(_clahe().apply(gray), scaleFactor=1.1, minNeighbors=5, minSize=min_size)
+            found = haar.detectMultiScale(_clahe().apply(gray), scaleFactor=1.1, minNeighbors=5, minSize=min_size)
         return [(float(x), float(y), float(fw), float(fh), 1.0) for x, y, fw, fh in found]
     return []
 
 
 def _clahe():
-    global _clahe_filter
-    if _clahe_filter is None:
-        _clahe_filter = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    return _clahe_filter
+    if getattr(_local, "clahe", None) is None:
+        _local.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    return _local.clahe
 
 
 def parse_ratio(ratio: str) -> float:

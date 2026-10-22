@@ -12,6 +12,7 @@ Frames without faces (screen recordings, products) are scored on the image quali
 from __future__ import annotations
 
 import math
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,23 +21,23 @@ import numpy as np
 
 YUNET_MODEL = Path(__file__).resolve().parent / "models" / "face_detection_yunet_2023mar.onnx"
 SCORE_WIDTH = 640
-_detector = None
-_detector_size: Optional[Tuple[int, int]] = None
+# OpenCV detectors are not thread-safe and jobs run in parallel threads: one per thread.
+_local = threading.local()
 
 
 def _faces(img: np.ndarray) -> List[np.ndarray]:
     """YuNet rows: x, y, w, h, 5 landmarks (right eye, left eye, nose, right mouth, left mouth), score."""
-    global _detector, _detector_size
     if not YUNET_MODEL.exists() or not hasattr(cv2, "FaceDetectorYN"):
         return []
     h, w = img.shape[:2]
-    if _detector is None:
-        _detector = cv2.FaceDetectorYN.create(str(YUNET_MODEL), "", (w, h), 0.7, 0.3, 5000)
-        _detector_size = (w, h)
-    elif _detector_size != (w, h):
-        _detector.setInputSize((w, h))
-        _detector_size = (w, h)
-    _, found = _detector.detect(img)
+    detector = getattr(_local, "detector", None)
+    if detector is None:
+        detector = _local.detector = cv2.FaceDetectorYN.create(str(YUNET_MODEL), "", (w, h), 0.7, 0.3, 5000)
+        _local.size = (w, h)
+    elif _local.size != (w, h):
+        detector.setInputSize((w, h))
+        _local.size = (w, h)
+    _, found = detector.detect(img)
     return [] if found is None else [row for row in found]
 
 
