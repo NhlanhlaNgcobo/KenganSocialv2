@@ -47,7 +47,7 @@
   height: 32px;
   border-radius: 8px;
   background: var(--gradient-brand);
-  color: #fff;
+  color: var(--accent-contrast);
   font-weight: 800;
 }
 
@@ -356,7 +356,7 @@
 
 .rv-comments li.is-team {
   background: var(--accent-soft);
-  border-color: rgba(167, 139, 250, 0.25);
+  border-color: color-mix(in srgb, var(--accent-primary) 25%, transparent);
 }
 
 .rv-comments li p {

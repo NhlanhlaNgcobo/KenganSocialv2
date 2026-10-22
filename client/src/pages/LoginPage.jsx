@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authErrorMessage } from '../lib/auth-errors';
 import './Auth.css';
+import { KenganMark } from '../components/brand/KenganLogo';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -76,7 +77,7 @@ export default function LoginPage() {
 
             <div className="auth-card animate-fade-in">
                 <div className="auth-card__header">
-                    <div className="auth-card__logo">K</div>
+                    <div className="auth-card__logo"><KenganMark size={44} /></div>
                     <h1>Welcome back</h1>
                     <p>Sign in to your KenganSocial account</p>
                 </div>

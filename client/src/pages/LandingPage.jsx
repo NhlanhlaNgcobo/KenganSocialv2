@@ -5,13 +5,17 @@ import {
     ArrowRight,
     Bot,
     CalendarClock,
+    Captions,
     Check,
+    ChevronDown,
     Clapperboard,
+    Crop,
     Instagram,
     Facebook,
     MessageCircle,
     Megaphone,
     Music2,
+    Palette,
     PenLine,
     Play,
     Scissors,
@@ -82,6 +86,111 @@ const PLANS = [
         featured: true,
     },
 ];
+
+/** What KenganSocial does, at a glance under the hero. */
+const CHIPS = [
+    { icon: Scissors, label: 'AI clips' },
+    { icon: Crop, label: 'Face-tracked reframe' },
+    { icon: Captions, label: 'Animated captions' },
+    { icon: Palette, label: 'Brand kit' },
+    { icon: CalendarClock, label: 'Scheduling' },
+    { icon: MessageCircle, label: 'Inbox and automations' },
+    { icon: Megaphone, label: 'Meta Ads' },
+];
+
+const FAQ = [
+    {
+        q: 'What kind of videos work best?',
+        a: 'Long videos where people talk: podcasts, interviews, streams, talks and vlogs. Upload an MP4 or MOV of up to 2 GB; KenganSocial finds the strongest moments, keeps faces in frame for vertical video and adds captions.',
+    },
+    {
+        q: 'Is there a free plan?',
+        a: 'Yes. The free plan includes the video editor, the content calendar and two connected accounts, with no card needed. New accounts also get a full-access trial, so you can try every feature before deciding.',
+    },
+    {
+        q: 'Where can I post?',
+        a: 'TikTok, Instagram, Facebook Pages and YouTube. You connect each one with the platform’s own sign-in, and you can disconnect at any time.',
+    },
+    {
+        q: 'Can I edit the clips myself?',
+        a: 'Yes. Open any clip in the video editor to trim it, change the captions, add text, music, transitions and motion, then export or schedule it.',
+    },
+    {
+        q: 'What happens to my videos and data?',
+        a: 'Your content stays yours. We handle personal information under POPIA, never sell it and never use your content or your audience’s messages to train AI. Disconnecting an account deletes the data it brought in, and you can delete your account at any time.',
+    },
+    {
+        q: 'How does billing work?',
+        a: 'Plans are priced in rand and paid monthly or yearly (yearly saves 10%) through Paystack. Upgrade, downgrade or cancel whenever you like.',
+    },
+];
+
+/**
+ * The hero's main action: drop or choose a long video. Signed-in people go straight to Clips with
+ * the file chosen; visitors create a free account first.
+ */
+function HeroDrop({ user }) {
+    const navigate = useNavigate();
+    const inputRef = useRef(null);
+    const [over, setOver] = useState(false);
+    const go = (file) => {
+        if (!user) navigate('/register');
+        else navigate('/dashboard/clips', file ? { state: { file } } : undefined);
+    };
+    return (
+        <div
+            className={`lp-drop ${over ? 'is-over' : ''}`}
+            onDragOver={(e) => {
+                e.preventDefault();
+                setOver(true);
+            }}
+            onDragLeave={() => setOver(false)}
+            onDrop={(e) => {
+                e.preventDefault();
+                setOver(false);
+                go(e.dataTransfer.files?.[0]);
+            }}
+        >
+            <span className="lp-drop__icon">
+                <Upload size={20} />
+            </span>
+            <span className="lp-drop__text">
+                <strong>Drop a long video here</strong>
+                <span>Podcast, interview, stream or vlog · MP4 or MOV up to 2 GB</span>
+            </span>
+            <button type="button" className="btn btn-primary btn-lg lp-cta-btn" onClick={() => (user ? inputRef.current?.click() : go())}>
+                Get my clips <ArrowRight size={17} />
+            </button>
+            <input ref={inputRef} type="file" accept="video/*" hidden onChange={(e) => go(e.target.files?.[0])} />
+        </div>
+    );
+}
+
+/** A slim "start free" bar that appears once the hero has scrolled away (and hides at the final call). */
+function StickyCta({ user, primary }) {
+    const [show, setShow] = useState(false);
+    useEffect(() => {
+        const hero = document.querySelector('.lp-hero');
+        const final = document.querySelector('.lp-final');
+        if (!hero || !('IntersectionObserver' in window)) return undefined;
+        const seen = { hero: true, final: false };
+        const io = new IntersectionObserver((entries) => {
+            for (const e of entries) seen[e.target === hero ? 'hero' : 'final'] = e.isIntersecting;
+            setShow(!seen.hero && !seen.final);
+        });
+        io.observe(hero);
+        if (final) io.observe(final);
+        return () => io.disconnect();
+    }, []);
+    return (
+        <div className={`lp-sticky ${show ? 'is-shown' : ''}`} aria-hidden={!show}>
+            <span>{user ? 'Turn your next long video into shorts' : 'Turn your next long video into a week of shorts. Free to start.'}</span>
+            <Link to={user ? '/dashboard/clips' : primary.to} className="btn btn-primary" tabIndex={show ? 0 : -1}>
+                {user ? 'Make clips' : primary.label} <ArrowRight size={16} />
+            </Link>
+        </div>
+    );
+}
 
 function RotatingWord() {
     const [index, setIndex] = useState(0);
@@ -202,11 +311,9 @@ export default function LandingPage() {
                         calendar. One app for creators, brands and agencies.
                     </p>
                     <div className="lp-actions" data-reveal>
-                        <Link to={primary.to} className="btn btn-primary btn-lg lp-cta-btn">
-                            {primary.label} <ArrowRight size={17} />
-                        </Link>
-                        <a href="#how" className="btn btn-secondary btn-lg">
-                            <Play size={16} /> Watch how it works
+                        <HeroDrop user={user} />
+                        <a href="#how" className="lp-watch">
+                            <Play size={14} /> Watch how it works
                         </a>
                     </div>
                     <ul className="lp-trust" data-reveal>
@@ -219,6 +326,13 @@ export default function LandingPage() {
                         <li>
                             <ShieldCheck size={14} /> POPIA-minded data handling
                         </li>
+                    </ul>
+                    <ul className="lp-chips" data-reveal aria-label="Features">
+                        {CHIPS.map((c) => (
+                            <li key={c.label}>
+                                <c.icon size={14} /> {c.label}
+                            </li>
+                        ))}
                     </ul>
 
                     <div className="lp-demo" id="how" data-reveal>
@@ -357,6 +471,24 @@ export default function LandingPage() {
                     </p>
                 </section>
 
+                <section className="lp-section container" aria-labelledby="faq-title">
+                    <header className="lp-section__head" data-reveal>
+                        <span className="lp-kicker">Questions</span>
+                        <h2 id="faq-title">Good to know</h2>
+                    </header>
+                    <div className="lp-faq">
+                        {FAQ.map((f, i) => (
+                            <details key={f.q} className="lp-faq__item" data-reveal style={{ '--delay': `${i * 60}ms` }}>
+                                <summary>
+                                    {f.q}
+                                    <ChevronDown size={18} aria-hidden="true" />
+                                </summary>
+                                <p>{f.a}</p>
+                            </details>
+                        ))}
+                    </div>
+                </section>
+
                 <section className="lp-final container" data-reveal>
                     <div className="lp-final__glow" aria-hidden="true" />
                     <h2>Your next week of content is already recorded.</h2>
@@ -388,6 +520,7 @@ export default function LandingPage() {
                 </section>
             </main>
 
+            <StickyCta user={user} primary={primary} />
             <PublicFooter />
         </div>
     );

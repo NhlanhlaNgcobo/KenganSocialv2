@@ -16,7 +16,7 @@ Use REA only on software we own or are licensed to examine:
 |---|---|---|
 | KenganSocial's own client bundle, server and exports | Yes | Useful for auditing the built bundle, render output and API surface |
 | Open-source editors (e.g. OpenCut, MIT; Shotcut and Kdenlive, GPL) | Yes, within their licences | Read their source directly. Copying code carries their licence terms: MIT needs attribution, GPL code cannot go into this proprietary codebase. |
-| CapCut, TikTok and other closed apps | No | Their terms prohibit reverse engineering. Do not extract code, templates, assets or formats, and do not bypass protections. |
+| CapCut, TikTok, OpusClip and other closed apps | No | Their terms prohibit reverse engineering. Do not extract code, templates, assets or formats, and do not bypass protections. |
 
 ## Verified vs assumed
 
@@ -32,3 +32,7 @@ Use REA only on software we own or are licensed to examine:
 1. Run `npx rea-agents setup` and restart Claude Code.
 2. Point it only at the targets marked "Yes" above.
 3. Record each finding as verified (reproduced by a check here) or assumed.
+
+## Competitor research without REA
+
+OpusClip (October 2026) was studied from its public landing page and public reviews only, like any visitor; REA was not used on it. See `COMPETITIVE_UX_NOTES.md`.

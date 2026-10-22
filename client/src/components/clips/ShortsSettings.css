@@ -188,3 +188,36 @@
   flex-wrap: wrap;
   gap: 8px 20px;
 }
+
+/* Apply my brand */
+.ss-brand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.ss-brand__kit {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ss-brand__kit img {
+    height: 22px;
+    max-width: 64px;
+    object-fit: contain;
+}
+
+.ss-brand__kit i {
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+    border: 1px solid var(--border-strong);
+}
+
+.ss-brand__setup {
+    font-size: 0.82rem;
+    color: var(--accent-text);
+}

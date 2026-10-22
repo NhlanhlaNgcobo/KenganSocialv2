@@ -42,7 +42,7 @@
 .auth-page__orb--2 {
     width: 400px;
     height: 400px;
-    background: #a855f7;
+    background: var(--accent-primary);
     bottom: -10%;
     left: -5%;
     animation: float-orb 10s ease-in-out infinite reverse;
@@ -85,16 +85,10 @@
 .auth-card__logo {
     width: 52px;
     height: 52px;
-    border-radius: var(--radius-lg);
-    background: var(--gradient-brand);
+    margin: 0 auto 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 800;
-    font-size: 1.4rem;
-    color: var(--accent-contrast);
-    margin: 0 auto 16px;
-    box-shadow: var(--shadow-glow);
 }
 
 .auth-card__header h1 {

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { COMPANY, PRIVACY, TERMS } from '../content/legal';
 import './Auth.css';
 import './Onboarding.css';
+import { KenganMark } from '../components/brand/KenganLogo';
 
 /** The points people agree to, in plain words; the full documents are linked. */
 const KEY_POINTS = [
@@ -69,7 +70,7 @@ export default function ConsentPage() {
 
             <main className="auth-card auth-card--wide animate-fade-in" aria-labelledby="consent-title">
                 <div className="auth-card__header">
-                    <div className="auth-card__logo">K</div>
+                    <div className="auth-card__logo"><KenganMark size={44} /></div>
                     <h1 id="consent-title">{isUpdate ? 'We’ve updated our terms' : 'Before you continue'}</h1>
                     <p>
                         {isUpdate

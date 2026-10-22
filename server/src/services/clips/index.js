@@ -5,6 +5,7 @@ import { CLIP_LENGTHS, findClips } from './find-clips.js';
 import { capLength, PLATFORMS } from './platforms.js';
 import { CAPTION_STYLES, LAYOUTS, RATIOS, renderClip } from './render-clip.js';
 import { normalizeWords } from './transcript.js';
+import { loadClipBrand } from './brand.js';
 
 /**
  * Long video → ranked short clips, in the spirit of OpusClip:
@@ -33,6 +34,8 @@ export function normalizeClipRequest(body = {}) {
         captionStyle: CAPTION_STYLES[body.captionStyle] ? body.captionStyle : 'bold',
         hookTitle: body.hookTitle !== false,
         progressBar: body.progressBar === true,
+        // Brand kit (Marketing > Brand): logo on the clip, captions and bar in the brand colour.
+        brand: body.brand === true,
         prompt: typeof body.prompt === 'string' ? body.prompt.replace(/\s+/g, ' ').trim().slice(0, 300) : '',
     };
 }
@@ -105,6 +108,14 @@ export async function createClips(request, ctx, { onStage = () => {}, onClip = (
     if (!clips.length) throw new Error(note || 'No clips could be found in this video.');
     onStage(`Rendering clip 1 of ${clips.length}`, 40, { finder, note, planned: clips.length });
 
+    let brand = null;
+    if (request.brand) {
+        brand = await loadClipBrand(db, workspaceId).catch((error) => {
+            console.warn('[Clips] Brand kit unavailable:', error.message);
+            return null;
+        });
+    }
+
     const rendered = [];
     for (const [i, clip] of clips.entries()) {
         const base = 40 + (i / clips.length) * 58;
@@ -120,6 +131,7 @@ export async function createClips(request, ctx, { onStage = () => {}, onClip = (
                 hookTitle: request.hookTitle,
                 progressBar: request.progressBar,
                 platform: request.platform,
+                brand,
                 onProgress: (p) => onStage(`Rendering clip ${i + 1} of ${clips.length}`, Math.round(base + (p / 100) * (58 / clips.length))),
             });
             const done = { ...clip, ...result, duration: Math.round((clip.end - clip.start) * 10) / 10 };

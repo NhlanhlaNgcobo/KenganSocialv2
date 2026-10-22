@@ -6,6 +6,7 @@ import { apiClient } from '../lib/api';
 import ConnectPermissions from '../components/connections/ConnectPermissions';
 import { BILLING_EMAIL, fetchPlanCatalog, formatZar } from '../utils/planLimits';
 import './Onboarding.css';
+import { KenganLogo } from '../components/brand/KenganLogo';
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -521,8 +522,7 @@ export default function OnboardingPage() {
             <div className="onboarding-inner">
                 {/* Logo */}
                 <Link to="/" className="onboarding-logo">
-                    <div className="onboarding-logo__mark">K</div>
-                    <span className="onboarding-logo__text">KenganSocial</span>
+                    <KenganLogo size={32} />
                 </Link>
 
                 {/* Step progress */}

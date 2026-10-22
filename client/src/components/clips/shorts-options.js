@@ -55,6 +55,7 @@ export const DEFAULT_SHORTS_OPTIONS = {
     captionStyle: 'bold',
     hookTitle: true,
     progressBar: false,
+    brand: false,
 };
 
 /** The request body fields the clips API expects. */
@@ -69,6 +70,7 @@ export function shortsRequest(options) {
         captionStyle: options.captionStyle,
         hookTitle: options.hookTitle,
         progressBar: options.progressBar,
+        brand: Boolean(options.brand),
     };
 }
 

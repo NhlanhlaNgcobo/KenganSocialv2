@@ -67,7 +67,7 @@
     border-radius: var(--radius-lg, 14px);
     overflow: hidden;
     background:
-        radial-gradient(120% 90% at 20% 0%, var(--accent-soft, rgba(139, 92, 246, 0.18)), transparent 60%),
+        radial-gradient(120% 90% at 20% 0%, var(--accent-soft, color-mix(in srgb, var(--accent-primary) 18%, transparent)), transparent 60%),
         linear-gradient(var(--bg-inset, transparent), var(--bg-inset, transparent)),
         var(--bg-solid);
     border: 1px solid var(--border-color);
@@ -252,7 +252,7 @@
 
 .gt-card--accent {
     border-color: var(--border-accent, var(--accent-primary));
-    background: var(--accent-soft, rgba(139, 92, 246, 0.14));
+    background: var(--accent-soft, color-mix(in srgb, var(--accent-primary) 14%, transparent));
 }
 
 .gt-label {
@@ -333,7 +333,7 @@
 
 .gt-input--focus {
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px var(--accent-soft, rgba(139, 92, 246, 0.2));
+    box-shadow: 0 0 0 3px var(--accent-soft, color-mix(in srgb, var(--accent-primary) 20%, transparent));
 }
 
 /* Floating panel (popups, sign-in screens) */
@@ -505,7 +505,7 @@
     }
     35% {
         transform: scale(0.92);
-        box-shadow: 0 0 0 4px var(--accent-soft, rgba(139, 92, 246, 0.35));
+        box-shadow: 0 0 0 4px var(--accent-soft, color-mix(in srgb, var(--accent-primary) 35%, transparent));
     }
 }
 

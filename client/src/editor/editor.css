@@ -13,15 +13,15 @@
     --ke-text-3: #71717a;
     /* The editor is always dark, so its accent is fixed rather than following the app theme
        (the light theme's near-black accent would vanish on these panels). */
-    --ke-accent: #8b5cf6;
-    --ke-accent-2: #a78bfa;
-    --ke-accent-soft: rgba(139, 92, 246, 0.16);
-    --ke-accent-contrast: #ffffff;
+    --ke-accent: var(--accent-primary);
+    --ke-accent-2: var(--accent-text);
+    --ke-accent-soft: color-mix(in srgb, var(--accent-primary) 16%, transparent);
+    --ke-accent-contrast: var(--accent-contrast);
     --ke-danger: #ef4444;
     --ke-ok: #10b981;
     --ke-media: #3b6fd8;
     --ke-text-track: #3f9f86;
-    --ke-audio: #7c4fb8;
+    --ke-audio: #3f8f6b;
     --ke-playhead: #f43f5e;
     --ke-radius: 10px;
 
@@ -2269,7 +2269,7 @@
 .ke-recipe__heading > span { font-size: 8px; letter-spacing: 0.12em; color: #b5c990; }
 .ke-recipe__strip { display: flex; gap: 3px; height: 28px; margin: 10px 0; }
 .ke-recipe__strip > span { display: grid; place-items: center; min-width: 12px; background: #344235; color: #d6efb8; border-radius: 3px; font-size: 9px; }
-.ke-recipe__strip > span:nth-child(even) { background: #3a3447; color: #e4d6fa; }
+.ke-recipe__strip > span:nth-child(even) { background: #3a3a40; color: #e4e4e7; }
 .ke-recipe__slot { display: flex; align-items: center; gap: 7px; margin: 9px 0; }
 .ke-recipe__number { color: #929299; font: 10px monospace; }
 .ke-recipe__slot img, .ke-recipe__placeholder { width: 32px; height: 43px; object-fit: cover; border-radius: 3px; background: #292932; }

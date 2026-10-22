@@ -3,44 +3,46 @@
 /* ── TOKENS (scoped to legal UI and the terms modal) ── */
 .legal-root,
 .terms-modal-overlay {
-    --legal-bg: #08080F;
-    --legal-surface: #0E0E18;
-    --legal-surface2: #13131F;
+    --legal-bg: #09090b;
+    --legal-surface: #0f0f11;
+    --legal-surface2: #151518;
     --legal-border: rgba(255, 255, 255, 0.06);
     --legal-border2: rgba(255, 255, 255, 0.1);
-    --legal-accent: #7C5CFC;
-    --legal-accent-hover: #9070ff;
-    --legal-accent-dim: rgba(124, 92, 252, 0.15);
-    --legal-text: #E2DFF5;
+    --legal-accent: #e4e4e7;
+    --legal-accent-hover: #ffffff;
+    --legal-accent-dim: rgba(255, 255, 255, 0.1);
+    --legal-text: #e4e4e7;
     --legal-heading: #fff;
-    --legal-muted: #6B6888;
+    --legal-muted: #71717a;
     --legal-green: #22D3A5;
     --legal-amber: #F5A623;
     --legal-red: #FF4D6D;
     --legal-teal: #00D4C8;
-    --legal-nav-bg: rgba(8, 8, 15, 0.95);
-    --legal-overlay: rgba(4, 4, 10, 0.92);
+    --legal-nav-bg: rgba(9, 9, 11, 0.95);
+    --legal-overlay: rgba(0, 0, 0, 0.88);
+    --legal-on-accent: #09090b;
 }
 
 [data-theme="light"] .legal-root,
 [data-theme="light"] .terms-modal-overlay {
-    --legal-bg: #f7f7fb;
+    --legal-bg: #fafafa;
     --legal-surface: #ffffff;
-    --legal-surface2: #efeef6;
-    --legal-border: rgba(20, 16, 48, 0.08);
-    --legal-border2: rgba(20, 16, 48, 0.14);
-    --legal-accent: #6a47f0;
-    --legal-accent-hover: #5835e0;
-    --legal-accent-dim: rgba(106, 71, 240, 0.1);
-    --legal-text: #1d1a33;
-    --legal-heading: #0f0d1f;
-    --legal-muted: #5f5b78;
+    --legal-surface2: #f4f4f5;
+    --legal-border: rgba(0, 0, 0, 0.08);
+    --legal-border2: rgba(0, 0, 0, 0.14);
+    --legal-accent: #18181b;
+    --legal-accent-hover: #000000;
+    --legal-accent-dim: rgba(0, 0, 0, 0.06);
+    --legal-text: #18181b;
+    --legal-heading: #09090b;
+    --legal-muted: #52525b;
     --legal-green: #0f9d78;
     --legal-amber: #b7700a;
     --legal-red: #e11d48;
     --legal-teal: #0e8a83;
-    --legal-nav-bg: rgba(247, 247, 251, 0.95);
-    --legal-overlay: rgba(15, 13, 31, 0.55);
+    --legal-nav-bg: rgba(250, 250, 250, 0.95);
+    --legal-overlay: rgba(0, 0, 0, 0.5);
+    --legal-on-accent: #ffffff;
 }
 
 .legal-root {
@@ -633,7 +635,7 @@
     border-radius: 10px;
     border: none;
     background: var(--legal-accent);
-    color: #fff;
+    color: var(--legal-on-accent);
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;

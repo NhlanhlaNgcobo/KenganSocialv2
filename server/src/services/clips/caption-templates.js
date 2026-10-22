@@ -12,6 +12,8 @@
  *  punch     - one word at a time, popping in
  */
 
+import { luminance } from './brand.js';
+
 export const CAPTION_TEMPLATES = {
     bold: {
         label: 'Bold Pop',
@@ -68,6 +70,19 @@ export const CAPTION_TEMPLATES = {
 export function templateAccent(id) {
     const t = CAPTION_TEMPLATES[id];
     return t?.box && t.box !== '#000000' ? t.box : t?.active && t.active !== '#ffffff' ? t.active : t?.color && t.mode === 'karaoke' ? t.color : '#e04a18';
+}
+
+/**
+ * A template recoloured with the brand accent: the spoken word, karaoke fill or caption box take the
+ * brand colour. Text on a brand-coloured box turns black when the colour is light.
+ */
+export function brandTemplate(t, accent) {
+    if (!t || !accent) return t;
+    const light = luminance(accent) > 0.45;
+    if (t.mode === 'highlight') return { ...t, active: accent };
+    if (t.mode === 'karaoke') return { ...t, color: accent };
+    if (t.box && t.box !== '#000000') return { ...t, box: accent, color: light ? '#111111' : '#ffffff' };
+    return t;
 }
 
 /** '#rrggbb' + alpha (0 = opaque, 1 = transparent) → ASS &HAABBGGRR. */
@@ -158,9 +173,9 @@ function style(name, t, { W, H, unit, alignment, marginV }) {
  * @param {{ safeTop: number, safeBottom: number }} opts.safe   fractions of the height kept clear of app UI
  * @returns {string|null} ASS script, or null when there is nothing to draw
  */
-export function buildAss({ words, clip, length, width: W, height: H, template, hookTitle, position = 'bottom', safe = { safeTop: 0.1, safeBottom: 0.2 } }) {
+export function buildAss({ words, clip, length, width: W, height: H, template, hookTitle, position = 'bottom', safe = { safeTop: 0.1, safeBottom: 0.2 }, brand = null }) {
     const unit = Math.min(W, H);
-    const t = CAPTION_TEMPLATES[template];
+    const t = brandTemplate(CAPTION_TEMPLATES[template], brand?.accent);
     const captions = t && template !== 'none' && words.length;
     const hook = hookTitle && clip.hook ? clean(clip.hook) : '';
     if (!captions && !hook) return null;
@@ -212,9 +227,10 @@ export function buildAss({ words, clip, length, width: W, height: H, template, h
     }
 
     if (hook) {
-        const accent = templateAccent(template);
+        const accent = brand?.accent || templateAccent(template);
+        const hookText = luminance(accent) > 0.45 ? '#111111' : '#ffffff';
         styles.push(
-            style('Hook', { font: 'Poppins Black', size: 0.06, color: '#ffffff', box: accent, boxAlpha: 0.05 }, {
+            style('Hook', { font: 'Poppins Black', size: 0.06, color: hookText, box: accent, boxAlpha: 0.05 }, {
                 W, H, unit, alignment: 8, marginV: Math.round(H * safe.safeTop),
             })
         );

@@ -63,7 +63,7 @@ async function poster(videoPath, at) {
 }
 
 /** Final pass: cover-scale to the output size, burn captions, draw the progress bar. */
-async function finish({ framedPath, workDir, ass, width: W, height: H, length, progressBar, accent, onProgress }) {
+async function finish({ framedPath, workDir, ass, width: W, height: H, length, progressBar, accent, logoPath = null, safe, onProgress }) {
     const chain = [`[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30`];
     if (ass) {
         fs.writeFileSync(path.join(workDir, 'captions.ass'), ass, 'utf8');
@@ -77,11 +77,21 @@ async function finish({ framedPath, workDir, ass, width: W, height: H, length, p
         graph += `;color=c=${color}:s=${W}x${barH}:r=30:d=${length.toFixed(3)}[bar];[base][bar]overlay=x='-w+w*t/${length.toFixed(3)}':y=${H - barH}:eof_action=pass[v]`;
         last = '[v]';
     }
+    const inputs = ['-i', framedPath];
+    if (logoPath) {
+        // Brand logo in the top-right corner, below the app's own top bar (safe zone).
+        const logoW = Math.round(Math.min(W, H) * 0.16);
+        const margin = Math.round(Math.min(W, H) * 0.04);
+        const y = Math.round(H * Math.max(0.04, (safe?.safeTop || 0.1) * 0.55));
+        inputs.push('-i', logoPath);
+        graph += `;[1:v]scale=${logoW}:-1,format=rgba,colorchannelmixer=aa=0.92[logo];${last}[logo]overlay=x=W-w-${margin}:y=${y}[vl]`;
+        last = '[vl]';
+    }
     const outPath = path.join(RENDER_DIR, `export_${uuidv4()}.mp4`);
     await run(
         FFMPEG,
         [
-            '-hide_banner', '-y', '-i', framedPath,
+            '-hide_banner', '-y', ...inputs,
             '-filter_complex', graph,
             '-map', last, '-map', '0:a:0?',
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
@@ -99,10 +109,11 @@ async function finish({ framedPath, workDir, ass, width: W, height: H, length, p
  * @param {string} opts.layout         auto | track | split | fit
  * @param {string} opts.captionStyle   CAPTION_TEMPLATES id
  * @param {string|null} opts.platform  tiktok | shorts | reels (sets the UI safe zones)
+ * @param {object|null} opts.brand     loadClipBrand() result: { accent, logoPath }
  * @returns {Promise<{ outputPath: string, poster: string|null, reframe: string, layout: string }>}
  */
 export async function renderClip({
-    sourcePath, clip, words, ratio, layout = 'auto', captionStyle, hookTitle, progressBar = false, platform = null, onProgress = () => {},
+    sourcePath, clip, words, ratio, layout = 'auto', captionStyle, hookTitle, progressBar = false, platform = null, brand = null, onProgress = () => {},
 }) {
     const spec = RATIOS[ratio] || RATIOS['9:16'];
     fs.mkdirSync(RENDER_DIR, { recursive: true });
@@ -141,6 +152,7 @@ export async function renderClip({
         }
         onProgress(60);
 
+        const safe = PLATFORMS[platform] || (ratio === '16:9' ? { safeTop: 0.06, safeBottom: 0.1 } : DEFAULT_SAFE);
         const ass = buildAss({
             words,
             clip,
@@ -151,7 +163,8 @@ export async function renderClip({
             hookTitle,
             // On a split layout the seam between the two speakers is the one place without a face.
             position: usedLayout === 'split' ? 'middle' : 'bottom',
-            safe: PLATFORMS[platform] || (ratio === '16:9' ? { safeTop: 0.06, safeBottom: 0.1 } : DEFAULT_SAFE),
+            safe,
+            brand,
         });
         const outputPath = await finish({
             framedPath,
@@ -161,7 +174,9 @@ export async function renderClip({
             height: spec.height,
             length,
             progressBar,
-            accent: templateAccent(captionStyle),
+            accent: brand?.accent || templateAccent(captionStyle),
+            logoPath: brand?.logoPath || null,
+            safe,
             onProgress: (f) => onProgress(60 + Math.round(f * 38)),
         });
         const posterUrl = await poster(outputPath, Math.min(1.2, length / 2));

@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { CAPTION_TEMPLATES, LAYOUTS, RATIOS, SHORT_LENGTHS, SHORT_PLATFORMS } from './shorts-options';
+import { marketingApi } from '../../lib/marketing-api';
 import './ShortsSettings.css';
 
 /**
@@ -7,6 +10,45 @@ import './ShortsSettings.css';
  */
 
 const ORDER = ['short', 'medium', 'long'];
+
+/**
+ * "Apply my brand": the brand kit's logo goes on each clip and its colour on the captions, hook card
+ * and progress bar (like brand templates in other clip tools). Off when there's no kit yet.
+ */
+function BrandCheck({ checked, onChange }) {
+    const [kit, setKit] = useState(undefined);
+    useEffect(() => {
+        let active = true;
+        marketingApi
+            .brand()
+            .then((d) => active && setKit(d?.kit || null))
+            .catch(() => active && setKit(null));
+        return () => {
+            active = false;
+        };
+    }, []);
+    const colour = kit && [kit.colors?.accent, kit.colors?.primary, kit.colors?.secondary].find(Boolean);
+    const logo = kit?.logo?.primary;
+    const ready = Boolean(colour || logo);
+    return (
+        <div className="ss-brand">
+            <label className="check">
+                <input type="checkbox" checked={ready && checked} disabled={!ready} onChange={(e) => onChange({ brand: e.target.checked })} />
+                Apply my brand: logo in the corner, captions and bar in my colour
+            </label>
+            {ready ? (
+                <span className="ss-brand__kit" aria-label="Your brand">
+                    {logo ? <img src={logo} alt="" /> : null}
+                    {colour ? <i style={{ background: colour }} /> : null}
+                </span>
+            ) : kit !== undefined ? (
+                <Link to="/dashboard/marketing?tab=brand" className="ss-brand__setup">
+                    Set up your brand kit
+                </Link>
+            ) : null}
+        </div>
+    );
+}
 
 function CaptionSample({ template }) {
     if (template.id === 'none') return <span className="ss-caption__none">Clean video</span>;
@@ -188,6 +230,7 @@ export default function ShortsSettings({ value, onChange, disabled = false, coun
                         <input type="checkbox" checked={value.progressBar} onChange={(e) => onChange({ progressBar: e.target.checked })} />
                         Progress bar along the bottom
                     </label>
+                    <BrandCheck checked={Boolean(value.brand)} onChange={onChange} />
                 </div>
             </fieldset>
         </div>

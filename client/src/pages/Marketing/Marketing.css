@@ -113,8 +113,8 @@
     margin-bottom: 6px;
     border-radius: 10px;
     color: var(--accent-text);
-    background: linear-gradient(135deg, var(--accent-soft), rgba(139, 92, 246, 0.04));
-    border: 1px solid rgba(167, 139, 250, 0.25);
+    background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent-primary) 4%, transparent));
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 25%, transparent);
 }
 
 .marketing-card .badge {
@@ -772,8 +772,8 @@ small.is-error {
     height: 36px;
     flex-shrink: 0;
     border-radius: 10px;
-    background: linear-gradient(135deg, var(--accent-soft), rgba(139, 92, 246, 0.04));
-    border: 1px solid rgba(167, 139, 250, 0.25);
+    background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent-primary) 4%, transparent));
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 25%, transparent);
     color: var(--accent-text);
 }
 

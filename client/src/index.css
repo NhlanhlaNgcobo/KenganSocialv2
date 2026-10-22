@@ -11,26 +11,25 @@
    --------------------- */
 :root,
 [data-theme="dark"] {
-  /* Surfaces: frosted glass over a dark backdrop with silver and violet light */
+  /* Surfaces: frosted glass over a dark backdrop with soft silver light */
   --bg-primary: #07070a;
   --bg-secondary: rgba(255, 255, 255, 0.035);
   --bg-tertiary: rgba(255, 255, 255, 0.065);
-  --bg-elevated: rgba(30, 29, 40, 0.82);
+  --bg-elevated: rgba(26, 26, 29, 0.86);
   --bg-card: rgba(255, 255, 255, 0.045);
   --bg-glass: rgba(255, 255, 255, 0.045);
   --bg-hover: rgba(255, 255, 255, 0.06);
   --bg-inset: rgba(0, 0, 0, 0.28);
   /* Opaque surface for things that must not show through (menus over content, logo cut) */
-  --bg-solid: #0e0d13;
+  --bg-solid: #0c0c0e;
   --glass-blur: blur(20px) saturate(160%);
   --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 38%);
   --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   --backdrop:
-    radial-gradient(760px 520px at 38% -6%, rgba(139, 92, 246, 0.34), transparent 62%),
-    radial-gradient(640px 520px at 96% 8%, rgba(99, 102, 241, 0.26), transparent 62%),
-    radial-gradient(520px 420px at 72% 46%, rgba(226, 226, 240, 0.08), transparent 60%),
-    radial-gradient(820px 640px at 62% 112%, rgba(168, 85, 247, 0.26), transparent 60%),
-    radial-gradient(560px 480px at 6% 82%, rgba(79, 70, 229, 0.18), transparent 60%);
+    radial-gradient(760px 520px at 38% -6%, rgba(255, 255, 255, 0.09), transparent 62%),
+    radial-gradient(640px 520px at 96% 8%, rgba(212, 212, 218, 0.06), transparent 62%),
+    radial-gradient(520px 420px at 72% 46%, rgba(255, 255, 255, 0.035), transparent 60%),
+    radial-gradient(820px 640px at 62% 112%, rgba(200, 200, 208, 0.06), transparent 60%);
 
   /* Text */
   --text-primary: #ededef;
@@ -38,18 +37,18 @@
   --text-muted: #71717a;
   --text-inverse: #0c0c0e;
 
-  /* Accent: one violet on silver glass. The logo keeps its silver sheen. */
-  --accent-primary: #8b5cf6;
-  --accent-hover: #9d74f8;
-  --accent-text: #c4b5fd;
+  /* Accent: silver-white on black glass, black on white. No hue: type and contrast do the work. */
+  --accent-primary: #e4e4e7;
+  --accent-hover: #ffffff;
+  --accent-text: #d4d4d8;
   /* Text/icons drawn on top of the accent */
-  --accent-contrast: #ffffff;
+  --accent-contrast: #09090b;
   --brand-sheen: linear-gradient(135deg, #f5f5f7 0%, #a8a8ae 45%, #5c5c62 100%);
   --accent-secondary: var(--accent-text);
-  --accent-soft: rgba(139, 92, 246, 0.16);
-  --accent-glow: rgba(139, 92, 246, 0.38);
-  --gradient-brand: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 45%, #6d28d9 100%);
-  --gradient-brand-hover: linear-gradient(135deg, #b9a2fb 0%, #9d74f8 45%, #7c3aed 100%);
+  --accent-soft: rgba(255, 255, 255, 0.08);
+  --accent-glow: rgba(255, 255, 255, 0.16);
+  --gradient-brand: linear-gradient(180deg, #ffffff 0%, #e4e4e7 55%, #c4c4cc 100%);
+  --gradient-brand-hover: linear-gradient(180deg, #ffffff 0%, #f4f4f5 55%, #d4d4d8 100%);
   --gradient-surface: var(--glass-sheen);
 
   /* Status */
@@ -67,20 +66,20 @@
   --border-secondary: rgba(255, 255, 255, 0.05);
   --border-glass: rgba(255, 255, 255, 0.12);
   --border-strong: rgba(255, 255, 255, 0.18);
-  --border-accent: rgba(167, 139, 250, 0.55);
+  --border-accent: rgba(255, 255, 255, 0.38);
   --border-color: var(--border-primary);
 
   --grid-color: transparent;
-  --hero-glow: radial-gradient(circle at center, rgba(139, 92, 246, 0.18) 0%, transparent 70%);
+  --hero-glow: radial-gradient(circle at center, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 6px 24px -6px rgba(139, 92, 246, 0.6);
+  --shadow-glow: 0 6px 24px -8px rgba(255, 255, 255, 0.22);
 
   --sidebar-width: 244px;
   --sidebar-collapsed: 68px;
-  --sidebar-bg: rgba(14, 13, 20, 0.55);
+  --sidebar-bg: rgba(12, 12, 14, 0.6);
   --header-height: 60px;
 
   --radius-sm: 6px;
@@ -103,52 +102,51 @@
    Tokens — Light
    --------------------- */
 [data-theme="light"] {
-  /* Pearl glass over soft silver and lavender light */
-  --bg-primary: #f3f2f7;
+  /* Pearl glass over soft silver light */
+  --bg-primary: #f4f4f5;
   --bg-secondary: rgba(255, 255, 255, 0.55);
   --bg-tertiary: rgba(255, 255, 255, 0.75);
   --bg-elevated: rgba(255, 255, 255, 0.9);
   --bg-card: rgba(255, 255, 255, 0.6);
   --bg-glass: rgba(255, 255, 255, 0.6);
-  --bg-hover: rgba(76, 29, 149, 0.05);
+  --bg-hover: rgba(0, 0, 0, 0.045);
   --bg-inset: rgba(255, 255, 255, 0.55);
-  --bg-solid: #f7f6fb;
+  --bg-solid: #fafafa;
   --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 45%);
   --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   --backdrop:
-    radial-gradient(760px 520px at 38% -6%, rgba(167, 139, 250, 0.38), transparent 62%),
-    radial-gradient(640px 520px at 96% 8%, rgba(129, 140, 248, 0.3), transparent 62%),
-    radial-gradient(520px 420px at 72% 46%, rgba(203, 213, 225, 0.55), transparent 60%),
-    radial-gradient(820px 640px at 62% 112%, rgba(216, 180, 254, 0.42), transparent 60%),
-    radial-gradient(560px 480px at 6% 82%, rgba(165, 180, 252, 0.3), transparent 60%);
+    radial-gradient(760px 520px at 38% -6%, rgba(255, 255, 255, 0.95), transparent 62%),
+    radial-gradient(640px 520px at 96% 8%, rgba(212, 212, 216, 0.55), transparent 62%),
+    radial-gradient(520px 420px at 72% 46%, rgba(228, 228, 231, 0.6), transparent 60%),
+    radial-gradient(820px 640px at 62% 112%, rgba(200, 200, 206, 0.45), transparent 60%);
 
-  --text-primary: #17151f;
-  --text-secondary: #4f4b5c;
-  --text-muted: #85818f;
+  --text-primary: #0a0a0b;
+  --text-secondary: #52525b;
+  --text-muted: #8a8a93;
   --text-inverse: #fafafa;
 
-  /* Accent: the same violet, a shade deeper for contrast on white */
-  --accent-primary: #7c3aed;
-  --accent-hover: #6d28d9;
-  --accent-text: #6d28d9;
+  /* Accent: black on white */
+  --accent-primary: #0a0a0b;
+  --accent-hover: #27272a;
+  --accent-text: #18181b;
   --accent-contrast: #ffffff;
-  --accent-soft: rgba(124, 58, 237, 0.1);
-  --accent-glow: rgba(124, 58, 237, 0.25);
-  --border-accent: rgba(124, 58, 237, 0.45);
-  --gradient-brand: linear-gradient(135deg, #9f7aea 0%, #7c3aed 50%, #5b21b6 100%);
-  --gradient-brand-hover: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 50%, #4c1d95 100%);
+  --accent-soft: rgba(0, 0, 0, 0.06);
+  --accent-glow: rgba(0, 0, 0, 0.18);
+  --border-accent: rgba(0, 0, 0, 0.32);
+  --gradient-brand: linear-gradient(180deg, #2a2a2e 0%, #0a0a0b 100%);
+  --gradient-brand-hover: linear-gradient(180deg, #3f3f46 0%, #18181b 100%);
   --brand-sheen: linear-gradient(135deg, #3a3a3e 0%, #8e8e95 50%, #1a1a1c 100%);
-  --hero-glow: radial-gradient(circle at center, rgba(124, 58, 237, 0.12) 0%, transparent 70%);
+  --hero-glow: radial-gradient(circle at center, rgba(0, 0, 0, 0.05) 0%, transparent 70%);
 
-  --border-primary: rgba(23, 21, 31, 0.08);
-  --border-secondary: rgba(23, 21, 31, 0.05);
+  --border-primary: rgba(0, 0, 0, 0.08);
+  --border-secondary: rgba(0, 0, 0, 0.05);
   --border-glass: rgba(255, 255, 255, 0.85);
-  --border-strong: rgba(23, 21, 31, 0.16);
+  --border-strong: rgba(0, 0, 0, 0.16);
 
-  --shadow-sm: 0 1px 2px rgba(30, 20, 60, 0.06);
-  --shadow-md: 0 8px 24px rgba(30, 20, 60, 0.08);
-  --shadow-lg: 0 24px 60px rgba(30, 20, 60, 0.14);
-  --shadow-glow: 0 6px 20px -6px rgba(124, 58, 237, 0.5);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.14);
+  --shadow-glow: 0 6px 20px -6px rgba(0, 0, 0, 0.35);
 
   --sidebar-bg: rgba(255, 255, 255, 0.5);
   color-scheme: light;

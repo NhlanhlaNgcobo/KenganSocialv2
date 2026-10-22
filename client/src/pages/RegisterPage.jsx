@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { authErrorMessage } from '../lib/auth-errors';
 import { COMPANY } from '../content/legal';
 import './Auth.css';
+import { KenganMark } from '../components/brand/KenganLogo';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -78,7 +79,7 @@ export default function RegisterPage() {
 
             <div className="auth-card animate-fade-in">
                 <div className="auth-card__header">
-                    <div className="auth-card__logo">K</div>
+                    <div className="auth-card__logo"><KenganMark size={44} /></div>
                     <h1>Create account</h1>
                     <p>Start managing your social media like a pro</p>
                 </div>

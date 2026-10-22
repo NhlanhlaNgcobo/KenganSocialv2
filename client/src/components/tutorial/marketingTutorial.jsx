@@ -2,7 +2,7 @@
 import { Globe, Image, Mic2, Sparkles, Type, Upload } from 'lucide-react';
 import { Bar, Cursor, In, Pop, Press, Tick, Typed, Window } from './scenes';
 
-const SWATCHES = ['#7C3AED', '#111827', '#F59E0B', '#F3F4F6'];
+const SWATCHES = ['#E4E4E7', '#18181B', '#F59E0B', '#71717A'];
 
 export const MARKETING_TUTORIAL = {
     id: 'marketing-v1',
@@ -42,7 +42,7 @@ export const MARKETING_TUTORIAL = {
                 <Window title="Marketing · Brand" wide>
                     <div className="gt-row" style={{ alignItems: 'stretch' }}>
                         <Pop d={0.2} className="gt-card" style={{ flex: '0 0 96px', alignItems: 'center', justifyContent: 'center' }}>
-                            <span className="gt-icon" style={{ background: 'var(--gradient-brand, #7c3aed)', width: 40, height: 40, borderRadius: 12 }}>
+                            <span className="gt-icon" style={{ background: 'var(--gradient-brand, #e4e4e7)', width: 40, height: 40, borderRadius: 12 }}>
                                 <Upload size={18} />
                             </span>
                             <span className="gt-label">Logo</span>
