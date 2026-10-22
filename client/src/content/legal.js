@@ -272,6 +272,11 @@ We may suspend or close accounts that break these rules and report illegal activ
 You confirm you have the rights needed for content you publish, including music, footage and images. Review AI-generated content before you publish it; we do not guarantee it is accurate or original.`,
         },
         {
+            id: 'website-media',
+            heading: 'Examples on our website',
+            content: `The example videos and images on our website, including the clips in our product walkthroughs, are made with ${COMPANY.product} from sample stock footage from Pexels (pexels.com), used under the Pexels License. The people shown are not ${COMPANY.product} customers and do not endorse ${COMPANY.product}. The examples show what the Platform does; your results depend on your own footage.`,
+        },
+        {
             id: 'billing',
             heading: 'Plans and payment',
             content: `We offer a free plan and paid plans. Prices and limits are shown at ${COMPANY.site}/pricing. Paid plans are billed in advance in South African Rand through Paystack, including VAT where applicable. Usage allowances reset each billing period and do not roll over.

@@ -1513,13 +1513,6 @@
   color: var(--text-muted);
 }
 
-.lp-reel__note {
-  margin-top: 26px;
-  text-align: center;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-}
-
 @keyframes lpFloat {
   0%,
   100% {

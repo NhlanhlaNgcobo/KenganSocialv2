@@ -3,7 +3,7 @@
 // service (for face framing) and network access to Pexels. Run from server/:
 //   npx tsx ../scripts/build-landing-media.mjs <workDir> ../client/public/landing
 // Pexels licence: free for commercial use, no attribution needed; people shown must not appear to
-// endorse KenganSocial (the landing page labels the footage as sample footage).
+// endorse KenganSocial (the Terms of Service, "Examples on our website", say so).
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';

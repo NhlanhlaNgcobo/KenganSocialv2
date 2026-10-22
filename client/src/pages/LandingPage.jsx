@@ -374,9 +374,6 @@ export default function LandingPage() {
                             </figure>
                         ))}
                     </div>
-                    <p className="lp-reel__note" data-reveal>
-                        Sample footage from Pexels; the people shown are not KenganSocial customers.
-                    </p>
                 </section>
 
                 <section className="lp-section container" id="integrations" aria-labelledby="integrations-title">
