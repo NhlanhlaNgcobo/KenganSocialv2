@@ -1,7 +1,7 @@
 /**
  * Marketing tab API: brand kit, brand voice, reference library. Server: /api/marketing.
  */
-import { apiClient } from './api';
+import { apiClient, apiFetch, API_URL, buildApiError } from './api';
 
 const PLAN_MESSAGES = {
     FEATURE_LOCKED: 'This uses AI, which is part of the Nano plan and up. Upgrade in Billing to unlock it.',
@@ -18,6 +18,21 @@ async function call(path, options) {
 }
 
 export const marketingApi = {
+    videoAdOptions: () => call('/marketing/video-ads/options'),
+    videoAds: () => call('/marketing/video-ads'),
+    videoAd: (id) => call(`/marketing/video-ads/${encodeURIComponent(id)}`),
+    createVideoAd: (form) => call('/marketing/video-ads', { method: 'POST', body: form }),
+    renderVideoAd: (id, body) => call(`/marketing/video-ads/${encodeURIComponent(id)}/render`, { method: 'POST', body }),
+    deleteVideoAd: (id) => call(`/marketing/video-ads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    async videoAdMedia(id, kind = 'video') {
+        const { auth } = await import('./firebase');
+        const token = await auth.currentUser?.getIdToken();
+        const response = await apiFetch(`${API_URL}/marketing/video-ads/${encodeURIComponent(id)}/media/${kind}`, {
+            headers: { Authorization: `Bearer ${token || ''}`, 'x-workspace-id': localStorage.getItem('kengan_current_workspace_id') || '' },
+        });
+        if (!response.ok) throw buildApiError(await response.json().catch(() => ({})), response.status);
+        return response.blob();
+    },
     brand: () => call('/marketing/brand'),
     saveBrand: (body) => call('/marketing/brand', { method: 'PUT', body }),
     importFromWebsite: (url) => call('/marketing/brand/import', { method: 'POST', body: { url } }),

@@ -16,6 +16,7 @@ import { sourceFromSite } from '../services/marketing/carousel-plan.js';
 import { inChromeQueue } from '../services/marketing/chrome-queue.js';
 import { fail, requireEditor, requireWorkspace, route } from '../services/marketing/http';
 import carouselRoutes from './marketing-carousels';
+import videoAdRoutes from './marketing-video-ads';
 
 /**
  * Marketing tab, phase 1: brand kit, brand voice and the reference image library.
@@ -52,6 +53,7 @@ const upload = multer({
 
 router.use(withWorkspace, requireWorkspace);
 router.use('/carousels', carouselRoutes);
+router.use('/video-ads', videoAdRoutes);
 
 const kitRef = (req: Request) => db.collection('workspaces').doc((req as any).workspaceId).collection('brandKit').doc('current');
 const refsCol = (req: Request) => db.collection('workspaces').doc((req as any).workspaceId).collection('brandReferences');

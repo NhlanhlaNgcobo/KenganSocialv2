@@ -11,6 +11,7 @@ import ReferenceLibrary from './ReferenceLibrary';
 import BrandPreview from './BrandPreview';
 import BusinessProfilePanel from './BusinessProfilePanel';
 import CarouselStudio from './CarouselStudio';
+import VideoAdStudio from './VideoAdStudio';
 import WebsiteSetup from './WebsiteSetup';
 import './Marketing.css';
 
@@ -23,6 +24,7 @@ const TABS = [
     { id: 'overview', label: 'Overview', icon: LayoutGrid },
     { id: 'brand', label: 'Brand', icon: Palette },
     { id: 'create', label: 'Create', icon: Wand2 },
+    { id: 'video-ads', label: 'Video Ads', icon: Megaphone },
     { id: 'competitors', label: 'Competitors', icon: Swords },
     { id: 'website', label: 'Website', icon: Globe },
     { id: 'ads', label: 'Ads', icon: Megaphone },
@@ -78,7 +80,7 @@ export default function MarketingPage() {
             <header className="page-head">
                 <div>
                     <h1>Marketing</h1>
-                    <p>Your brand in one place, and on-brand carousels made from it. Competitor research, website insights and ads are coming next.</p>
+                    <p>Your brand in one place. Create carousels and narrated product ads from your website or product photos.</p>
                 </div>
                 <button className="btn btn-secondary gt-open" onClick={tutorial.show}>
                     <GraduationCap size={16} /> How it works
@@ -120,6 +122,7 @@ export default function MarketingPage() {
             ) : null}
 
             {data && tab === 'create' ? <CarouselStudio kit={data.kit} initialSource={params.get('source') === 'website' || data.kit.website ? 'website' : 'topic'} /> : null}
+            {data && tab === 'video-ads' ? <VideoAdStudio kit={data.kit} /> : null}
 
             {data && COMING[tab] ? <ComingNext {...COMING[tab]} onBrand={() => go('brand')} brandScore={data.completeness.score} /> : null}
         </div>
@@ -182,6 +185,7 @@ function Overview({ data, go, onSetupDone, onMakeCarousels }) {
             <div className="marketing-cards">
                 {[
                     { id: 'create', icon: Wand2, title: 'Create carousels', text: 'On-brand slides from your website, a topic or text.', live: plan !== 'starter' },
+                    { id: 'video-ads', icon: Megaphone, title: 'Create video ads', text: 'Product photos or a website. Voiceover, music, and up to 25 seconds.', live: plan !== 'starter' },
                     { id: 'competitors', icon: Swords, title: 'Competitors', text: "See what's working for similar brands." },
                     { id: 'website', icon: Globe, title: 'Website insights', text: 'Speed, SEO and a top-5 fix list.' },
                     { id: 'ads', icon: BarChart3, title: 'Paid ads', text: 'Meta and TikTok results in one view.' },

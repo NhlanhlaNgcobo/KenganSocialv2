@@ -83,7 +83,7 @@ async function retryBrowserStart(step) {
  * @param {object} opts.music   chooseSoundtrack() result (dataUrl, beats)
  * @param {object} opts.sfx     getSfx() result
  */
-export async function renderLaunchVideo({ plan, source, format, music, sfx = {}, kind = 'launch', onProgress = () => {} }) {
+export async function renderLaunchVideo({ plan, source, format, music, sfx = {}, kind = 'launch', narration = null, captions = [], onProgress = () => {} }) {
     const serveUrl = await getBundle();
     const host = source.url ? new URL(source.url).hostname.replace(/^www\./, '') : '';
     const scenes =
@@ -106,6 +106,9 @@ export async function renderLaunchVideo({ plan, source, format, music, sfx = {},
         host,
         iconData: source.iconData || null,
         music: music?.dataUrl || null,
+        narration,
+        captions,
+        productPhotos: !!source.productPhotos,
         beats: music?.beats || [],
         sfx,
         shotAspect: SHOT_ASPECT[kind][format] || SHOT_ASPECT[kind].landscape,

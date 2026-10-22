@@ -8,6 +8,8 @@ import { CardScene, HookScene, OutroScene, ProofScene, RevealScene, ScreenScene 
 import { screenTimings } from './parts/Screen.jsx';
 import { SceneClock } from './parts/time.js';
 import { TutorialIntro, TutorialOutro, TutorialStep } from './parts/Tutorial.jsx';
+import { AdCaptions } from './parts/AdCaptions.jsx';
+import { ProductPhoto } from './parts/ProductPhoto.jsx';
 
 /**
  * Launch and tutorial videos. Scene structure follows /brag-slim
@@ -90,6 +92,7 @@ function layoutPlan(scenes, seed) {
 
 function SceneBody({ scene, index, props, durationFrames, layout }) {
     const shared = { scene, index, props, durationFrames, ...layout };
+    if (props.productPhotos && scene.screenshotData && scene.type !== 'outro') return <ProductPhoto {...shared} />;
     if (props.kind === 'tutorial') {
         if (scene.type === 'intro') return <TutorialIntro {...shared} />;
         if (scene.type === 'step') return <TutorialStep {...shared} />;
@@ -177,12 +180,13 @@ export const LaunchVideo = (props) => {
     });
     const total = cut;
     const layouts = layoutPlan(props.scenes, seed);
-    const musicLevel = tutorial ? 0.32 : 0.85;
+    const musicLevel = props.narration ? 0.3 : tutorial ? 0.32 : 0.85;
 
     return (
         <AbsoluteFill style={{ fontFamily: `"${familyFor(props.fontFamily)}", Inter, system-ui, sans-serif`, overflow: 'hidden' }}>
             <Backdrop palette={props.palette} intensity={tutorial ? 0.7 : 1} cuts={timeline.map((t) => t.cut)} grid />
             {props.music ? <Audio src={props.music} volume={(f) => interpolate(f, [0, 6, total - 6, total], [0, musicLevel, musicLevel, 0], clamp)} /> : null}
+            {props.narration ? <Audio src={props.narration} volume={1} /> : null}
             {soundCues(props, timeline, fps).map((c, i) => (
                 <Sequence key={`sfx-${i}`} from={c.frame} durationInFrames={Math.round(fps * 1.5)}>
                     <Audio src={props.sfx[c.name]} volume={c.volume} />
@@ -203,6 +207,7 @@ export const LaunchVideo = (props) => {
                 </Sequence>
             ))}
             {props.tone === 'chaotic' && !tutorial ? timeline.slice(1).map((t, i) => <Flash key={i} at={t.cut} />) : null}
+            {props.narration ? <AdCaptions captions={props.captions} /> : null}
         </AbsoluteFill>
     );
 };
