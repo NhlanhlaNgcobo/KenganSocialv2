@@ -115,7 +115,9 @@ async function publishMultiplexer(platform: string, workspaceId: string, options
             });
         case 'instagram':
             return publishToInstagram({
-                accessToken,
+                // The user token couldn't be renewed but the Page token still works (token cron sets
+                // userTokenExpired): publish with the Page token rather than fail until a reconnect.
+                accessToken: connRaw.userTokenExpired && connRaw.pageAccessToken ? decrypt(connRaw.pageAccessToken) : accessToken,
                 igUserId: connRaw.igUserId || connRaw.accountId, // Depends on connection logic
                 videoUrl: options.mediaUrl,
                 caption: options.caption,
