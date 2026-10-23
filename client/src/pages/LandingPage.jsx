@@ -192,10 +192,10 @@ function HeroDrop({ user }) {
  * and on wide screens real clips in tilted phones drifting at the sides with small status badges.
  */
 const SIDE_PHONES = [
-    { side: 'left', name: 'clip-karaoke', badge: 'Face tracked', y: 60, tilt: -8 },
-    { side: 'left', name: 'clip-split', badge: 'Score 94', y: 360, tilt: 5 },
-    { side: 'right', name: 'clip-track', badge: 'Captions on', y: 40, tilt: 7 },
-    { side: 'right', name: 'clip-neon', badge: 'Scheduled 18:00', y: 340, tilt: -5 },
+    { side: 'left', name: 'clip-karaoke', badge: 'Face tracked', y: 150, tilt: -8 },
+    { side: 'left', name: 'clip-split', badge: 'Score 94', y: 440, tilt: 5 },
+    { side: 'right', name: 'clip-track', badge: 'Captions on', y: 140, tilt: 7 },
+    { side: 'right', name: 'clip-neon', badge: 'Scheduled 18:00', y: 430, tilt: -5 },
 ];
 
 function HeroBackdrop() {

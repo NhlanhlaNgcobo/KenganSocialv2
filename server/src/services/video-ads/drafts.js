@@ -1,47 +1,57 @@
-import sharp from 'sharp';
-import { inspectWebsite } from '../brag/inspect.js';
-import { planVideo } from '../brag/plan.js';
-import { inChromeQueue } from '../marketing/chrome-queue.js';
-import { clean, fitScenes } from './validation.js';
+import { productImage } from './cutout.js';
+import { maxWords, wordCount } from './validation.js';
 
-export async function prepareDraft(input, files, kit = {}, dependencies = {}) {
-    const inspect = dependencies.inspect || inspectWebsite;
-    const planner = dependencies.plan || planVideo;
-    const source = input.url ? await inChromeQueue(() => inspect(input.url, input.format)) : {
-        name: input.name, title: input.name, siteName: input.name, description: input.description,
-        headings: [], paragraphs: [input.description], ctas: [], screenshots: [], shotElements: [], colors: {},
+/**
+ * A product ad draft: the photos prepared for the 3D scene, the colours and a starting
+ * voiceover script built from the creator's own words. No AI call and no website fetch,
+ * so making a draft is instant and free; the creator edits the script before rendering.
+ */
+
+/** Perceived lightness 0..1 of a #rrggbb colour; 0.5 for anything else. */
+function lightness(color) {
+    const m = String(color || '').match(/^#([0-9a-f]{6})$/i);
+    if (!m) return 0.5;
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
+
+/** Name and tagline, the selling points, the offer and the call to action, trimmed to fit the ad. */
+export function draftScript(input) {
+    const opening = input.tagline ? [sentence(input.name), sentence(input.tagline)] : [sentence(`Meet ${input.name}`)];
+    const closing = [input.offer, input.cta].filter(Boolean).map(sentence);
+    const points = input.points.map(sentence);
+    const limit = Math.floor(maxWords(input.duration) * 0.85);
+    // Drop selling points from the end until it fits, then the tagline.
+    while (points.length && wordCount([...opening, ...points, ...closing].join(' ')) > limit) points.pop();
+    if (wordCount([...opening, ...closing].join(' ')) > limit) opening.splice(1);
+    return [...opening, ...points, ...closing].join(' ');
+}
+
+function palette(kit = {}, accent) {
+    const colors = kit.colors || {};
+    const bg = colors.background || '#0d0d10';
+    const dark = lightness(bg) < 0.55;
+    const brand = colors.primary || colors.accent || accent || (dark ? '#dcdce2' : '#1c1c22');
+    return {
+        bg,
+        fg: colors.text || (dark ? '#f6f6f8' : '#111114'),
+        accent: brand,
+        accentText: lightness(brand) > 0.6 ? '#0c0c0e' : '#ffffff',
     };
-    const offerings = (source.headings || []).map(h => clean(h, 120)).filter(Boolean).slice(0, 8);
-    if (input.name) source.title = source.siteName = source.name = input.name;
-    if (input.description) {
-        source.description = input.description;
-        // A creator-selected offering must not acquire claims from unrelated page sections,
-        // including when Brag falls back to deterministic copy without an AI provider.
-        source.paragraphs = [input.description];
-        source.headings = [];
-        source.sections = [];
-    }
-    // Actual product photos replace website screenshots when supplied by the creator.
-    if (files.length) {
-        source.screenshots = await Promise.all(files.map(async file => {
-            const image = await sharp(file.buffer, { limitInputPixels: 40000000 }).rotate().resize(1600, 1600, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
-            return `data:image/jpeg;base64,${image.toString('base64')}`;
-        }));
-        source.shotElements = [];
-        source.productPhotos = true;
-    }
-    source.fonts = kit.fonts || source.fonts;
-    if (kit.colors?.primary || kit.colors?.background) source.colors = {
-        ...source.colors, background: kit.colors.background || source.colors?.background,
-        text: kit.colors.text || source.colors?.text, accent: kit.colors.primary || kit.colors.accent || source.colors?.accent,
+}
+
+export async function prepareDraft(input, files, kit = {}) {
+    const photos = await Promise.all(files.map((file) => productImage(file.buffer)));
+    const accent = photos.find((p) => p.accent)?.accent || null;
+    return {
+        input,
+        photos: photos.map(({ src, cutout, width, height }) => ({ src, cutout, aspect: width / height })),
+        palette: palette(kit, accent),
+        fontFamily: (kit.fonts?.heading || kit.fonts?.body || 'Inter').split(',')[0].replace(/["']/g, '').trim() || 'Inter',
+        script: draftScript(input),
+        name: input.name,
+        description: input.tagline,
     };
-    const result = await planner(source, { tone: 'polished', format: input.format, duration: input.duration, focus: input.description || source.description || '' });
-    const scenes = fitScenes(result.plan.scenes, input.duration);
-    if (source.screenshots?.length) scenes.forEach((scene, i) => { if (i > 0 && i < scenes.length - 1) scene.screenshot = (i - 1) % source.screenshots.length; });
-    const plan = { ...result.plan, scenes };
-    const maxWords = Math.floor(input.duration * 1.65);
-    const cta = clean(scenes.at(-1).cta || 'Learn more', 50);
-    const words = scenes.slice(0, -1).map(s => clean(s.headline, 100)).join('. ').split(/\s+/);
-    const script = `${words.slice(0, Math.max(5, maxWords - cta.split(/\s+/).length)).join(' ')}. ${cta}.`.replace(/\.{2,}/g, '.');
-    return { input, source, plan, script, name: clean(plan.productName, 80), description: clean(source.description, 1500), offerings };
 }

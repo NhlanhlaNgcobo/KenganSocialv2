@@ -4,9 +4,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db } from '../utils/firestore';
-import { planRateLimit, requirePlan, consumeUsage, refundUsage } from '../middleware/planGate';
+import { planRateLimit, requirePlan } from '../middleware/planGate';
 import { route, requireEditor, fail } from '../services/marketing/http';
-import { normalizeSource, normalizeRender, assertWorkspaceAd, DURATIONS, FORMATS, MOODS } from '../services/video-ads/validation.js';
+import { normalizeSource, normalizeRender, assertWorkspaceAd, DURATIONS, FORMATS, maxWords } from '../services/video-ads/validation.js';
+import { publicCatalog } from '../services/video-ads/catalog.js';
 import { prepareDraft } from '../services/video-ads/drafts.js';
 import { jobDirectory, saveJson } from '../services/video-ads/media.js';
 import { listVoices, providerStatus } from '../services/video-ads/providers.js';
@@ -14,7 +15,7 @@ import { ads, startVideoAdWorker, tickVideoAds } from '../services/video-ads/job
 import { billingContext } from '../services/video-ads/billing';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { files: 4, fileSize: 8 * 1024 * 1024, fields: 8, fieldSize: 4000 }, fileFilter: (_req, file, cb) => {
+const upload = multer({ storage: multer.memoryStorage(), limits: { files: 4, fileSize: 8 * 1024 * 1024, fields: 12, fieldSize: 4000 }, fileFilter: (_req, file, cb) => {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) return cb(fail(400, 'Upload JPG, PNG, or WebP images.'));
     cb(null, true);
 } }).array('images', 4);
@@ -28,8 +29,8 @@ async function owned(req: any) {
     return { ref, data: doc.data()! };
 }
 function publicAd(id: string, data: any) {
-    const { name, description, offerings, script, duration, format, status, stage, progress, error, createdAt, result, scenes } = data;
-    return { id, name, description, offerings, script, duration, format, status, stage, progress, error: error || null, createdAt, result: result || null, scenes };
+    const { name, description, details, preset, category, photoCount, cutouts, script, duration, format, status, stage, progress, error, createdAt, result } = data;
+    return { id, name, description, details: details || null, preset, category, photoCount, cutouts: cutouts || 0, script, duration, format, maxWords: maxWords(duration), status, stage, progress, error: error || null, createdAt, result: result || null };
 }
 router.use(planRateLimit());
 router.get('/options', route(async (_req, res) => {
@@ -38,7 +39,7 @@ router.get('/options', route(async (_req, res) => {
     if (configured.voice) {
         try { voices = await listVoices(); } catch (error: any) { voiceError = error.publicMessage || 'Could not load voices.'; }
     }
-    res.json({ durations: DURATIONS, formats: FORMATS, moods: MOODS, configured, voices, voiceError });
+    res.json({ durations: DURATIONS, formats: FORMATS, ...publicCatalog(), configured, voices, voiceError });
 }));
 router.get('/', route(async (req: any, res) => {
     const docs = await ads().where('workspaceId', '==', req.workspaceId).limit(100).get();
@@ -47,19 +48,17 @@ router.get('/', route(async (req: any, res) => {
 router.post('/', requireEditor, requirePlan('nano'), receive, route(async (req: any, res) => {
     const files = req.files || [];
     const input = normalizeSource(req.body, files.length);
-    const usage = await consumeUsage(req.workspaceId, req.plan, 'aiCalls');
-    if (!usage.ok) { res.status(usage.status).json(usage.body); return; }
+    // Drafts come from the creator's own details and photos: no AI credit is used.
     const kit = (await db.collection('workspaces').doc(req.workspaceId).collection('brandKit').doc('current').get()).data() || {};
-    let draft;
-    try { draft = await prepareDraft(input, files, kit); }
-    catch (error) { await refundUsage(req.workspaceId, req.plan, 'aiCalls'); throw error; }
+    const draft = await prepareDraft(input, files, kit);
     const id = randomUUID();
     const dir = jobDirectory(id);
     await saveJson(dir, 'draft.json', draft);
     const data = {
-        workspaceId: req.workspaceId, userId: req.uid, name: draft.name, description: draft.description, offerings: draft.offerings,
-        script: draft.script, duration: input.duration, format: input.format, status: 'draft', stage: 'Review your script', progress: 0,
-        scenes: draft.plan.scenes.map((s: any) => ({ headline: s.headline, duration: s.duration, type: s.type })), createdAt: Date.now(), updatedAt: Date.now(), expiresAt: Date.now() + 30 * 86400000,
+        workspaceId: req.workspaceId, userId: req.uid, name: draft.name, description: draft.description,
+        details: { tagline: input.tagline, points: input.points, offer: input.offer, cta: input.cta, website: input.website },
+        preset: input.preset, category: input.category, photoCount: files.length, cutouts: draft.photos.filter((p: any) => p.cutout).length,
+        script: draft.script, duration: input.duration, format: input.format, status: 'draft', stage: 'Review your script', progress: 0, createdAt: Date.now(), updatedAt: Date.now(), expiresAt: Date.now() + 30 * 86400000,
     };
     try { await ads().doc(id).set(data); }
     catch (error) { await fs.rm(dir, { recursive: true, force: true }); throw error; }
@@ -70,12 +69,12 @@ router.post('/:id/render', requireEditor, route(async (req: any, res) => {
     const { ref, data } = await owned(req);
     const settings = normalizeRender(req.body, data);
     const configured = providerStatus();
-    if (!configured.voice || (settings.music && !configured.music)) throw fail(503, 'The selected audio providers are not configured.');
+    if ((settings.voiceover && !configured.voice) || (settings.music && !configured.music)) throw fail(503, 'The selected audio providers are not configured.');
     const result = await db.runTransaction(async tx => {
         const current = (await tx.get(ref)).data()!;
         if (['queued', 'processing', 'completed'].includes(current.status)) return current;
         if (current.status !== 'draft') throw fail(409, 'Create a new draft to try this ad again.');
-        const update = { status: 'queued', stage: 'Queued', progress: 0, settings, script: settings.script, billing: billingContext(req.workspaceId, req.params.id, req.plan), updatedAt: Date.now() };
+        const update = { status: 'queued', stage: 'Queued', progress: 0, settings, script: settings.script || current.script, billing: billingContext(req.workspaceId, req.params.id, req.plan), updatedAt: Date.now() };
         tx.update(ref, update);
         return { ...current, ...update };
     });

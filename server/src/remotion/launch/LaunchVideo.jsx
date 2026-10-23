@@ -56,7 +56,8 @@ function loadGoogleFont(name, ms) {
     });
 }
 
-function useFonts(family) {
+/** Holds rendering until the display face, Inter and the brand font are loaded (also used by ProductAd). */
+export function useFonts(family) {
     const [handle] = useState(() => delayRender(`fonts ${family}`, { timeoutInMilliseconds: 25000 }));
     useEffect(() => {
         const name = familyFor(family);

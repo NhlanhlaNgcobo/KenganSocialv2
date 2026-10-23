@@ -94,7 +94,7 @@ export async function createLaunchVideo(request, { onStage = () => {}, onProgres
     let music = null;
     if (request.music) {
         try {
-            music = await chooseSoundtrack({ mood: request.mood, length: total, trackId: request.musicTrackId });
+            music = await chooseSoundtrack({ mood: request.mood, length: total, trackId: request.musicTrackId, purpose: request.kind });
         } catch (error) {
             console.warn('[Brag] Soundtrack failed:', error.message);
         }

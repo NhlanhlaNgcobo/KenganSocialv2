@@ -185,7 +185,7 @@ function Overview({ data, go, onSetupDone, onMakeCarousels }) {
             <div className="marketing-cards">
                 {[
                     { id: 'create', icon: Wand2, title: 'Create carousels', text: 'On-brand slides from your website, a topic or text.', live: plan !== 'starter' },
-                    { id: 'video-ads', icon: Megaphone, title: 'Create video ads', text: 'Product photos or a website. Voiceover, music, and up to 25 seconds.', live: plan !== 'starter' },
+                    { id: 'video-ads', icon: Megaphone, title: 'Create video ads', text: 'Your product in 3D from your photos. Voiceover, music that fits, 10 to 25 seconds.', live: plan !== 'starter' },
                     { id: 'competitors', icon: Swords, title: 'Competitors', text: "See what's working for similar brands." },
                     { id: 'website', icon: Globe, title: 'Website insights', text: 'Speed, SEO and a top-5 fix list.' },
                     { id: 'ads', icon: BarChart3, title: 'Paid ads', text: 'Meta and TikTok results in one view.' },

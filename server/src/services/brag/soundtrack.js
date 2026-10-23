@@ -4,12 +4,14 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { FFMPEG, run } from '../ffmpeg-runner.js';
 import { getSong, getSongFile, searchInstrumentals } from '../songs-library.js';
+import { startMusic, waitForMusic } from '../video-ads/providers.js';
 
 /**
  * Soundtracks for launch and tutorial videos.
  *
- * Ads need energy, not lyrics: tracks come from ccMixter instrumentals (CC BY) picked by mood.
- * Each candidate is analysed (tempo, beat grid, loudness curve), the most energetic stretch
+ * Ads need energy, not lyrics. When TREBLO_API_KEY is set, Treblo composes an instrumental for
+ * the mood (a cinematic video gets a trailer score); otherwise, or if Treblo fails, tracks come
+ * from ccMixter instrumentals (CC BY) picked by mood. Each candidate is analysed (tempo, beat grid, loudness curve), the most energetic stretch
  * that fits the video is cut out starting on a beat (ideally where the music "drops"),
  * loudness-normalised and faded. The beat times go back to the planner so cuts land on the beat.
  */
@@ -159,6 +161,11 @@ export function analyseSamples(samples) {
     return { version: ANALYSIS_VERSION, bpm: Math.round((60 / period) * 10) / 10, period, clarity, beats, loud, busy, duration };
 }
 
+/** Beat times (seconds) of an audio file, so a product ad's angle changes land on the beat. */
+export async function beatsOf(file) {
+    return analyseSamples(await decode(file)).beats;
+}
+
 async function analyseTrack(track) {
     const file = await getSongFile(track);
     const cacheFile = path.join(CACHE_DIR, `${track.id}.analysis.json`);
@@ -247,13 +254,34 @@ async function candidates(mood, minSeconds, exclude) {
     return [...shuffle(list.filter(fits)), ...shuffle(list.filter((t) => !fits(t)))];
 }
 
-/** Cuts, normalises and fades the chosen stretch; returns it as an mp3 data URL. */
-async function prepare(file, start, length) {
+/**
+ * A soundtrack composed for this video by Treblo, analysed like a library track.
+ * Null when Treblo isn't configured or fails, so the caller falls back to the library.
+ */
+async function composedTrack(mood, length, purpose) {
+    if (!process.env.TREBLO_API_KEY) return null;
+    fs.mkdirSync(WORK_DIR, { recursive: true });
+    const file = path.join(WORK_DIR, `treblo_${uuidv4()}.mp3`);
+    try {
+        const taskId = await startMusic(mood, fetch, { purpose, seconds: length + 4 });
+        fs.writeFileSync(file, await waitForMusic(taskId, { attempts: 40 }));
+        const analysis = analyseSamples(await decode(file));
+        return { track: { id: null, title: 'Original soundtrack', credit: null }, file, analysis, segment: bestSegment(analysis, length), temporary: true };
+    } catch (error) {
+        fs.rm(file, { force: true }, () => {});
+        console.warn('[Soundtrack] Treblo failed, using the library:', error.message);
+        return null;
+    }
+}
+
+/** Cuts, normalises and fades the chosen stretch (looping a track shorter than the video); returns it as an mp3 data URL. */
+async function prepare(file, start, length, loop = false) {
     const out = path.join(WORK_DIR, `music_${uuidv4()}.mp3`);
     const fadeOut = Math.min(1.4, length * 0.15);
     try {
         await run(FFMPEG, [
             '-hide_banner', '-loglevel', 'error', '-y',
+            ...(loop ? ['-stream_loop', '-1'] : []),
             '-ss', start.toFixed(3), '-i', file, '-t', (length + 0.2).toFixed(3),
             '-af', `loudnorm=I=-14:TP=-1.5:LRA=11,afade=t=in:d=0.12,afade=t=out:st=${(length - fadeOut).toFixed(2)}:d=${fadeOut.toFixed(2)}`,
             '-ac', '2', '-ar', '44100', '-b:a', '192k', out,
@@ -271,10 +299,11 @@ async function prepare(file, start, length) {
  * @param {string} opts.mood       MOODS id
  * @param {number} opts.length     seconds of music needed
  * @param {string} [opts.trackId]  a song the user picked (analysed the same way)
+ * @param {'launch'|'tutorial'} [opts.purpose]  steers the Treblo prompt
  * @returns {Promise<null | { dataUrl, title, trackId, credit, bpm, start, beats: number[], mood }>}
  *          beats are relative to the start of the soundtrack
  */
-export async function chooseSoundtrack({ mood = 'upbeat', length, trackId = '' }) {
+export async function chooseSoundtrack({ mood = 'upbeat', length, trackId = '', purpose = 'launch' }) {
     const moodId = MOODS[mood] ? mood : 'upbeat';
     const needed = length + 4;
     const started = Date.now();
@@ -287,6 +316,8 @@ export async function chooseSoundtrack({ mood = 'upbeat', length, trackId = '' }
             pick = { track, file, analysis, segment: bestSegment(analysis, length) };
         }
     }
+
+    if (!pick && !trackId) pick = await composedTrack(moodId, length, purpose);
 
     if (!pick) {
         const pool = await candidates(moodId, needed, []);
@@ -312,8 +343,14 @@ export async function chooseSoundtrack({ mood = 'upbeat', length, trackId = '' }
     const { track, file, analysis, segment } = pick;
     const start = Math.max(0, segment.start === -Infinity ? 0 : segment.start);
     const beats = analysis.beats.filter((t) => t >= start && t <= start + length).map((t) => Math.round((t - start) * 1000) / 1000);
+    let dataUrl;
+    try {
+        dataUrl = await prepare(file, start, length, start + length > analysis.duration);
+    } finally {
+        if (pick.temporary) fs.rm(file, { force: true }, () => {});
+    }
     return {
-        dataUrl: await prepare(file, start, length),
+        dataUrl,
         title: track.title,
         trackId: track.id,
         credit: track.credit,

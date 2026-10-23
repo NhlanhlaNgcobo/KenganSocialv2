@@ -1,57 +1,75 @@
-export const DURATIONS = [15, 20, 25];
+import { AD_MOODS, CATEGORIES, PRESETS } from './catalog.js';
+
+export const DURATIONS = [10, 15, 20, 25];
 export const FORMATS = ['vertical', 'square', 'landscape'];
-export const MOODS = ['upbeat', 'calm', 'cinematic', 'playful', 'luxury'];
+export const MOODS = ['auto', ...Object.keys(AD_MOODS)];
 export const problem = (status, message) => Object.assign(new Error(message), { status, publicMessage: message });
 export const clean = (value, max = 500) => typeof value === 'string' ? value.replace(/[\u0000-\u001f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
 export const wordCount = (text) => String(text || '').trim().split(/\s+/).filter(Boolean).length;
+/** Narration has to finish before the ad does: about two words a second. */
+export const maxWords = (seconds) => Math.floor(seconds * 2);
 
 export function assertWorkspaceAd(data, workspaceId) {
     if (!workspaceId || !data || data.workspaceId !== workspaceId) throw problem(404, 'Ad not found.');
     return data;
 }
 
-export function normalizeSource(body = {}, imageCount = 0) {
-    const url = clean(body.url, 1000);
-    if (url) {
-        let parsed;
-        try { parsed = new URL(url); } catch { throw problem(400, 'Enter a complete website URL, including https://.'); }
-        if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password) throw problem(400, 'Use a public http or https URL without credentials.');
+/** Selling points arrive as a JSON array or one per line (multipart forms carry strings only). */
+function listOf(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string' || !value.trim()) return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [value];
+    } catch {
+        return value.split(/\n+/);
     }
-    const name = clean(body.name, 80);
-    const description = clean(body.description, 1500);
-    if (!url && !imageCount) throw problem(400, 'Upload product images or enter a website URL.');
-    if (!url && (!name || !description)) throw problem(400, 'Add a product name and description for your images.');
-    const duration = Number(body.duration || 20);
+}
+
+/** A product ad's details. The product photos are required: they are what the 3D scene shows. */
+export function normalizeSource(body = {}, imageCount = 0) {
+    if (!imageCount) throw problem(400, 'Upload at least one product photo.');
+    const name = clean(body.name, 60);
+    if (!name) throw problem(400, 'Add the product or service name.');
+    const duration = Number(body.duration || 15);
     const format = body.format || 'vertical';
-    if (!DURATIONS.includes(duration)) throw problem(400, 'Choose 15, 20, or 25 seconds.');
+    const preset = body.preset || 'turntable';
+    const category = body.category || 'retail';
+    if (!DURATIONS.includes(duration)) throw problem(400, `Choose ${DURATIONS.slice(0, -1).join(', ')} or ${DURATIONS.at(-1)} seconds.`);
     if (!FORMATS.includes(format)) throw problem(400, 'Choose a supported video format.');
-    return { url, name, description, duration, format };
+    if (!PRESETS[preset]) throw problem(400, 'Choose one of the 3D styles.');
+    if (!CATEGORIES[category]) throw problem(400, 'Choose what you are advertising.');
+    return {
+        name,
+        tagline: clean(body.tagline, 90),
+        points: listOf(body.points).map((p) => clean(p, 48)).filter(Boolean).slice(0, 3),
+        offer: clean(body.offer, 40),
+        cta: clean(body.cta, 30) || 'Shop now',
+        website: clean(body.website, 60).replace(/^https?:\/\//i, '').replace(/\/$/, ''),
+        category,
+        preset,
+        duration,
+        format,
+    };
 }
 
 export function normalizeRender(body, draft) {
-    const script = clean(body.script, 1000);
-    const maxWords = Math.floor(draft.duration * 2);
-    if (!script || wordCount(script) > maxWords) throw problem(400, `Use a narration script of 1–${maxWords} words for this ad.`);
-    const voiceId = clean(body.voiceId, 100);
-    if (!/^[a-zA-Z0-9_-]{10,100}$/.test(voiceId)) throw problem(400, 'Select a voice.');
-    const mood = body.mood || 'upbeat';
+    // Voiceover is optional: without it the ad is music (and sound effects) only.
+    const voiceover = body.voiceover !== false;
+    let script = '';
+    let voiceId = '';
+    if (voiceover) {
+        script = clean(body.script, 1000);
+        const limit = maxWords(draft.duration);
+        if (!script || wordCount(script) > limit) throw problem(400, `Use a narration script of 1–${limit} words for this ad.`);
+        voiceId = clean(body.voiceId, 100);
+        if (!/^[a-zA-Z0-9_-]{10,100}$/.test(voiceId)) throw problem(400, 'Select a voice.');
+    }
+    const mood = body.mood || 'auto';
     if (!MOODS.includes(mood)) throw problem(400, 'Choose a supported music mood.');
+    if (!voiceover && body.music === false && body.sfx === false) throw problem(400, 'Turn on music, sound effects or a voiceover so the ad has sound.');
     if (body.confirmed !== true) throw problem(400, 'Review and confirm the product claims before generating.');
-    return { script, voiceId, mood, music: body.music !== false, captions: body.captions !== false };
-}
-
-export function fitScenes(scenes, seconds) {
-    if (!DURATIONS.includes(seconds) || !Array.isArray(scenes) || scenes.length < 2) throw problem(400, 'Invalid ad storyboard.');
-    const selected = scenes.length > 4 ? [scenes[0], ...scenes.slice(1, 3), scenes.at(-1)] : scenes;
-    const frames = seconds * 30;
-    const weights = selected.map((s) => Math.max(1, Math.min(6, Number(s.duration) || 3)));
-    const sum = weights.reduce((a, b) => a + b, 0);
-    let remaining = frames;
-    return selected.map((s, i) => {
-        const count = i === selected.length - 1 ? remaining : Math.floor(frames * weights[i] / sum);
-        remaining -= count;
-        return { ...s, duration: count / 30, headline: clean(s.headline, 100), subline: '', points: [], stat: null };
-    });
+    return { voiceover, script, voiceId, mood, music: body.music !== false, captions: voiceover && body.captions !== false, sfx: body.sfx !== false };
 }
 
 export function captionsFromAlignment(alignment) {

@@ -24,7 +24,8 @@ export function billingContext(workspaceId: string, id: string, plan: string) {
 }
 async function ready() {
     if (redis.status === 'ready') return;
-    if (redis.status === 'wait') void redis.connect().catch(() => {});
+    // 'end': the dev client gave up after Redis was unreachable once; try again rather than failing every render.
+    if (redis.status === 'wait' || redis.status === 'end') void redis.connect().catch(() => {});
     await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => { redis.off('ready', onReady); reject(problem(503, 'Render allowances are temporarily unavailable. Try again later.')); }, 5000);
         function onReady() { clearTimeout(timer); resolve(); }

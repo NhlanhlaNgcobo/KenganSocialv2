@@ -1,23 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeSource, normalizeRender, fitScenes, captionsFromAlignment, assertWorkspaceAd } from '../../src/services/video-ads/validation.js';
+import { normalizeSource, normalizeRender, captionsFromAlignment, assertWorkspaceAd, maxWords, wordCount } from '../../src/services/video-ads/validation.js';
+import { draftScript } from '../../src/services/video-ads/drafts.js';
+import { resolveMood } from '../../src/services/video-ads/catalog.js';
 import { jobDirectory } from '../../src/services/video-ads/media.js';
-import { createSpeech, startMusic, waitForMusic } from '../../src/services/video-ads/providers.js';
+import { createSpeech, startMusic, waitForMusic, musicPrompt } from '../../src/services/video-ads/providers.js';
 
-test('source validation rejects unsafe schemes, credentials, unsupported duration and missing sources', () => {
-    for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'https://user:pass@example.com']) assert.throws(() => normalizeSource({ url }));
-    assert.throws(() => normalizeSource({ url: 'https://example.com', duration: 26 }));
-    assert.throws(() => normalizeSource({}));
-    assert.throws(() => normalizeSource({ name: 'Product' }, 1));
-    assert.equal(normalizeSource({ name: 'Product', description: 'A real product' }, 1).duration, 20);
+test('product ad details need photos and a name, and only offer supported choices', () => {
+    assert.throws(() => normalizeSource({ name: 'Bottle' }, 0), /photo/);
+    assert.throws(() => normalizeSource({}, 1), /name/);
+    for (const bad of [{ duration: 26 }, { preset: 'spinny' }, { category: 'weapons' }, { format: 'portrait' }]) assert.throws(() => normalizeSource({ name: 'Bottle', ...bad }, 1));
+    const input = normalizeSource({ name: '<b>Bottle</b>', points: JSON.stringify(['One', '', 'Two', 'Three', 'Four']), website: 'https://shop.example.com/', duration: 10 }, 1);
+    assert.equal(input.name, 'b Bottle /b');
+    assert.deepEqual(input.points, ['One', 'Two', 'Three']);
+    assert.equal(input.website, 'shop.example.com');
+    assert.equal(input.cta, 'Shop now');
+    assert.deepEqual(normalizeSource({ name: 'B', points: 'Fast\nLight' }, 1).points, ['Fast', 'Light']);
 });
-test('every supported duration fits exactly into its frame budget even with oversized storyboards', () => {
-    for (const seconds of [15,20,25]) for (const count of [2,4,8]) {
-        const scenes = fitScenes(Array.from({ length: count }, (_, i) => ({ headline: `Scene ${i}`, duration: 9, type: i === count-1 ? 'outro' : 'feature' })), seconds);
-        assert.equal(scenes.reduce((sum,s) => sum + Math.round(s.duration * 30),0), seconds * 30);
-        assert.equal(scenes.at(-1).type, 'outro');
-        assert.ok(scenes.length <= 4);
+test('the starting script fits every length by dropping selling points first', () => {
+    const base = { name: 'Everyday Bottle', tagline: 'Cold for 24 hours.', points: ['Leak-proof lid that never drips', 'Made from recycled steel', 'Fits every cup holder'], offer: '20% off this week', cta: 'Shop now' };
+    for (const duration of [10, 15, 20, 25]) {
+        const script = draftScript({ ...base, duration });
+        assert.ok(wordCount(script) <= maxWords(duration), script);
+        assert.match(script, /Shop now\.$/);
     }
+    assert.match(draftScript({ ...base, duration: 25 }), /recycled steel/);
+});
+test('Auto music follows the product type and named moods reach the Treblo prompt', () => {
+    assert.equal(resolveMood('auto', 'fitness'), 'energetic');
+    assert.equal(resolveMood('auto', 'professional'), 'corporate');
+    assert.equal(resolveMood('cinematic', 'fitness'), 'cinematic');
+    assert.match(musicPrompt('energetic', 'ad', 'a gym and fitness brand'), /workout.*gym and fitness brand/);
 });
 test('render requires reviewed claims, a voice and a bounded script', () => {
     const input = { voiceId: 'testvoice12345', script: 'A short ad.', confirmed: true };
@@ -25,6 +38,8 @@ test('render requires reviewed claims, a voice and a bounded script', () => {
     assert.throws(() => normalizeRender({ ...input, confirmed: false }, { duration: 15 }));
     assert.throws(() => normalizeRender({ ...input, script: 'word '.repeat(31) }, { duration: 15 }));
     assert.throws(() => normalizeRender({ ...input, voiceId: '../secret' }, { duration: 15 }));
+    const silent = normalizeRender({ voiceover: false, confirmed: true }, { duration: 15 });
+    assert.deepEqual([silent.voiceover, silent.script, silent.voiceId, silent.captions], [false, '', '', false]);
 });
 test('workspace ownership and file path boundaries deny cross-tenant or traversal access', () => {
     assert.throws(() => assertWorkspaceAd({ workspaceId: 'other' }, 'mine'), { status: 404 });

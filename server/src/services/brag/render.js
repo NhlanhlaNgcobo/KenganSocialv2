@@ -15,7 +15,8 @@ const RENDER_DIR = path.join(os.tmpdir(), 'kengan-renders');
 if (!fs.existsSync(RENDER_DIR)) fs.mkdirSync(RENDER_DIR, { recursive: true });
 
 let bundlePromise = null;
-function getBundle() {
+/** One Remotion bundle for launch videos, tutorials and product ads. */
+export function getBundle() {
     if (!bundlePromise) {
         bundlePromise = bundle({ entryPoint: ENTRY }).catch((error) => {
             bundlePromise = null;
@@ -67,7 +68,7 @@ const hasBrandSource = (source) =>
 // Chrome Headless Shell sometimes takes longer than Remotion's fixed 25 s to start (a cold start,
 // or antivirus scanning the browser on Windows); one more try almost always works.
 const BROWSER_START = /Timed out after \d+ ms while trying to connect to the browser|Failed to launch the browser process/i;
-async function retryBrowserStart(step) {
+export async function retryBrowserStart(step) {
     try {
         return await step();
     } catch (error) {

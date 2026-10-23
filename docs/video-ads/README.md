@@ -1,8 +1,13 @@
 # Marketing → Video Ads
 
-Creators upload up to four product photos or enter a public website URL, review the extracted offering and Brag storyboard, edit narration, choose an ElevenLabs voice and Treblo music mood, then render a 15-, 20-, or 25-second MP4. Vertical, square, and landscape exports are supported. Captions use ElevenLabs character alignment. Product photos use a dedicated product presentation rather than a browser mockup.
+Creators upload one to four product photos (front, side, back, detail), enter the name, tagline, up to three selling points, an offer, button text and website, pick what they advertise and a 3D style, then render a 10-, 15-, 20- or 25-second MP4. Vertical, square and landscape exports are supported.
 
-The existing Brag inspection/planning/rendering code is reused. Website text provides a deterministic fallback when no existing AI planning provider is configured. Creator-supplied descriptions narrow the offering so unrelated website sections cannot override it. Review extracted claims before rendering.
+- **3D styles** (`services/video-ads/catalog.js`, rendered by `remotion/launch/ProductAd.jsx`): 360° spin, Orbit & zoom, Floating hero, Dark reveal, Fast showcase. Each photo becomes an angle; angle changes land on the music's beat.
+- **No AI call for drafts.** The starting voiceover script is built from the creator's own details (`draftScript`) and edited before rendering. Drafts use no AI credit and fetch no website.
+- **Cutouts** (`cutout.js`): a product on a plain backdrop is flood-filled from the edges, feathered and cropped, so it turns with a real shadow and reflection. Busy backgrounds are kept and shown as a card. No external service.
+- **Music** (Treblo): "Auto" picks the mood for the product type (gym → Energetic, professional services → Professional, fashion → Luxury, and so on), or the creator picks one of nine moods. The product type is also named in the Treblo prompt.
+- **Voices** (ElevenLabs): the picker lists the account's voices with gender, age, accent, use and a sample to play. The list is cached on the server for an hour.
+- **Sound effects** (whooshes, a hit on the offer) are synthesised with FFmpeg; captions use ElevenLabs character alignment.
 
 ## Runtime
 
@@ -23,11 +28,11 @@ All endpoints are mounted under `/api/marketing/video-ads` after the existing wo
 
 | Method | Path | Access / behavior |
 | --- | --- | --- |
-| GET | `/options` | Workspace member; available voices, provider configuration, supported options |
+| GET | `/options` | Workspace member; voices (cached 1 h), presets, product types, moods, durations, formats, provider configuration |
 | GET | `/` | Workspace member; up to 30 recent entries from a bounded 100-record read |
-| POST | `/` | Editor+, Nano+; multipart `images`, `url`, `name`, `description`, `duration`, `format`; returns draft |
+| POST | `/` | Editor+, Nano+; multipart `images` (1–4), `name`, `tagline`, `points` (JSON array), `offer`, `cta`, `website`, `category`, `preset`, `duration`, `format`; returns draft; no AI credit |
 | GET | `/:id` | Same workspace; safe public job fields only |
-| POST | `/:id/render` | Editor+; reviewed `script`, `voiceId`, `mood`, `music`, `captions`, `confirmed`; idempotent queue transition |
+| POST | `/:id/render` | Editor+; reviewed `script`, `voiceId`, `mood` (`auto` or a mood id), `music`, `sfx`, `captions`, `confirmed`; idempotent queue transition |
 | GET | `/:id/media/video` | Same workspace; authenticated MP4 delivery |
 | GET | `/:id/media/poster` | Same workspace; authenticated poster delivery |
 | DELETE | `/:id` | Editor+; deletes inactive draft/export and associated private files |
@@ -35,7 +40,7 @@ All endpoints are mounted under `/api/marketing/video-ads` after the existing wo
 ## Jobs, billing and retention
 
 - Metadata: server-only `marketing_video_ads` Firestore collection; every record has a server-derived workspace and creator.
-- Brag draft planning uses one existing AI credit; generation reserves one existing render allowance.
+- Drafts are free; generation reserves one existing render allowance.
 - Redis Lua updates the monthly counter and job ledger atomically. Duplicate reservations/refunds do not change the balance twice.
 - Firestore transactions prevent duplicate render submissions and competing worker claims. Queued jobs survive restarts. One job runs per process.
 - The worker checks every 30 seconds; render submission also wakes it immediately. A heartbeat renews the active lease.

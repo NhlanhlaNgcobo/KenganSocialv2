@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { safeGet } from '../../utils/safe-fetch.js';
 import { problem } from './validation.js';
+import { AD_MOODS } from './catalog.js';
 
 const ELEVEN = 'https://api.elevenlabs.io/v1';
 const TREBLO = 'https://api.treblo.com/v1';
@@ -25,9 +26,23 @@ function key(name) {
     if (!process.env[name]) throw problem(503, `${name === 'ELEVENLABS_API_KEY' ? 'Voiceover' : 'Music'} generation is not configured on the server.`);
     return process.env[name];
 }
-export async function listVoices(fetcher = fetch) {
+const tidy = (value) => String(value || '').replace(/_/g, ' ').trim().slice(0, 60);
+const previewUrl = (value) => (/^https:\/\/[^\s"'<>]+$/.test(value || '') ? value : '');
+// The voice list rarely changes; one ElevenLabs call an hour serves every workspace.
+let voiceCache = { at: 0, voices: null };
+const VOICE_TTL = 60 * 60 * 1000;
+
+/** The account's voices with what the picker shows: gender, age, accent, use and a sample to play. */
+export async function listVoices(fetcher = fetch, { fresh = false } = {}) {
+    if (!fresh && voiceCache.voices && Date.now() - voiceCache.at < VOICE_TTL) return voiceCache.voices;
     const data = await request(`${ELEVEN}/voices`, { headers: { 'xi-api-key': key('ELEVENLABS_API_KEY') } }, 'ElevenLabs', fetcher);
-    return (data.voices || []).map(v => ({ id: v.voice_id, name: v.name, accent: v.labels?.accent || '', language: v.labels?.language || '' }));
+    const voices = (data.voices || []).map(v => ({
+        id: v.voice_id, name: tidy(v.name), accent: tidy(v.labels?.accent), language: tidy(v.labels?.language),
+        gender: tidy(v.labels?.gender), age: tidy(v.labels?.age), use: tidy(v.labels?.use_case || v.labels?.['use case']),
+        description: tidy(v.labels?.description || v.description), preview: previewUrl(v.preview_url),
+    })).sort((a, b) => a.name.localeCompare(b.name));
+    voiceCache = { at: Date.now(), voices };
+    return voices;
 }
 export async function createSpeech(text, voiceId, fetcher = fetch) {
     const data = await request(`${ELEVEN}/text-to-speech/${encodeURIComponent(voiceId)}/with-timestamps`, {
@@ -37,10 +52,35 @@ export async function createSpeech(text, voiceId, fetcher = fetch) {
     if (!data.audio_base64) throw problem(502, 'ElevenLabs returned no audio.');
     return { audio: Buffer.from(data.audio_base64, 'base64'), alignment: data.normalized_alignment || data.alignment || null };
 }
-export async function startMusic(mood, fetcher = fetch) {
+// What each mood should sound like, so a cinematic ad gets a trailer score and not generic pop.
+// Covers the product ad moods (catalog.js) and the launch/tutorial video moods.
+const MUSIC_STYLES = {
+    ...Object.fromEntries(Object.entries(AD_MOODS).map(([id, m]) => [id, m.style])),
+    hype: 'high-energy electronic with punchy drums, big drops and driving bass',
+    hiphop: 'head-nodding hip hop beat, crisp drums, warm bass and a confident swagger',
+    chill: 'relaxed lofi chill, warm keys, soft drums and a laid-back groove',
+};
+const PURPOSES = {
+    ad: 'for a short product advertisement. Clean mix, space for spoken narration',
+    launch: 'for a product launch video. Steady beat with clear accents so cuts can land on it',
+    tutorial: 'for a software tutorial walkthrough. Unobtrusive and even, stays under on-screen instructions',
+};
+
+export function musicPrompt(mood, purpose = 'ad', subject = '') {
+    const style = MUSIC_STYLES[mood] || 'bright, upbeat modern pop';
+    return `${style} instrumental background music ${PURPOSES[purpose] || PURPOSES.ad}${subject ? `, for ${subject}` : ''}. No vocals.`;
+}
+
+/** Treblo takes a length range in steps of 30 seconds; asks for the smallest one that covers `seconds`. */
+export function lengthRange(seconds = 30) {
+    const hi = Math.min(240, Math.max(30, Math.ceil(seconds / 30) * 30));
+    return [hi - 30, hi];
+}
+
+export async function startMusic(mood, fetcher = fetch, { purpose = 'ad', seconds = 30, subject = '' } = {}) {
     const data = await request(`${TREBLO}/generations/v3`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key('TREBLO_API_KEY')}` },
-        body: JSON.stringify({ prompt: `${mood} instrumental background music for a short product advertisement. Clean mix, space for spoken narration, no vocals.`, instrumental: true, length_range: [0, 30], output_format: 'mp3' }),
+        body: JSON.stringify({ prompt: musicPrompt(mood, purpose, subject), instrumental: true, length_range: lengthRange(seconds), output_format: 'mp3' }),
     }, 'Treblo', fetcher);
     if (typeof data.task_id !== 'string') throw problem(502, 'Treblo returned no generation ID.');
     return data.task_id;

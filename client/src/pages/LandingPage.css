@@ -1666,11 +1666,11 @@
 }
 
 .lp-fx__phone--left {
-  left: max(-10px, calc(50% - 720px));
+  left: max(56px, calc(50% - 720px));
 }
 
 .lp-fx__phone--right {
-  right: max(-10px, calc(50% - 720px));
+  right: max(56px, calc(50% - 720px));
 }
 
 .lp-fx__screen {
