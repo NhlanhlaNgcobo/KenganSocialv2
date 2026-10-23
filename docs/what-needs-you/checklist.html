@@ -56,7 +56,7 @@
 
 <h2>4. Firebase</h2>
 <ol>
-  <li><b>Publish the database and storage rules <span class="tag must">Must</span></b><span>Run <code>firebase deploy --only firestore:rules,firestore:indexes,storage</code>. The calendar needs the new index.</span></li>
+  <li><b>Publish the database and storage rules <span class="tag must">Must</span></b><span>Run <code>firebase deploy --only firestore:rules,firestore:indexes,storage</code>. The calendar and the Clients feedback bell need the new indexes, and it switches on automatic clean-up of old automation records.</span></li>
   <li><b>Make old uploaded files private <span class="tag must">Must</span></b><span>Files uploaded before the private-links change may still be public in the storage bucket. Remove public access from the bucket; the app now hands out expiring links instead.</span></li>
   <li><b>Clean up test accounts <span class="tag soon">Soon</span></b><span>Delete the <code>@example.com</code> test users and the test free-clip records, or tell me to do it.</span></li>
 </ol>
@@ -64,6 +64,8 @@
 <h2>5. Social platforms and AI</h2>
 <ol>
   <li><b>Submit the Meta app for review <span class="tag must">Must</span></b><span>Needed before customers outside your team can connect Facebook and Instagram, post, read comments and run ads.</span></li>
+  <li><b>Turn on webhook fields in the Meta app dashboard <span class="tag must">Must</span></b><span>Under Webhooks: Instagram <code>messages</code> and <code>comments</code>; Page <code>feed</code>, <code>messages</code> and <code>message_echoes</code>. Instagram comment events can only be switched on there, and in Development mode they only arrive for people with a role on the app.</span></li>
+  <li><b>Switch off Meta Business Suite instant replies and away messages <span class="tag must">Must</span></b><span>They look like a person replying by hand, which pauses KenganSocial's automation in that conversation for 12 hours.</span></li>
   <li><b>Get TikTok and YouTube app approval <span class="tag must">Must</span></b><span>Until they're approved, posting only works for your own test accounts.</span></li>
   <li><b>Add AI keys <span class="tag must">Must</span></b><span>Gemini or OpenAI turn on AI clip ranking, headlines and captions; until then the app uses its non-AI methods.</span></li>
   <li><b>Add optional provider keys <span class="tag soon">Soon</span></b><span>ElevenLabs (voiceovers), Treblo (music) and an image generator (AI thumbnail backgrounds). Each feature switches on when its key is present.</span></li>
@@ -84,6 +86,6 @@
   <li><b>Keep one API server for now <span class="tag soon">Soon</span></b><span>Scheduling still runs inside the API, so running two copies would double-post. That's fine for the first hundreds of users; tell me before scaling out.</span></li>
 </ol>
 
-<footer>Generated from the KenganSocial codebase (commit after ea636d7). Settings named here are documented in <code>server/.env.example</code> and <code>.env.example</code>.</footer>
+<footer>Generated from the KenganSocial codebase (23 October 2026). Settings named here are documented in <code>server/.env.example</code> and <code>.env.example</code>.</footer>
 </body>
 </html>
