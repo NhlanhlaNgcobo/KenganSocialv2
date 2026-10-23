@@ -86,6 +86,15 @@
   <li><b>Keep one API server for now <span class="tag soon">Soon</span></b><span>Scheduling still runs inside the API, so running two copies would double-post. That's fine for the first hundreds of users; tell me before scaling out.</span></li>
 </ol>
 
+<h2>8. Technical work left for the live server</h2>
+<ol>
+  <li><b>Run containers as a non-root user <span class="tag soon">Soon</span></b><span>Done on the VM, where volume permissions can be checked.</span></li>
+  <li><b>Memory limits per container <span class="tag soon">Soon</span></b><span>Once the VM size is known; the video service and video renders are the heaviest.</span></li>
+  <li><b>Build the Docker images in CI <span class="tag soon">Soon</span></b><span>And confirm the first GitHub check run passes.</span></li>
+  <li><b>Error tracking and alerts <span class="tag soon">Soon</span></b><span>For example Sentry, beyond container logs.</span></li>
+  <li><b>Email the agency when a client responds <span class="tag soon">Soon</span></b><span>In-app notifications already work; there is no email provider yet.</span></li>
+</ol>
+
 <footer>Generated from the KenganSocial codebase (23 October 2026). Settings named here are documented in <code>server/.env.example</code> and <code>.env.example</code>.</footer>
 </body>
 </html>
