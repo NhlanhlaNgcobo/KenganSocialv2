@@ -58,7 +58,7 @@ function NameGate({ who, onSave }) {
     );
 }
 
-function AssetReview({ token, asset, agencyName, who, needName, allowDownload, onChange, onRefresh }) {
+function AssetReview({ token, asset, agencyName, who, needName, allowDownload, onChange, onRefresh, onMediaExpired }) {
     const videoRef = useRef(null);
     const [version, setVersion] = useState(asset.currentVersion);
     const [time, setTime] = useState(0);
@@ -175,6 +175,11 @@ function AssetReview({ token, asset, agencyName, who, needName, allowDownload, o
                     playsInline
                     preload="metadata"
                     onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+                    // Video links expire after an hour: fetch fresh ones and carry on from the same moment.
+                    onError={() => {
+                        if (time > 0) pendingSeek.current = time;
+                        onMediaExpired?.();
+                    }}
                     onLoadedMetadata={(e) => {
                         if (pendingSeek.current == null) return;
                         e.currentTarget.currentTime = pendingSeek.current;
@@ -329,12 +334,35 @@ export default function ReviewPage() {
     const [askName, setAskName] = useState(false);
     const gateRef = useRef(null);
 
+    const loadedAt = useRef(0);
     useEffect(() => {
         reviewApi
             .get(token)
-            .then(setData)
+            .then((next) => {
+                loadedAt.current = Date.now();
+                setData(next);
+            })
             .catch((err) => setError(err.message));
     }, [token]);
+
+    // Video links are signed for an hour. Refresh them quietly: when a video fails to load, or when
+    // the client comes back to a tab left open for a long time. At most once a minute.
+    const refreshLinks = async () => {
+        if (Date.now() - loadedAt.current < 60 * 1000) return;
+        loadedAt.current = Date.now();
+        try {
+            setData(await reviewApi.get(token));
+        } catch {
+            /* keep what is on screen; the next attempt may work */
+        }
+    };
+    useEffect(() => {
+        const onVisible = () => {
+            if (document.visibilityState === 'visible' && Date.now() - loadedAt.current > 50 * 60 * 1000) refreshLinks();
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => document.removeEventListener('visibilitychange', onVisible);
+    });
 
     /** Reloads the review after a conflict; returns the fresh copy of one video (or null). */
     const refreshAsset = async (assetId) => {
@@ -427,7 +455,7 @@ export default function ReviewPage() {
 
                 {assets.length === 0 ? <div className="surface rv-empty">The videos in this review were removed by the agency.</div> : null}
                 {assets.map((a) => (
-                    <AssetReview key={a.id} token={token} asset={a} agencyName={agency.name} who={who} needName={needName} allowDownload={review.allowDownload} onChange={update} onRefresh={() => refreshAsset(a.id)} />
+                    <AssetReview key={a.id} token={token} asset={a} agencyName={agency.name} who={who} needName={needName} allowDownload={review.allowDownload} onChange={update} onRefresh={() => refreshAsset(a.id)} onMediaExpired={refreshLinks} />
                 ))}
             </main>
 

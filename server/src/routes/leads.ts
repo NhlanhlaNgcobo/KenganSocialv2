@@ -5,7 +5,7 @@ import { processLeadScore } from '../services/leads/scoreService';
 import { CHAT_MODEL, chatClient } from '../services/llm-client.js';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { requirePlan } from '../middleware/planGate';
-import { LEAD_STATUSES, sanitizeImport, sanitizeNewLead } from '../services/leads/sanitize';
+import { csvCell, sanitizeImport, sanitizeLeadUpdate, sanitizeNewLead } from '../services/leads/sanitize';
 
 // mergeParams: the workspace comes from /api/workspaces/:workspaceId/leads.
 const router = express.Router({ mergeParams: true });
@@ -29,15 +29,6 @@ function requireWorkspace(req: Request, res: Response, next: NextFunction) {
 const guard = [withWorkspace, requireWorkspace, requirePlan('agency')];
 
 const leadsOf = (req: Request) => db.collection('workspaces').doc((req as any).workspaceId).collection('leads');
-
-/** Fields a client may change on a lead. */
-const EDITABLE = ['status', 'notes', 'tags', 'displayName', 'username', 'platform', 'followersCount', 'signals', 'industryMatch', 'hasPreviousCollab'];
-const STATUSES = LEAD_STATUSES;
-
-const csvCell = (value: unknown) => {
-    const text = value === undefined || value === null ? '' : String(value);
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-};
 
 router.get('/', ...guard, route(async (req, res) => {
     const { tier, status, sort } = req.query;
@@ -104,10 +95,11 @@ router.patch('/:id', ...guard, route(async (req, res) => {
     const snap = await ref.get();
     if (!snap.exists) return res.status(404).json({ error: 'Lead not found' });
 
-    const updates = Object.fromEntries(Object.entries(req.body || {}).filter(([key]) => EDITABLE.includes(key)));
-    if (updates.status !== undefined && !STATUSES.includes(updates.status as string)) {
-        return res.status(400).json({ error: 'Invalid lead status' });
-    }
+    // Only known fields, each checked for type and length (services/leads/sanitize.ts).
+    const input = sanitizeLeadUpdate(req.body);
+    if (input.error) return res.status(400).json({ error: input.error });
+    const updates: Record<string, any> = input.value!;
+    if (updates.signals) updates.signals = { ...((snap.data() as any).signals || {}), ...updates.signals };
     await ref.update({ ...updates, updatedAt: FieldValue.serverTimestamp() });
 
     if (updates.signals || updates.followersCount) {

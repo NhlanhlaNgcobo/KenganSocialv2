@@ -59,3 +59,57 @@ export function sanitizeImport(rows: unknown): { leads: Record<string, unknown>[
     });
     return { leads, skipped };
 }
+
+const SIGNAL_KEYS = ['totalLikes', 'totalComments', 'dmOpened', 'dmReplied', 'linkClicked', 'bookingMade', 'storyReply'];
+
+/** Validates a lead edit (PATCH): only known fields, each with its expected type and length. */
+export function sanitizeLeadUpdate(body: any): { value?: Record<string, unknown>; error?: string } {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'Send the fields to change.' };
+    const value: Record<string, unknown> = {};
+    if (body.status !== undefined) {
+        if (!LEAD_STATUSES.includes(body.status)) return { error: 'Invalid lead status' };
+        value.status = body.status;
+    }
+    if (body.notes !== undefined) value.notes = text(body.notes, 5000);
+    if (body.displayName !== undefined) value.displayName = text(body.displayName, 120);
+    if (body.username !== undefined) {
+        const username = text(body.username, 100).replace(/^@+/, '');
+        if (!username) return { error: "The lead's username can't be empty." };
+        value.username = username;
+    }
+    if (body.platform !== undefined) {
+        const platform = text(body.platform, 20).toLowerCase();
+        if (!LEAD_PLATFORMS.includes(platform)) return { error: 'Pick a supported platform.' };
+        value.platform = platform;
+    }
+    if (body.followersCount !== undefined) {
+        const followers = Number(body.followersCount);
+        if (!Number.isFinite(followers) || followers < 0 || followers > 1e10) return { error: 'Followers must be a positive number.' };
+        value.followersCount = Math.floor(followers);
+    }
+    if (body.tags !== undefined) value.tags = tagsOf(body.tags, []);
+    if (body.industryMatch !== undefined) value.industryMatch = body.industryMatch === true;
+    if (body.hasPreviousCollab !== undefined) value.hasPreviousCollab = body.hasPreviousCollab === true;
+    if (body.signals !== undefined) {
+        if (!body.signals || typeof body.signals !== 'object' || Array.isArray(body.signals)) return { error: 'Invalid engagement signals.' };
+        const signals: Record<string, number | boolean> = {};
+        for (const key of SIGNAL_KEYS) {
+            const v = body.signals[key];
+            if (v === undefined) continue;
+            if (key.startsWith('total')) {
+                const n = Number(v);
+                if (!Number.isFinite(n) || n < 0 || n > 1e9) return { error: `${key} must be a positive number.` };
+                signals[key] = Math.floor(n);
+            } else signals[key] = v === true;
+        }
+        value.signals = signals;
+    }
+    return { value };
+}
+
+/** A CSV cell that spreadsheets show as text: quotes escaped, and formula starters (= + - @ tab CR) neutralised. */
+export function csvCell(raw: unknown): string {
+    let cell = raw === undefined || raw === null ? '' : String(raw);
+    if (/^[=+\-@\t\r]/.test(cell)) cell = `'${cell}`;
+    return /[",\n\r]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell;
+}
