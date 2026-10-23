@@ -131,7 +131,7 @@ const FAQ = [
     },
     {
         q: 'How does billing work?',
-        a: 'Plans are priced in rand and paid monthly or yearly (yearly saves 10%) through Paystack. Upgrade, downgrade or cancel whenever you like.',
+        a: 'Plans are priced in rand and paid monthly or yearly (yearly saves 10%) through Payfast, and renew automatically. Cancel whenever you like.',
     },
 ];
 

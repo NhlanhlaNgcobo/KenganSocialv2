@@ -222,7 +222,7 @@ export default function BillingPage() {
             <div className="page-header">
                 <div>
                     <h1>Plans & Billing</h1>
-                    <p className="page-subtitle">Subscriptions renew automatically each month or year through Paystack. Manage or cancel renewal below. Prices are in rand.</p>
+                    <p className="page-subtitle">Subscriptions renew automatically each month or year through Payfast. Manage or cancel renewal below. Prices are in rand.</p>
                 </div>
             </div>
 

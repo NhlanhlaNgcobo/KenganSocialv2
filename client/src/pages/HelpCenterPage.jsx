@@ -24,7 +24,7 @@ const FAQ = [
     },
     {
         q: 'How do I upgrade?',
-        a: 'Open Billing in your dashboard, choose a plan and pay through Paystack. Your plan changes as soon as the payment is confirmed.',
+        a: 'Open Billing in your dashboard, choose a plan and pay through Payfast. Your plan changes as soon as the payment is confirmed.',
     },
     {
         q: 'How do I cancel or change my plan?',

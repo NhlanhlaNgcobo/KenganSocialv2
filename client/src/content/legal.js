@@ -21,7 +21,7 @@ export const COMPANY = {
 
 const OPERATOR_LINE = `${COMPANY.product} is operated by ${COMPANY.operator} (registration number ${COMPANY.registration}), a company registered in the Republic of South Africa${COMPANY.address ? ` and based in ${COMPANY.address}` : ''}.`;
 
-const EFFECTIVE = '20 October 2026';
+const EFFECTIVE = '23 October 2026';
 
 export const PRIVACY = {
     slug: 'privacy',
@@ -52,7 +52,7 @@ Connected account information: when you connect a social account, we receive an 
 
 Information about other people: if you turn on comment or message automation, we receive the comments and direct messages people send to your connected accounts, with their public name, username, profile picture and platform user ID, so that we can show them in your Inbox and reply on your behalf.
 
-Billing information: your plan and payment status. Card payments are handled by Paystack; we do not receive or store card numbers.
+Billing information: your plan and payment status. Payments are handled by Payfast; we do not receive or store card numbers.
 
 Free starter clip (no account): if you use the free clip on our home page, we receive the video you upload and your email address. We keep only a one-way fingerprint (a keyed hash) of your email, so we can make sure each person gets one free clip; we keep the email address itself only if you ask us to send you product news. We also keep a fingerprint of your network address to limit free clips per network per day.
 
@@ -107,7 +107,7 @@ AI providers we use: OpenRouter (which routes requests to model providers such a
         {
             id: 'sharing',
             heading: 'Who we share information with',
-            content: `Service providers who process data for us under contract: Google Cloud and Firebase (sign-in, database and file storage), our cloud hosting and file storage provider, Paystack (payments), Redis hosting (job queues), and the AI providers listed above.
+            content: `Service providers who process data for us under contract: Google Cloud and Firebase (sign-in, database and file storage), our cloud hosting and file storage provider, Payfast (payments; Paystack for subscriptions started before 23 October 2026), Redis hosting (job queues), and the AI providers listed above.
 
 Social platforms: when you publish, reply or change an ad, we send that content or instruction to the platform you chose. The platform's own terms and privacy policy then apply.
 
@@ -283,9 +283,9 @@ You confirm you have the rights needed for content you publish, including music,
         {
             id: 'billing',
             heading: 'Plans and payment',
-            content: `We offer a free plan and paid plans. Prices and limits are shown at ${COMPANY.site}/pricing. Paid plans are billed in advance in South African Rand through Paystack, including VAT where applicable. Usage allowances reset each billing period and do not roll over.
+            content: `We offer a free plan and paid plans. Prices and limits are shown at ${COMPANY.site}/pricing. Paid plans are billed in advance in South African Rand through Payfast, including VAT where applicable, and renew automatically each month or year until you cancel. Usage allowances reset each billing period and do not roll over.
 
-You can cancel at any time by emailing ${COMPANY.billingEmail} (the Billing page links to it); cancellation takes effect at the end of the paid period. First-time subscribers may cancel within 7 days for a full refund. Under section 14 of the Consumer Protection Act 68 of 2008 you may cancel a fixed-term agreement with 20 business days' notice.`,
+You can cancel at any time on the Billing page or by emailing ${COMPANY.billingEmail}; renewal stops and you keep access until the end of the period you have paid for. First-time subscribers may cancel within 7 days for a full refund. Under section 14 of the Consumer Protection Act 68 of 2008 you may cancel a fixed-term agreement with 20 business days' notice.`,
         },
         {
             id: 'privacy',
