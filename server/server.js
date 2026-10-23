@@ -26,7 +26,7 @@ import mediaRoutes from './src/routes/media.routes.js';
 import schedulerRoutes from './src/routes/scheduler.routes.js';
 import webhooksRoutes from './src/routes/webhooks.routes.js';
 import manualEditRoutes from './src/routes/manual-edit.routes.js';
-import { startSchedulerCron } from './src/jobs/scheduler.cron.js';
+import { startPostRecovery, stopPostQueue } from './src/queues/postQueue.ts';
 import connectionsRouter, { startTokenRefreshCron } from './src/routes/connections.ts';
 import privacyRoutes from './src/routes/privacy.ts';
 import { features } from './src/utils/features.ts';
@@ -40,7 +40,7 @@ import billingTsRoutes from './src/routes/billing.ts';
 import assetsRoutes from './src/routes/assets.ts';
 import bragRoutes from './src/routes/brag.ts';
 import musicRoutes from './src/routes/music.ts';
-import clipsRoutes from './src/routes/clips.ts';
+import clipsRoutes, { recoverInterruptedClipProjects } from './src/routes/clips.ts';
 import repurposeRoutes from './src/routes/repurpose.ts';
 import marketingRoutes from './src/routes/marketing.ts';
 import agencyRoutes from './src/routes/agency.ts';
@@ -52,7 +52,7 @@ import { startAnalyticsCron } from './src/jobs/analytics.cron.ts';
 import { startTrendingCron } from './src/jobs/trending.cron.ts';
 import authRoutes from './src/routes/auth.ts';
 import dataDeletionRoutes from './src/routes/data-deletion.ts';
-import freeClipRoutes from './src/routes/free-clip.ts';
+import freeClipRoutes, { recoverInterruptedFreeClips } from './src/routes/free-clip.ts';
 import thumbnailRoutes from './src/routes/thumbnails.ts';
 import './src/services/webhooks/handlers.ts';
 import { startWebhookWorker } from './src/services/webhooks/dispatcher.ts';
@@ -125,7 +125,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Logging
 // Signed media URLs are credentials: never include their query strings in logs.
-app.use(morgan(':method :url :status :response-time ms', { skip: req => req.path.startsWith('/api/private-media/') }));
+// Paths only: query strings can carry access tokens (free-clip links, signed media) and must not reach logs.
+morgan.token('path-only', (req) => (req.originalUrl || req.url || '').split('?')[0]);
+app.use(morgan(':method :path-only :status :response-time ms', { skip: req => req.path.startsWith('/api/private-media/') }));
 
 // ---------------------
 // Routes
@@ -223,17 +225,31 @@ app.use((err, req, res, next) => {
 // ---------------------
 
 
-app.listen(PORT, () => {
+let inlineAiWorker = null;
+const server = app.listen(PORT, () => {
     console.log(`🚀 KenganSocial API running on http://localhost:${PORT}`);
 
-    // Start scheduler cron job (check every 60 seconds)
-    startSchedulerCron(60000);
+    // Scheduled posts publish through the BullMQ queue (src/queues/postQueue.ts); this re-queues
+    // any pending post that is missing from it (e.g. saved while Redis was unreachable).
+    startPostRecovery();
+
+    // Clip projects and free clips run in this process only: anything still running when the
+    // process stopped was lost, so fail it now (with allowance and free-clip claim given back).
+    recoverInterruptedClipProjects()
+        .then((n) => n && console.log(`[Clips] Marked ${n} interrupted project(s) as failed`))
+        .catch((error) => console.warn('[Clips] Recovery skipped:', error.message));
+    recoverInterruptedFreeClips()
+        .then((n) => n && console.log(`[FreeClip] Released ${n} interrupted free clip(s)`))
+        .catch((error) => console.warn('[FreeClip] Recovery skipped:', error.message));
 
     // AI editing runs in its own worker (docker-compose "ai-worker"). Locally, run it inside the
     // API so queued edits don't wait for a worker nobody started.
     if (process.env.NODE_ENV !== 'production' && process.env.AI_EDIT_INLINE_WORKER !== 'off') {
         import('./src/workers/ai-edit.ts')
-            .then(() => console.log('🤖 AI edit worker running inside the API (development)'))
+            .then((mod) => {
+                inlineAiWorker = mod;
+                console.log('🤖 AI edit worker running inside the API (development)');
+            })
             .catch((error) => console.error('[AI worker] Could not start in-process:', error.message));
     }
 
@@ -249,3 +265,21 @@ app.listen(PORT, () => {
     // Old renders and uploads in the temp folder (hourly)
     startTempSweeper();
 });
+
+// Graceful shutdown (deploys send SIGTERM): stop accepting requests, let posts being published
+// finish, then exit. Long renders can't finish in the grace period; they are failed and refunded
+// by the recovery above on the next start.
+let shuttingDown = false;
+async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[Shutdown] ${signal}: draining`);
+    const force = setTimeout(() => process.exit(1), 50_000);
+    force.unref();
+    server.close();
+    await Promise.allSettled([stopPostQueue(), inlineAiWorker?.stopAiEditWorker?.()]);
+    console.log('[Shutdown] Done');
+    process.exit(0);
+}
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));

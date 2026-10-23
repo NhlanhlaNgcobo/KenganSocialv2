@@ -31,11 +31,21 @@ heartbeat.unref();
 
 worker.on('error', error => console.error('[AI worker]', error.message));
 let stopping = false;
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => {
+/** Stops taking new jobs, finishes the current one, then closes Redis. */
+export async function stopAiEditWorker() {
     if (stopping) return;
     stopping = true;
     clearInterval(heartbeat);
-    await worker.close(); // Stop taking new jobs and finish the current one.
-    await connection.quit();
-    process.exit(0);
-});
+    await worker.close();
+    await connection.quit().catch(() => {});
+}
+
+// Run as its own process (docker-compose "ai-worker"): exit after draining on SIGTERM/SIGINT.
+// Inside the API (development) the API's own shutdown calls stopAiEditWorker() instead.
+const standalone = /workers.ai-edit\.ts$/.test(process.argv[1] || ''); // "." matches / or \
+if (standalone) {
+    for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => {
+        await stopAiEditWorker();
+        process.exit(0);
+    });
+}

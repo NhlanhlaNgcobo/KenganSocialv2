@@ -8,10 +8,19 @@
 # the scheduler, token refresh and webhook jobs run inside the API and must not run twice.
 #
 # Secrets come from server/.env and python-service/.env on the VM (never commit them).
+
+# Docker keeps container logs forever by default and would fill the disk: rotate them.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
   caddy:
     image: caddy:2.8.4
     restart: unless-stopped
+    logging: *logging
     ports:
       - "80:80"
       - "443:443"
@@ -23,11 +32,15 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   api:
     build: ./server
     restart: unless-stopped
+    logging: *logging
+    # On SIGTERM the API stops taking requests and lets posts being published finish (server.js).
+    stop_grace_period: 60s
     env_file: ./server/.env
     environment:
       NODE_ENV: production
@@ -49,8 +62,9 @@ services:
       redis:
         condition: service_healthy
 
+    # Liveness of the API itself; /api/health/ready (Redis, Firestore, video, AI worker) is for monitoring.
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -60,6 +74,7 @@ services:
     build: ./server
     command: ["npm", "run", "worker:ai-edit"]
     restart: unless-stopped
+    logging: *logging
     stop_grace_period: 2h
     env_file: ./server/.env
     environment:
@@ -76,10 +91,18 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Healthy while its heartbeat (written every 20 s) is fresh.
+    healthcheck:
+      test: ["CMD", "node", "-e", "const R=require('ioredis');const r=new R(process.env.REDIS_URL,{lazyConnect:true});r.get('workers:ai-edit:heartbeat').then(v=>process.exit(v&&Date.now()-Number(v)<60000?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   video:
     build: ./python-service
     restart: unless-stopped
+    logging: *logging
     env_file: ./python-service/.env
     environment:
       PORT: 8000
@@ -101,8 +124,10 @@ services:
   redis:
     image: redis:7.4.1-alpine
     restart: unless-stopped
-    # Append-only file so scheduled posts waiting in the queue survive a restart.
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    logging: *logging
+    # Append-only file so scheduled posts waiting in the queue survive a restart. noeviction: queued
+    # jobs are never silently dropped; the cap turns runaway growth into errors instead of an OOM.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "1gb", "--maxmemory-policy", "noeviction"]
     expose:
       - "6379"
     volumes:

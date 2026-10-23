@@ -10,6 +10,8 @@ import path from 'path';
  * and editor uploads usable for three days.
  */
 const RENDER_DIR = path.join(os.tmpdir(), 'kengan-renders');
+// Folders swept item by item (each upload session / registry entry ages on its own), never removed whole.
+const ITEM_DIRS = ['kengan-renders', 'kengan-resumable', 'kengan-upload-registry'];
 const MULTER_NAME = /^[0-9a-f]{32}$/;
 
 function retentionMs() {
@@ -31,11 +33,13 @@ function removeIfOld(entry, cutoff) {
 export function sweepTempFiles() {
     const cutoff = Date.now() - retentionMs();
     let removed = 0;
-    if (fs.existsSync(RENDER_DIR)) {
-        for (const name of fs.readdirSync(RENDER_DIR)) removed += removeIfOld(path.join(RENDER_DIR, name), cutoff);
+    for (const dir of ITEM_DIRS) {
+        const full = path.join(os.tmpdir(), dir);
+        if (!fs.existsSync(full)) continue;
+        for (const name of fs.readdirSync(full)) removed += removeIfOld(path.join(full, name), cutoff);
     }
     for (const name of fs.readdirSync(os.tmpdir())) {
-        if (MULTER_NAME.test(name) || (name.startsWith('kengan-') && name !== 'kengan-renders')) removed += removeIfOld(path.join(os.tmpdir(), name), cutoff);
+        if (MULTER_NAME.test(name) || (name.startsWith('kengan-') && !ITEM_DIRS.includes(name))) removed += removeIfOld(path.join(os.tmpdir(), name), cutoff);
     }
     if (removed) console.log(`[temp-sweeper] removed ${removed} old working files`);
     return removed;

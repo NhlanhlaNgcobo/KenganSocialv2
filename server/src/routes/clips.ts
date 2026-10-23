@@ -10,6 +10,7 @@ import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { checkLimit, consumeUsage, planRateLimit, refundUsage } from '../middleware/planGate';
 import { MAX_SOURCE_MINUTES } from '../utils/planLimits';
+import { effectivePlan } from '../utils/trial';
 import { probe } from '../services/ffmpeg-runner.js';
 import { getUploadPath, storeUpload } from '../services/manual-edit.service.js';
 import { CAPTION_STYLES, CLIP_LENGTHS, createClips, LAYOUTS, normalizeClipRequest, PLATFORMS, RATIOS } from '../services/clips/index.js';
@@ -382,5 +383,21 @@ router.delete('/:id', withWorkspace, async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Could not delete this project.' });
     }
 });
+
+/**
+ * Clip projects run in this process only, so at startup any project still 'processing' was cut off
+ * by a restart: mark it failed straight away (instead of 20 minutes later) and give the allowance back.
+ */
+export async function recoverInterruptedClipProjects(): Promise<number> {
+    const snap = await projects.where('status', '==', 'processing').limit(500).get();
+    for (const doc of snap.docs) {
+        const p = doc.data();
+        await doc.ref.update({ status: 'failed', stage: 'Failed', error: STALE_ERROR, errorCode: 'INTERRUPTED', updatedAt: new Date().toISOString() }).catch(() => {});
+        if (!p.workspaceId) continue;
+        const ws = await db.collection('workspaces').doc(p.workspaceId).get().catch(() => null);
+        if (ws?.exists) await refundUsage(p.workspaceId, effectivePlan(ws.data()), 'clipAnalysis');
+    }
+    return snap.size;
+}
 
 export default router;

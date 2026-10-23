@@ -206,6 +206,7 @@ router.post('/', startLimiter, receive, async (req: Request, res: Response) => {
             id,
             tokenHash: hmac(token),
             emailHash,
+            daySlot,
             status: 'queued',
             stage: 'Waiting for a free slot',
             progress: 0,
@@ -299,5 +300,25 @@ router.get('/:id/video', async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.sendFile(path.resolve(job.outputPath));
 });
+
+/**
+ * Free clips run in this process only, so at startup any job still queued or processing was cut
+ * off by a restart: mark it failed and give the email and today's slot back so the person can retry.
+ */
+export async function recoverInterruptedFreeClips(): Promise<number> {
+    const snap = await jobs.where('status', 'in', ['queued', 'processing']).limit(500).get();
+    for (const doc of snap.docs) {
+        const job = doc.data();
+        if (job.emailHash) await claims.doc(job.emailHash).delete().catch(() => {});
+        if (job.daySlot) await giveSlotBack(job.daySlot);
+        await doc.ref.update({
+            status: 'failed',
+            stage: 'Failed',
+            error: 'Our server restarted while making your clip. Upload the video again: your free clip is still available.',
+            updatedAt: new Date().toISOString(),
+        }).catch(() => {});
+    }
+    return snap.size;
+}
 
 export default router;

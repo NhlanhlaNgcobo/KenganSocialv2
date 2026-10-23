@@ -10,3 +10,6 @@ serviceAccount*.json
 # Unused older video service (not part of the API image)
 python-editor
 *.log
+# Local key notes and other secrets never go into the image
+*key*.txt
+*.key

@@ -46,35 +46,40 @@ async function processJob(job: Job<PublishPayload>) {
         return; // Job is stale, abort silently
     }
 
-    // Process platforms concurrently
+    // Platforms that already went out (an earlier attempt, or a run cut short by a restart) are
+    // skipped, and each success is recorded the moment it happens: a retry never posts twice.
+    const postRef = db.collection('scheduled_posts').doc(postId);
+    const already: Record<string, string> = postSnap.data()?.platformPostIds || {};
+    const pending = platforms.filter(p => !already[p]);
+
     const results = await Promise.allSettled(
         // Platforms download the file themselves, so each gets a link signed now (valid 48 h), however
         // long ago the post was scheduled. A bad link fails that platform with a reason, not the job.
-        platforms.map(async p => publishMultiplexer(p, workspaceId, { mediaUrl: publicMediaUrl(mediaUrl, workspaceId), caption, ...platformOptions[p] }))
+        pending.map(async p => {
+            const platformPostId = await publishMultiplexer(p, workspaceId, { mediaUrl: publicMediaUrl(mediaUrl, workspaceId), caption, ...platformOptions[p] });
+            await postRef.update({ [`platformPostIds.${p}`]: platformPostId });
+            return platformPostId;
+        })
     );
 
-    const published: { platform: string, postId: string }[] = [];
+    const platformPostIds: Record<string, string> = { ...already };
     const failed: { platform: string, error: string }[] = [];
-
     results.forEach((r, i) => {
-        if (r.status === 'fulfilled') {
-            published.push({ platform: platforms[i], postId: r.value });
-        } else {
-            failed.push({ platform: platforms[i], error: r.reason.message || String(r.reason) });
-        }
+        if (r.status === 'fulfilled') platformPostIds[pending[i]] = r.value;
+        else failed.push({ platform: pending[i], error: r.reason?.message || String(r.reason) });
     });
+    const publishedCount = platforms.filter(p => platformPostIds[p]).length;
 
-    // Update Firestore with final result
-    await db.collection('scheduled_posts').doc(postId).update({
-        status: failed.length === 0 ? 'published' : (published.length > 0 ? 'partial' : 'failed'),
+    await postRef.update({
+        status: failed.length === 0 ? 'published' : (publishedCount > 0 ? 'partial' : 'failed'),
         publishedAt: FieldValue.serverTimestamp(),
-        platformPostIds: Object.fromEntries(published.map(p => [p.platform, p.postId])),
+        platformPostIds,
         errors: failed
     });
 
-    // If total failure, throw error to trigger BullMQ retries
-    if (published.length === 0 && platforms.length > 0) {
-        throw new Error(`Critical failure on all platforms: ${failed.map(f => f.platform).join(', ')}`);
+    // Retry (BullMQ backoff) only the platforms that failed; the ones that worked are skipped.
+    if (failed.length > 0) {
+        throw new Error(`Publishing failed on: ${failed.map(f => `${f.platform} (${f.error})`).join(', ')}`);
     }
 }
 
@@ -151,8 +156,8 @@ worker.on('failed', async (job, err) => {
         // Inform workspace admin via Firestore or simple notification system
         await db.collection('notifications').add({
             workspaceId: job.data.workspaceId,
-            title: 'Bulk Post Scheduling Failure',
-            message: `One of your posts failed to publish after 3 attempts. Errors: ${err.message}`,
+            title: 'A scheduled post did not publish everywhere',
+            message: `${err.message}. Fix the connection and publish it again from the calendar.`,
             type: 'error',
             postId: job.data.postId,
             createdAt: FieldValue.serverTimestamp()
@@ -169,7 +174,51 @@ export async function schedulePostJob(data: PublishPayload, delayMs: number): Pr
         backoff: {
             type: 'exponential',
             delay: 300000 // 5m -> 15m -> 45m
-        }
+        },
+        // Firestore keeps the post's history; Redis only needs recent jobs.
+        removeOnComplete: { age: 7 * 86400, count: 5000 },
+        removeOnFail: { age: 30 * 86400, count: 5000 }
     });
     return job.id!;
+}
+
+/**
+ * Pending posts missing from the queue (saved while Redis was unreachable, or Redis data lost)
+ * are queued again. The job id is the post id, so a post already queued is never added twice.
+ */
+export async function recoverPendingPosts(): Promise<number> {
+    const snap = await db.collection('scheduled_posts').where('status', '==', 'pending').limit(2000).get();
+    let requeued = 0;
+    for (const doc of snap.docs) {
+        if (await postQueue.getJob(doc.id)) continue;
+        const data = doc.data();
+        const when = data.scheduledAt?.toDate ? data.scheduledAt.toDate() : new Date(data.scheduledAt);
+        await schedulePostJob({
+            postId: doc.id,
+            workspaceId: data.workspaceId,
+            platforms: data.platforms || [],
+            mediaUrl: data.mediaUrl || '',
+            caption: data.caption || '',
+            platformOptions: data.platformOptions || {},
+        }, Math.max(0, (when?.getTime?.() || Date.now()) - Date.now()));
+        requeued += 1;
+    }
+    return requeued;
+}
+
+let recoveryTimer: NodeJS.Timeout | null = null;
+export function startPostRecovery(intervalMs = 10 * 60 * 1000) {
+    const run = () => recoverPendingPosts()
+        .then(n => { if (n) console.log(`[Schedule] Re-queued ${n} pending post(s) that were missing from the queue`); })
+        .catch(error => console.warn('[Schedule] Pending-post recovery skipped:', error.message));
+    void run();
+    recoveryTimer = setInterval(run, intervalMs);
+    recoveryTimer.unref();
+}
+
+/** Stops taking scheduled posts and waits for the ones being published right now. */
+export async function stopPostQueue() {
+    if (recoveryTimer) clearInterval(recoveryTimer);
+    await worker.close();
+    await postQueue.close();
 }
