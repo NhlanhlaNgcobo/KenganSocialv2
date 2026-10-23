@@ -70,7 +70,7 @@ export default function PricingPage() {
                                     MOST POPULAR
                                 </div>
                             )}
-                            <h3 style={{ fontSize: '1.4rem', marginBottom: '16px' }}>{plan.name}</h3>
+                            <h2 style={{ fontSize: '1.4rem', marginBottom: '16px' }}>{plan.name}</h2>
                             <div style={{ fontSize: plan.contactOnly ? '2rem' : '2.6rem', fontWeight: '800', marginBottom: '8px', lineHeight: 1.2 }}>
                                 {plan.monthlyPriceZar === 0 ? 'Free' : `${plan.contactOnly ? 'From ' : ''}${formatZar(plan.monthlyPriceZar)}`}
                                 {plan.monthlyPriceZar > 0 && (

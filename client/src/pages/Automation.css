@@ -111,18 +111,6 @@
     margin-top: 4px;
 }
 
-.node.trigger {
-    border-left: 4px solid var(--accent-primary);
-}
-
-.node.action {
-    border-left: 4px solid var(--accent-secondary);
-}
-
-.node.target {
-    border-left: 4px solid var(--success);
-}
-
 .connector {
     width: 60px;
     height: 2px;

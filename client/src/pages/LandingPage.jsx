@@ -205,7 +205,6 @@ function HeroBackdrop() {
                 <i />
                 <i />
             </div>
-            <div className="lp-fx__grid" />
             {SIDE_PHONES.map((p, i) => (
                 <div key={p.name} className={`lp-fx__phone lp-fx__phone--${p.side}`} style={{ '--y': `${p.y}px`, '--tilt': `${p.tilt}deg`, '--i': i }}>
                     <div className="lp-fx__screen">

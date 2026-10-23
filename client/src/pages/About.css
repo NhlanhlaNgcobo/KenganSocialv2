@@ -12,7 +12,8 @@
 }
 
 .about-lede {
-  margin: 0;
+  max-width: 54ch;
+  margin: 0 auto;
   font-size: 1.12rem;
   line-height: 1.65;
   color: var(--text-secondary);
@@ -31,7 +32,7 @@
 }
 
 .about-prose {
-  max-width: 680px;
+  max-width: 56ch;
   margin: 0 auto;
 }
 
@@ -42,12 +43,23 @@
   color: var(--text-secondary);
 }
 
+.about-item__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.about-item__title svg {
+  flex: none;
+  color: var(--accent-text);
+}
+
 .about-grid--4 {
   grid-template-columns: repeat(4, 1fr);
 }
 
 .about-links {
-  max-width: 680px;
+  max-width: 56ch;
   margin: 32px auto 0;
   text-align: center;
   line-height: 1.7;
@@ -67,15 +79,12 @@
   box-shadow: var(--glass-edge), var(--shadow-md);
 }
 
-.about-company .lp-step__icon {
-  flex: none;
-}
-
 .about-company h2 {
   margin: 0 0 14px;
 }
 
 .about-company p {
+  max-width: 56ch;
   margin: 0 0 24px;
   line-height: 1.7;
   color: var(--text-secondary);

@@ -89,8 +89,8 @@
 .rv-intro blockquote {
   margin: 0 0 12px;
   padding: 12px 14px;
-  border-left: 3px solid var(--accent-primary);
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
   background: var(--accent-soft);
   white-space: pre-wrap;
 }

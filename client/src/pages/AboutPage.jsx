@@ -5,7 +5,6 @@ import {
     BarChart3,
     Briefcase,
     CalendarClock,
-    Code2,
     KeyRound,
     MessageCircle,
     Scissors,
@@ -76,7 +75,6 @@ export default function AboutPage() {
             <main>
                 <section className="lp-section container about-hero">
                     <header className="lp-section__head" data-reveal>
-                        <span className="lp-kicker">About {COMPANY.product}</span>
                         <h1>One place to create, post and reply on social media</h1>
                         <p className="about-lede">
                             {COMPANY.product} helps creators, businesses and agencies turn long videos into short ones, publish them to every network on a
@@ -91,7 +89,6 @@ export default function AboutPage() {
 
                 <section className="lp-section container about-section">
                     <header className="lp-section__head" data-reveal>
-                        <span className="lp-kicker">Why we built it</span>
                         <h2>Posting one video shouldn’t take five apps</h2>
                     </header>
                     <div className="about-prose" data-reveal>
@@ -109,16 +106,15 @@ export default function AboutPage() {
 
                 <section className="lp-section container about-section">
                     <header className="lp-section__head" data-reveal>
-                        <span className="lp-kicker">What it does</span>
                         <h2>From recording to replies</h2>
                     </header>
                     <ul className="lp-steps about-grid about-grid--4">
                         {WHAT_IT_DOES.map((item, i) => (
                             <li key={item.title} className="lp-step" data-reveal style={{ '--delay': `${i * 100}ms` }}>
-                                <span className="lp-step__icon">
-                                    <item.icon size={20} />
-                                </span>
-                                <h3>{item.title}</h3>
+                                <h3 className="about-item__title">
+                                    <item.icon size={18} aria-hidden="true" />
+                                    {item.title}
+                                </h3>
                                 <p>{item.text}</p>
                             </li>
                         ))}
@@ -127,16 +123,15 @@ export default function AboutPage() {
 
                 <section className="lp-section container about-section">
                     <header className="lp-section__head" data-reveal>
-                        <span className="lp-kicker">Who it’s for</span>
                         <h2>Made for people who post for a living</h2>
                     </header>
                     <ul className="lp-steps about-grid">
                         {WHO.map((item, i) => (
                             <li key={item.title} className="lp-step" data-reveal style={{ '--delay': `${i * 100}ms` }}>
-                                <span className="lp-step__icon">
-                                    <item.icon size={20} />
-                                </span>
-                                <h3>{item.title}</h3>
+                                <h3 className="about-item__title">
+                                    <item.icon size={18} aria-hidden="true" />
+                                    {item.title}
+                                </h3>
                                 <p>{item.text}</p>
                             </li>
                         ))}
@@ -145,16 +140,15 @@ export default function AboutPage() {
 
                 <section className="lp-section container about-section">
                     <header className="lp-section__head" data-reveal>
-                        <span className="lp-kicker">How we handle your accounts</span>
                         <h2>Trust comes first</h2>
                     </header>
                     <ul className="lp-steps about-grid">
                         {PRINCIPLES.map((item, i) => (
                             <li key={item.title} className="lp-step" data-reveal style={{ '--delay': `${i * 100}ms` }}>
-                                <span className="lp-step__icon">
-                                    <item.icon size={20} />
-                                </span>
-                                <h3>{item.title}</h3>
+                                <h3 className="about-item__title">
+                                    <item.icon size={18} aria-hidden="true" />
+                                    {item.title}
+                                </h3>
                                 <p>{item.text}</p>
                             </li>
                         ))}
@@ -168,11 +162,7 @@ export default function AboutPage() {
 
                 <section className="lp-section container about-section">
                     <div className="about-company" data-reveal>
-                        <span className="lp-step__icon">
-                            <Code2 size={20} />
-                        </span>
                         <div>
-                            <span className="lp-kicker">Who we are</span>
                             <h2>Built by {COMPANY.operator}</h2>
                             <p>
                                 {COMPANY.operator} is a South African company that builds software and apps. {COMPANY.product} is one of its products, and{' '}

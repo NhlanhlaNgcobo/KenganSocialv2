@@ -87,7 +87,7 @@ export default function HelpCenterPage() {
                         <div style={iconWrapStyle}>
                             <BookOpen size={28} className="text-brand" />
                         </div>
-                        <h3 style={{ fontSize: '1.4rem', marginBottom: '16px' }}>Getting Started</h3>
+                        <h2 style={{ fontSize: '1.4rem', marginBottom: '16px' }}>Getting Started</h2>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>Set up your workspace, connect accounts and schedule your first post.</p>
                         <a className="btn btn-secondary" style={{ marginTop: 'auto', width: '100%', textDecoration: 'none', justifyContent: 'center' }} href="#faq">
                             Read the FAQ
@@ -98,7 +98,7 @@ export default function HelpCenterPage() {
                         <div style={iconWrapStyle}>
                             <Mail size={28} className="text-brand" />
                         </div>
-                        <h3 style={{ fontSize: '1.4rem', marginBottom: '16px' }}>Contact Support</h3>
+                        <h2 style={{ fontSize: '1.4rem', marginBottom: '16px' }}>Contact Support</h2>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>Found a bug or a scheduling error? Email us and we'll get back to you.</p>
                         <a
                             className="btn btn-primary"

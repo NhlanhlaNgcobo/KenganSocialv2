@@ -367,7 +367,7 @@
 
 /* Scale in */
 .gt-pop {
-    animation: gt-pop 0.45s cubic-bezier(0.2, 0.8, 0.2, 1.2) both;
+    animation: gt-pop 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
     animation-delay: var(--d, 0s);
 }
 
@@ -413,7 +413,7 @@
     border-radius: 6px;
     color: #fff;
     background: var(--success);
-    animation: gt-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1.4) both;
+    animation: gt-pop 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
     animation-delay: var(--d, 0s);
 }
 

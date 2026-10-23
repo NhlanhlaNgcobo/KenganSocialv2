@@ -34,7 +34,7 @@
   /* Text */
   --text-primary: #ededef;
   --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
+  --text-muted: #8a8a93; /* 4.96:1 or better on every dark surface (WCAG AA) */
   --text-inverse: #0c0c0e;
 
   /* Accent: silver-white on black glass, black on white. No hue: type and contrast do the work. */
@@ -124,7 +124,7 @@
 
   --text-primary: #0a0a0b;
   --text-secondary: #52525b;
-  --text-muted: #8a8a93;
+  --text-muted: #6b6b74; /* 4.8:1 or better on light surfaces */
   --text-inverse: #fafafa;
 
   /* Accent: black on white */
@@ -253,6 +253,15 @@ h6 {
   line-height: 1.2;
   letter-spacing: -0.02em;
   color: var(--text-primary);
+  /* Even line lengths for multi-line headings (no lopsided last line). */
+  text-wrap: balance;
+}
+
+/* No single word stranded on a paragraph's last line. */
+p,
+li,
+blockquote {
+  text-wrap: pretty;
 }
 
 h1 {
@@ -273,10 +282,7 @@ h4 {
 
 /* Gradient text is retired: keep the class, drop the effect. */
 .text-gradient {
-  background: linear-gradient(120deg, var(--text-primary) 0%, var(--accent-text) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-primary);
 }
 
 .muted {
@@ -381,13 +387,13 @@ h4 {
    arrows that lead, and a ripple from where you click (lib/button-ripple.js).
    --------------------- */
 .btn {
-  --btn-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --btn-ease: cubic-bezier(0.16, 1, 0.3, 1);
   transition:
     background var(--transition-fast),
     border-color var(--transition-fast),
     color var(--transition-fast),
     box-shadow var(--transition-base),
-    transform 220ms var(--btn-spring);
+    transform 220ms var(--btn-ease);
 }
 
 .btn:hover:not(:disabled) {
@@ -400,7 +406,7 @@ h4 {
 }
 
 .btn svg {
-  transition: transform 260ms var(--btn-spring);
+  transition: transform 260ms var(--btn-ease);
 }
 
 .btn:hover:not(:disabled) svg {
@@ -764,10 +770,7 @@ input[type='radio'] {
   font-size: 1.75rem;
   letter-spacing: -0.025em;
   width: fit-content;
-  background: linear-gradient(110deg, var(--text-primary) 30%, var(--accent-text) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-primary);
 }
 
 .page-head p {

@@ -10,7 +10,7 @@
     --ke-border-strong: #34343c;
     --ke-text: #f4f4f5;
     --ke-text-2: #a1a1aa;
-    --ke-text-3: #71717a;
+    --ke-text-3: #8e8e97; /* 4.8:1 or better on every editor panel */
     /* The editor is always dark, so its accent is fixed rather than following the app theme
        (the light theme's near-black accent would vanish on these panels). */
     --ke-accent: var(--accent-primary);

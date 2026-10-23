@@ -21,7 +21,7 @@
 .video-ad-preset--orbit i{animation:vad-orbit 3.2s ease-in-out infinite}
 .video-ad-preset--float i{animation:vad-float 2.8s ease-in-out infinite}
 .video-ad-preset--reveal i{animation:vad-reveal 3s ease-in-out infinite}
-.video-ad-preset--showcase i{animation:vad-whip 1.6s cubic-bezier(.2,.8,.2,1.2) infinite}
+.video-ad-preset--showcase i{animation:vad-whip 1.6s cubic-bezier(0.16, 1, 0.3, 1) infinite}
 }
 @keyframes vad-spin{to{transform:rotateY(360deg)}}
 @keyframes vad-orbit{0%,100%{transform:rotateX(12deg) rotateY(-35deg) scale(.9)}50%{transform:rotateX(12deg) rotateY(35deg) scale(1.2)}}
