@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { checkLimit, consumeUsage, planRateLimit, refundUsage } from '../middleware/planGate';
-import { MAX_SOURCE_MINUTES } from '../utils/planLimits';
+import { MAX_SOURCE_MINUTES, transcriptionMinutes } from '../utils/planLimits';
 import { effectivePlan } from '../utils/trial';
 import { probe } from '../services/ffmpeg-runner.js';
 import { getUploadPath, storeUpload } from '../services/manual-edit.service.js';
@@ -186,7 +186,7 @@ async function chargeSource(sourcePath: string, workspaceId: string, plan: strin
             },
         };
     }
-    const usage = await consumeUsage(workspaceId, plan, 'transcribeHrs', Math.max(1, Math.ceil(seconds / 3600)));
+    const usage = await consumeUsage(workspaceId, plan, 'transcribeMinutes', transcriptionMinutes(seconds));
     return usage.ok ? null : { status: usage.status, body: usage.body };
 }
 

@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { checkLimit, consumeUsage, planRateLimit } from '../middleware/planGate';
+import { CREDIT_COSTS } from '../utils/planLimits';
 import { deleteFile, uploadFile } from '../services/storage.service.js';
 import { aiConfigured } from '../services/marketing/brand-ai.js';
 import { GOALS, normalizeSlide, planCarousel, sourceFromSite } from '../services/marketing/carousel-plan.js';
@@ -35,7 +36,7 @@ const storagePath = (req: Request, id: string) => `workspaces/${(req as any).wor
 const IMAGERY = ['none', 'free', 'fast', 'best'] as const;
 
 /** AI credits per generated image: paid image models cost far more than a text generation. */
-const IMAGE_CREDITS: Record<string, number> = { none: 0, free: 0, fast: 2, best: 6 };
+const IMAGE_CREDITS: Record<string, number> = { none: 0, free: 0, fast: CREDIT_COSTS.fastImage, best: CREDIT_COSTS.bestImage };
 
 /** Credits for a new carousel: 1 for the writing, plus each slide image at its tier. */
 function carouselCredits(req: Request): number {

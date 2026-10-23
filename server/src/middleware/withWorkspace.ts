@@ -2,7 +2,8 @@ import type { Request, Response, NextFunction } from 'express';
 import { getAuth as firebaseAuth } from 'firebase-admin/auth';
 import { db } from '../utils/firestore';
 import { applyDevPlanOverride } from '../utils/devPlan';
-import { effectivePlan } from '../utils/trial';
+import { effectivePlan, trialEndsAt } from '../utils/trial';
+import { noteTrial } from './planGate';
 import { enforceWorkspaceAccess, workspaceRole } from './workspaceAccess';
 
 async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: string) {
@@ -14,7 +15,7 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
 
         const workspaceData = workspaceDoc.data() as any;
         if (workspaceData.ownerId === uid) {
-            return { id: workspaceDoc.id, plan: effectivePlan(workspaceData), role: 'owner' };
+            return { id: workspaceDoc.id, plan: effectivePlan(workspaceData), trialEndsAt: trialEndsAt(workspaceData), role: 'owner' };
         }
 
         const memberDoc = await db
@@ -28,7 +29,7 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
             return null;
         }
 
-        return { id: workspaceDoc.id, plan: effectivePlan(workspaceData), role: memberDoc.data()!.role };
+        return { id: workspaceDoc.id, plan: effectivePlan(workspaceData), trialEndsAt: trialEndsAt(workspaceData), role: memberDoc.data()!.role };
     }
 
     const ownedWorkspace = await db
@@ -40,7 +41,7 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
     if (!ownedWorkspace.empty) {
         const workspaceDoc = ownedWorkspace.docs[0];
         const workspaceData = workspaceDoc.data() as any;
-        return { id: workspaceDoc.id, plan: effectivePlan(workspaceData), role: 'owner' };
+        return { id: workspaceDoc.id, plan: effectivePlan(workspaceData), trialEndsAt: trialEndsAt(workspaceData), role: 'owner' };
     }
 
     // Member of someone else's workspace: workspaces keep a `members` uid array (see workspace.controller.js).
@@ -90,6 +91,8 @@ export async function withWorkspace(req: Request, res: Response, next: NextFunct
 
         (req as any).workspaceId = resolvedWorkspace.id;
         (req as any).plan = applyDevPlanOverride(resolvedWorkspace.plan);
+        // Trial quantities apply while the plan comes from the trial (not under a local plan override).
+        noteTrial(resolvedWorkspace.id, (req as any).plan === resolvedWorkspace.plan ? resolvedWorkspace.trialEndsAt : null);
         (req as any).workspaceRole = resolvedWorkspace.role;
         return enforceWorkspaceAccess(req, res, next);
     } catch (err: any) {

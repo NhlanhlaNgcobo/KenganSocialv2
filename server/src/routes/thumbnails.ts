@@ -3,7 +3,9 @@ import type { Request, Response } from 'express';
 import fs from 'fs';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { checkLimit, planRateLimit } from '../middleware/planGate';
+import { checkLimit, consumeUsage, planRateLimit, refundUsage } from '../middleware/planGate';
+import { CREDIT_COSTS } from '../utils/planLimits';
+import { aiConfigured } from '../services/gemini-json.js';
 import { getUploadPath } from '../services/manual-edit.service.js';
 import { loadClipBrand } from '../services/clips/brand.js';
 import { background, backgroundsAvailable, candidate, candidates, headlines } from '../services/thumbnails/index.js';
@@ -42,15 +44,22 @@ router.post('/candidates', planRateLimit(), async (req: Request, res: Response) 
 
 router.post('/headlines', planRateLimit(), async (req: Request, res: Response) => {
     const s = (v: unknown, n: number) => String(v || '').slice(0, n);
-    res.json(await headlines({ title: s(req.body?.title, 200), hook: s(req.body?.hook, 300), caption: s(req.body?.caption, 600), transcript: s(req.body?.transcript, 4000) }));
+    // AI headline ideas cost a credit; without credits (or AI) they are built from the clip's own words.
+    const ai = aiConfigured() && (await consumeUsage((req as any).workspaceId, (req as any).plan || 'starter', 'aiCalls', CREDIT_COSTS.headlines)).ok;
+    res.json(await headlines({ title: s(req.body?.title, 200), hook: s(req.body?.hook, 300), caption: s(req.body?.caption, 600), transcript: s(req.body?.transcript, 4000), allowAi: ai }));
 });
 
-router.post('/background', planRateLimit(), checkLimit('aiCalls'), async (req: Request, res: Response) => {
+// An AI background is a fast-quality image: the same credits as one in a carousel.
+router.post('/background', planRateLimit(), checkLimit('aiCalls', CREDIT_COSTS.fastImage), async (req: Request, res: Response) => {
     const prompt = String(req.body?.prompt || '').trim().slice(0, 400);
-    if (!prompt) return res.status(400).json({ error: 'Describe the background you want.' });
+    if (!prompt) {
+        await refundUsage((req as any).workspaceId, (req as any).plan || 'starter', 'aiCalls', CREDIT_COSTS.fastImage);
+        return res.status(400).json({ error: 'Describe the background you want.' });
+    }
     try {
         res.json(await background({ prompt, format: req.body?.format === 'tiktok' ? 'tiktok' : 'youtube', owner: uid(req) }));
     } catch (error: any) {
+        await refundUsage((req as any).workspaceId, (req as any).plan || 'starter', 'aiCalls', CREDIT_COSTS.fastImage);
         res.status(error.status || 502).json({ error: error.message || 'The background could not be generated.' });
     }
 });

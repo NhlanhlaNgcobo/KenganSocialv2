@@ -46,7 +46,9 @@ ${transcript?.substring(0, 3000)}` }
 // POST /api/ai/generate-captions
 // Streams one SSE event per platform by default. Send { stream: false } to get a single JSON
 // response instead: { success, captions: { [platform]: caption } }.
-router.post('/generate-captions', withWorkspace, planRateLimit(), checkLimit('aiCalls'), async (req: Request, res: Response) => {
+// One credit per platform: each platform's caption is its own model call.
+const captionCredits = (req: Request) => Math.max(1, Array.isArray(req.body?.platforms) ? req.body.platforms.filter((p: unknown) => typeof p === 'string').length : 1);
+router.post('/generate-captions', withWorkspace, planRateLimit(), checkLimit('aiCalls', captionCredits), async (req: Request, res: Response) => {
     const { transcript, platforms = [], niche, tone = 'casual', stream = true } = req.body;
     const platformList: string[] = Array.isArray(platforms) ? platforms.filter((p: unknown) => typeof p === 'string') : [];
 

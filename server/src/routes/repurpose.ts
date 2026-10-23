@@ -3,7 +3,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { checkLimit, consumeUsage, planRateLimit } from '../middleware/planGate';
-import { MAX_SOURCE_MINUTES } from '../utils/planLimits';
+import { MAX_SOURCE_MINUTES, transcriptionMinutes } from '../utils/planLimits';
 import { probe } from '../services/ffmpeg-runner.js';
 import { getUploadPath } from '../services/manual-edit.service.js';
 import { fetchArticle, fetchYouTubeText, isYouTubeUrl, transcribeUpload } from '../services/repurpose/extract.js';
@@ -57,7 +57,7 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('aiCalls'), async (r
             if (seconds / 60 > Math.max(maxMinutes, 10)) {
                 return res.status(402).json({ error: `This video is ${Math.round(seconds / 60)} minutes long. Your plan transcribes videos of up to ${Math.max(maxMinutes, 10)} minutes here.` });
             }
-            const usage = await consumeUsage((req as any).workspaceId, plan, 'transcribeHrs', Math.max(1, Math.ceil(seconds / 3600)));
+            const usage = await consumeUsage((req as any).workspaceId, plan, 'transcribeMinutes', transcriptionMinutes(seconds));
             if (!usage.ok) return res.status(usage.status).json(usage.body);
             content = await transcribeUpload(filePath, { plan, workspaceId: (req as any).workspaceId });
             title = title || text(source.name, 150) || 'Video';

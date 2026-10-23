@@ -10,6 +10,34 @@ import {
 import { renderVerticalVideo, secondsToFrames } from '../services/render.service.js';
 import { uploadFile } from '../services/storage.service.js';
 import fs from 'fs';
+import { consumeUsage, noteTrial, refundUsage, usageLimit } from '../middleware/planGate.ts';
+import { readyUsageRedis } from '../utils/usageRedis.ts';
+import { getMonth } from '../utils/dateUtils.ts';
+import { effectivePlan, trialEndsAt } from '../utils/trial.ts';
+import { applyDevPlanOverride } from '../utils/devPlan.ts';
+import { CREDIT_COSTS } from '../utils/planLimits.ts';
+
+/**
+ * These AI Writer endpoints charge the workspace's monthly plan AI credits (the same allowance as
+ * every other AI feature). The old separate `credits` balance is no longer used.
+ */
+function workspacePlan(workspaceId, workspaceData) {
+    const plan = applyDevPlanOverride(effectivePlan(workspaceData));
+    noteTrial(workspaceId, plan === effectivePlan(workspaceData) ? trialEndsAt(workspaceData) : null);
+    return plan;
+}
+
+/** AI credits left this month on the workspace's plan (null when the counter can't be read). */
+async function remainingCredits(workspaceId, plan) {
+    const limit = usageLimit(workspaceId, plan, 'aiCalls');
+    if (limit <= 0) return 0;
+    try {
+        const used = Number(await (await readyUsageRedis()).get(`usage:${workspaceId}:aiCalls:${getMonth()}`)) || 0;
+        return Math.max(0, limit - used);
+    } catch {
+        return null;
+    }
+}
 
 // -------------------------------------------------------
 // AI Text Generation (Captions, Hashtags, Scripts, Hooks)
@@ -38,25 +66,19 @@ export async function generateAI(req, res) {
             return res.status(404).json({ error: 'Workspace not found' });
         }
 
-        const workspaceData = workspaceDoc.data();
-        const currentCredits = workspaceData.credits !== undefined ? workspaceData.credits : 50;
+        const plan = workspacePlan(workspaceId, workspaceDoc.data());
+        const usage = await consumeUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.text);
+        if (!usage.ok) return res.status(usage.status).json(usage.body);
 
-        if (currentCredits <= 0) {
-            return res.status(402).json({ error: 'Insufficient AI credits. Please upgrade your plan.' });
+        // 2. Generate with real AI service (the credit is given back if it fails)
+        let generated;
+        try {
+            generated = await generateContent(type || 'caption', prompt, { tone, language, platform });
+        } catch (error) {
+            await refundUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.text);
+            throw error;
         }
-
-        // 2. Generate with real AI service
-        const { result, provider } = await generateContent(type || 'caption', prompt, {
-            tone,
-            language,
-            platform,
-        });
-
-        // 3. Deduct credits
-        await workspaceRef.update({
-            credits: currentCredits - 1,
-            updatedAt: new Date().toISOString(),
-        });
+        const { result, provider } = generated;
 
         // 4. Log usage
         await db.collection('ai_usage_logs').add({
@@ -66,15 +88,11 @@ export async function generateAI(req, res) {
             type: type || 'caption',
             provider,
             promptSnippet: prompt.substring(0, 100),
-            creditsDeducted: 1,
+            creditsDeducted: CREDIT_COSTS.text,
             timestamp: new Date().toISOString(),
         });
 
-        res.json({
-            result,
-            provider,
-            remainingCredits: currentCredits - 1,
-        });
+        res.json({ result, provider, remainingCredits: await remainingCredits(workspaceId, plan) });
     } catch (error) {
         console.error('[AI Controller] Generation error:', error);
         res.status(500).json({ error: error.message || 'AI generation failed' });
@@ -84,9 +102,9 @@ export async function generateAI(req, res) {
 /**
  * POST /api/ai/generate-media
  * Generate a real image for AI-written copy (image-gen adapter: Pollinations or OpenRouter),
- * store it in our storage and return its URL. Costs 2 credits, deducted only after success.
+ * store it in our storage and return its URL. Costs a fast image's credits, refunded on failure.
  */
-const MEDIA_COST = 2;
+const MEDIA_COST = CREDIT_COSTS.fastImage;
 
 export async function generateMediaRequest(req, res) {
     try {
@@ -111,12 +129,9 @@ export async function generateMediaRequest(req, res) {
             return res.status(404).json({ error: 'Workspace not found' });
         }
 
-        const workspaceData = workspaceDoc.data();
-        const currentCredits = workspaceData.credits !== undefined ? workspaceData.credits : 50;
-
-        if (currentCredits < MEDIA_COST) {
-            return res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: `You need ${MEDIA_COST} AI credits to generate an image.` });
-        }
+        const plan = workspacePlan(workspaceId, workspaceDoc.data());
+        const usage = await consumeUsage(workspaceId, plan, 'aiCalls', MEDIA_COST);
+        if (!usage.ok) return res.status(usage.status).json(usage.body);
 
         // 2. Generate and store the image. Nothing is charged if this fails.
         let mediaResult;
@@ -124,21 +139,13 @@ export async function generateMediaRequest(req, res) {
             mediaResult = await generateMedia(String(prompt), type || 'image', { workspaceId });
         } catch (error) {
             console.error('[AI Controller] Image generation failed:', error.message);
+            await refundUsage(workspaceId, plan, 'aiCalls', MEDIA_COST);
             const status = error.status === 503 ? 503 : 502;
             return res.status(status).json({
                 error: status === 503 ? 'IMAGE_GENERATION_UNAVAILABLE' : 'IMAGE_GENERATION_FAILED',
                 message: status === 503 ? IMAGE_GENERATION_UNAVAILABLE : "The image couldn't be generated. No credits were used. Try again in a moment.",
             });
         }
-
-        // 3. Deduct credits (transaction, so concurrent requests can't double-spend)
-        const remainingCredits = await db.runTransaction(async (tx) => {
-            const snap = await tx.get(workspaceRef);
-            const credits = snap.data()?.credits !== undefined ? snap.data().credits : 50;
-            const next = Math.max(0, credits - MEDIA_COST);
-            tx.update(workspaceRef, { credits: next, updatedAt: new Date().toISOString() });
-            return next;
-        });
 
         // 4. Log usage
         await db.collection('ai_usage_logs').add({
@@ -155,7 +162,7 @@ export async function generateMediaRequest(req, res) {
         res.json({
             mediaUrl: mediaResult.url,
             mediaType: mediaResult.type,
-            remainingCredits,
+            remainingCredits: await remainingCredits(workspaceId, plan),
         });
     } catch (error) {
         console.error('[AI Controller] Media generation error:', error);
@@ -188,8 +195,9 @@ export async function getCredits(req, res) {
             return res.status(404).json({ error: 'Workspace not found' });
         }
 
-        const data = doc.data();
-        res.json({ credits: data.credits !== undefined ? data.credits : 50 });
+        // The plan's monthly AI credits left (the same allowance every AI feature uses).
+        const credits = await remainingCredits(workspaceId, workspacePlan(workspaceId, doc.data()));
+        res.json({ credits, imageCredits: CREDIT_COSTS.fastImage });
     } catch (error) {
         console.error('[AI Controller] Get credits error:', error);
         res.status(500).json({ error: 'Failed to fetch credits' });
@@ -320,19 +328,16 @@ export async function queueVideoRender(req, res) {
             return res.status(400).json({ error: 'Workspace ID and input video URL are required' });
         }
 
-        // Credit check (video renders cost 5 credits)
-        const workspaceRef = db.collection('workspaces').doc(workspaceId);
-        const workspaceDoc = await workspaceRef.get();
+        // A render uses the plan's render allowance, like every other video render.
+        const workspaceDoc = await db.collection('workspaces').doc(workspaceId).get();
 
         if (!workspaceDoc.exists) {
             return res.status(404).json({ error: 'Workspace not found' });
         }
 
-        const currentCredits = workspaceDoc.data().credits || 50;
-
-        if (currentCredits < 5) {
-            return res.status(402).json({ error: 'Video rendering requires 5 AI credits.' });
-        }
+        const plan = workspacePlan(workspaceId, workspaceDoc.data());
+        const usage = await consumeUsage(workspaceId, plan, 'renders', 1);
+        if (!usage.ok) return res.status(usage.status).json(usage.body);
 
         // Create render job
         const job = createRenderJob({
@@ -346,28 +351,19 @@ export async function queueVideoRender(req, res) {
         // Save to Firestore
         await db.collection('render_jobs').doc(job.id).set(job);
 
-        // Deduct credits
-        await workspaceRef.update({
-            credits: currentCredits - 5,
-            updatedAt: new Date().toISOString(),
-        });
-
         // Log usage
         await db.collection('ai_usage_logs').add({
             userId: uid,
             workspaceId,
             action: 'video_render',
             type: 'render',
-            creditsDeducted: 5,
+            rendersUsed: 1,
             renderJobId: job.id,
             timestamp: new Date().toISOString(),
         });
 
         // Return immediately — render runs in the background
-        res.status(201).json({
-            job,
-            remainingCredits: currentCredits - 5,
-        });
+        res.status(201).json({ job });
 
         // ---- Background Render ----
         const jobRef = db.collection('render_jobs').doc(job.id);

@@ -13,7 +13,9 @@ const router = express.Router();
 const PYTHON_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
 
 import { withWorkspace } from '../middleware/withWorkspace';
-import { checkLimit, planRateLimit } from '../middleware/planGate';
+import { checkLimit, consumeUsage, planRateLimit } from '../middleware/planGate';
+import { probe } from '../services/ffmpeg-runner.js';
+import { transcriptionMinutes } from '../utils/planLimits';
 import { requireOwnedUpload } from '../middleware/ownedUpload.js';
 
 // POST /api/video/process
@@ -188,11 +190,15 @@ router.get('/jobs/:jobId', withWorkspace, async (req: Request, res: Response) =>
 });
 
 // POST /api/video/transcribe
-router.post('/transcribe', withWorkspace, requireOwnedUpload, planRateLimit(), checkLimit('transcribeHrs'), async (req: Request, res: Response) => {
+router.post('/transcribe', withWorkspace, requireOwnedUpload, planRateLimit(), async (req: Request, res: Response) => {
     const videoUrl = (req as any).sourcePath;
     const workspaceId = (req as any).workspaceId;
 
     if (!videoUrl) return res.status(400).json({ error: 'Missing videoUrl' });
+    // Charged by the minute of audio, not per request.
+    const seconds = (await probe(videoUrl).catch(() => ({ duration: 0 }))).duration || 0;
+    const usage = await consumeUsage(workspaceId, (req as any).plan || 'starter', 'transcribeMinutes', transcriptionMinutes(seconds));
+    if (!usage.ok) return res.status(usage.status).json(usage.body);
 
     const jobId = `transcribe_${Date.now()}`;
     await db.collection('render_jobs').doc(jobId).set({

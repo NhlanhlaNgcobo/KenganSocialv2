@@ -2,11 +2,33 @@ import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { readyUsageRedis } from '../utils/usageRedis';
 import { RESERVE_USAGE, REFUND_USAGE } from '../services/usage-reservation';
-import { PLAN_LIMITS, PlanFeature } from '../utils/planLimits';
+import { PLAN_LIMITS, PlanFeature, TRIAL_LIMITS } from '../utils/planLimits';
 import { getMonth, endOfMonth } from '../utils/dateUtils';
 
 export type UsageResult = { ok: boolean; status: number; body: Record<string, any> };
 const ALLOWED: UsageResult = { ok: true, status: 200, body: {} };
+
+/**
+ * Workspaces on their free trial (set by withWorkspace on every request): the trial unlocks the
+ * trial plan's features, but usage is capped at TRIAL_LIMITS so a sign-up can't run up costs.
+ */
+const trials = new Map<string, number>(); // workspaceId -> trial end (ms)
+export function noteTrial(workspaceId: string, endsAt: string | null) {
+    if (!workspaceId) return;
+    const end = endsAt ? Date.parse(endsAt) : NaN;
+    if (Number.isFinite(end) && end > Date.now()) trials.set(workspaceId, end);
+    else trials.delete(workspaceId);
+}
+
+/** The monthly allowance for a feature: the plan's, or the trial cap while a trial runs. */
+export function usageLimit(workspaceId: string, plan: string, feature: PlanFeature): number {
+    const limit = (PLAN_LIMITS as any)[plan]?.[feature] ?? 0;
+    const trialEnd = trials.get(workspaceId);
+    if (!trialEnd || trialEnd <= Date.now()) return limit;
+    const cap = (TRIAL_LIMITS as any)[feature] ?? limit;
+    if (limit === 0) return 0;
+    return limit === -1 ? cap : Math.min(limit, cap);
+}
 
 /**
  * Uses `units` of a plan feature for this month, or refuses if that would pass the plan's limit.
@@ -14,7 +36,7 @@ const ALLOWED: UsageResult = { ok: true, status: 200, body: {} };
  * is 3 transcription hours). Usable from routes after the request has been validated.
  */
 export async function consumeUsage(workspaceId: string, plan: string, feature: PlanFeature, units = 1): Promise<UsageResult> {
-    const limit = (PLAN_LIMITS as any)[plan]?.[feature] ?? 0;
+    const limit = usageLimit(workspaceId, plan, feature);
     const amount = Math.max(1, Math.ceil(units));
     if (!workspaceId || !Number.isSafeInteger(amount)) return { ok: false, status: 400, body: { error: 'INVALID_USAGE_REQUEST' } };
 
@@ -67,7 +89,7 @@ export async function consumeUsage(workspaceId: string, plan: string, feature: P
 
 /** Gives back units taken by consumeUsage when the work is then refused for another reason. */
 export async function refundUsage(workspaceId: string, plan: string, feature: PlanFeature, units = 1) {
-    const limit = (PLAN_LIMITS as any)[plan]?.[feature] ?? 0;
+    const limit = usageLimit(workspaceId, plan, feature);
     if (limit <= 0) return;
     try {
         const redis = await readyUsageRedis();

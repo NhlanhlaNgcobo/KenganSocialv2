@@ -72,9 +72,9 @@ function featuresForTier(tier: Plan): string[] {
         line(l.exports, 'video exports / month', 'Unlimited video exports'),
         line(l.connections, 'connected accounts', 'Unlimited connected accounts'),
         line(l.aiCalls, 'AI credits / month', 'Unlimited AI credits'),
-        line(l.renders, 'launch & tutorial videos / month', 'Unlimited launch & tutorial videos'),
+        line(l.renders, 'video renders / month', 'Unlimited video renders'),
         l.clipAnalysis > 0 ? `${formatCount(l.clipAnalysis)} AI clip projects / month (videos up to ${MAX_SOURCE_MINUTES[tier]} min)` : null,
-        line(l.transcribeHrs, 'hrs transcription / month', 'Unlimited transcription'),
+        l.transcribeMinutes > 0 ? `${formatCount(l.transcribeMinutes / 60)} hrs transcription / month` : null,
         MAX_CLIENTS[tier] === -1 ? 'Client approvals, unlimited clients' : MAX_CLIENTS[tier] > 0 ? `Client approvals for up to ${MAX_CLIENTS[tier]} clients` : null,
         `${l.storageGB} GB storage`,
     ].filter(Boolean) as string[];

@@ -278,7 +278,7 @@ export default function AiToolsPage() {
                                                 {mediaLoading ? (
                                                     <><RefreshCw size={18} className="spin" /> Generating image…</>
                                                 ) : (
-                                                    <><ImageIcon size={18} /> Generate an image for this post (2 credits)</>
+                                                    <><ImageIcon size={18} /> Generate an image for this post (5 credits)</>
                                                 )}
                                             </button>
                                             {imageGeneration === false ? (
@@ -294,7 +294,7 @@ export default function AiToolsPage() {
                                             <div className="flex gap-sm" style={{ marginTop: '8px' }}>
                                                 <a href={mediaUrl} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">Open full size</a>
                                                 <button className="btn btn-ghost btn-sm" onClick={handleGenerateMedia} disabled={mediaLoading}>
-                                                    <RefreshCw size={14} className={mediaLoading ? 'spin' : undefined} /> Try another (2 credits)
+                                                    <RefreshCw size={14} className={mediaLoading ? 'spin' : undefined} /> Try another (5 credits)
                                                 </button>
                                             </div>
                                         </div>

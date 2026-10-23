@@ -6,9 +6,9 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { checkLimit, planRateLimit } from '../middleware/planGate';
+import { checkLimit, consumeUsage, planRateLimit } from '../middleware/planGate';
 import { deleteFile, uploadFile } from '../services/storage.service.js';
-import { PLAN_LIMITS } from '../utils/planLimits';
+import { CREDIT_COSTS, PLAN_LIMITS } from '../utils/planLimits';
 import { contrastRatio, extractBrandFromWebsite } from '../services/marketing/brand-extract.js';
 import { aiConfigured, analyzeStyle, analyzeVoice, normalizeStyle, normalizeVoice, tagReference } from '../services/marketing/brand-ai.js';
 import { buildBusinessProfile, normalizeBusiness, voiceSamplesFromSite } from '../services/marketing/business-profile.js';
@@ -332,7 +332,11 @@ router.post('/setup/website', requireEditor, planRateLimit(), route(async (req, 
         // 2. Understand the business and how it sounds.
         let business: any = null;
         let voice: any = null;
-        if (aiAllowed(plan)) {
+        // The AI steps (2-3 model calls with screenshots) cost credits; without them the site's
+        // colours, fonts, logo and copy are still applied.
+        const aiPaid = aiAllowed(plan) && (await consumeUsage((req as any).workspaceId, plan, 'aiCalls', CREDIT_COSTS.websiteSetup)).ok;
+        if (!aiPaid && aiAllowed(plan)) notes.push(`Not enough AI credits for the AI steps (${CREDIT_COSTS.websiteSetup} needed): your brand was set up from the website itself.`);
+        if (aiPaid) {
             await stage('Understanding your business', 45);
             try {
                 business = await buildBusinessProfile(site);

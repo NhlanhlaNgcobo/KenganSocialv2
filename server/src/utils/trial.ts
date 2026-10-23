@@ -36,6 +36,14 @@ export function activeTrial(ws: any, now = Date.now()): { plan: Plan; endsAt: st
     return Date.parse(endsAt) > now ? { plan, endsAt } : null;
 }
 
+/** The trial's end date when the workspace's plan currently comes from its trial, else null. */
+export function trialEndsAt(ws: any, now = Date.now()): string | null {
+    const trial = activeTrial(ws, now);
+    if (!trial) return null;
+    const paidOnly = effectivePlan({ ...ws, trialPlan: null }, now);
+    return RANK[trial.plan] > RANK[paidOnly] ? trial.endsAt : null;
+}
+
 /** The plan a workspace gets: its paid plan, or a running trial's plan when that is higher. */
 export function effectivePlan(ws: any, now = Date.now()): Plan {
     let paid = ((ws?.plan as Plan) in PLAN_LIMITS ? ws.plan : 'starter') as Plan;

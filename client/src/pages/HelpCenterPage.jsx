@@ -32,11 +32,11 @@ const FAQ = [
     },
     {
         q: 'When do usage limits reset?',
-        a: 'Monthly counters (posts, exports, AI credits, renders, transcription hours) reset on the 1st of each month at 00:00 UTC.',
+        a: 'Monthly counters (posts, exports, AI credits, renders, transcription minutes) reset on the 1st of each month at 00:00 UTC.',
     },
     {
         q: 'What is an AI credit?',
-        a: 'One AI text generation (a caption, hooks, a script, a repurpose run or a carousel’s writing) uses 1 credit. AI images cost more to make: each fast image uses 2 credits and each best-quality image 6. Free images use no extra credits. Transcription is counted in hours of video, rounded up per video.',
+        a: 'One AI text generation (hooks, a script, a repurpose run, a carousel’s writing, or a caption for one platform) uses 1 credit. Bigger jobs cost more because they cost more to make: each fast AI image uses 5 credits and each best-quality image 6, setting up your brand from a website 5, learning an editing style 5, a trending refresh 2 and a song’s lyrics 17. Free images use no extra credits. Transcription is counted by the minute, editor exports and AI edits per 5 minutes of video.',
     },
     {
         q: 'Where do I set up my brand kit?',

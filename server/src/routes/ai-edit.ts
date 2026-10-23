@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { consumeUsage, planRateLimit, refundUsage } from '../middleware/planGate';
-import { MAX_SOURCE_MINUTES } from '../utils/planLimits';
+import { MAX_SOURCE_MINUTES, transcriptionMinutes, videoUnits } from '../utils/planLimits';
 import { fail, requireWorkspace, route } from '../services/marketing/http';
 import { probe } from '../services/ffmpeg-runner.js';
 import { getUploadPath } from '../services/manual-edit.service.js';
@@ -198,12 +198,15 @@ router.post(
                 upgradeUrl: '/dashboard/billing',
             });
         }
-        const renders = await consumeUsage(workspaceId, plan, 'renders', 1);
+        // Charged by length: a render unit per started 5 minutes, and transcription by the minute.
+        const renderUnits = videoUnits(seconds);
+        const minutes = transcriptionMinutes(seconds);
+        const renders = await consumeUsage(workspaceId, plan, 'renders', renderUnits);
         if (!renders.ok) return res.status(renders.status).json(renders.body);
-        const hours = await consumeUsage(workspaceId, plan, 'transcribeHrs', Math.max(1, Math.ceil(seconds / 3600)));
-        if (!hours.ok) {
-            await refundUsage(workspaceId, plan, 'renders', 1);
-            return res.status(hours.status).json(hours.body);
+        const transcription = await consumeUsage(workspaceId, plan, 'transcribeMinutes', minutes);
+        if (!transcription.ok) {
+            await refundUsage(workspaceId, plan, 'renders', renderUnits);
+            return res.status(transcription.status).json(transcription.body);
         }
 
         const ref = jobs().doc(uuidv4());
@@ -225,8 +228,8 @@ router.post(
             await enqueueAiEdit(ref.id, 'edit', { videoPath, profile, options, workspaceId, plan });
         } catch {
             await ref.update({ status: 'failed', stage: 'Queue unavailable' });
-            await refundUsage(workspaceId, plan, 'renders', 1);
-            await refundUsage(workspaceId, plan, 'transcribeHrs', Math.max(1, Math.ceil(seconds / 3600)));
+            await refundUsage(workspaceId, plan, 'renders', renderUnits);
+            await refundUsage(workspaceId, plan, 'transcribeMinutes', minutes);
             throw fail(503, 'Processing queue is unavailable. Please retry shortly.');
         }
         res.status(202).json({ jobId: ref.id });

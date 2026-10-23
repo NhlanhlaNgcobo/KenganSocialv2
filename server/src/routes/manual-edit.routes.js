@@ -8,6 +8,7 @@ import {
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { withWorkspace } from '../middleware/withWorkspace.ts';
 import { checkLimit } from '../middleware/planGate.ts';
+import { videoUnits } from '../utils/planLimits.ts';
 import multer from 'multer';
 import resumableRoutes from './resumable-upload.js';
 import os from 'os';
@@ -32,7 +33,13 @@ router.post('/upload', upload.single('video'), uploadSourceVideo);
 router.use('/resumable', resumableRoutes);
 
 // Submit an edit config for processing — returns jobId
-router.post('/', checkLimit('exports'), processManualEdit);
+// Each started 5 minutes of exported video counts once (a short preview range counts by its length).
+const exportUnits = (req) => {
+    const range = req.body?.range;
+    const seconds = range ? Number(range.end) - Number(range.start) : Number(req.body?.duration);
+    return videoUnits(seconds);
+};
+router.post('/', checkLimit('exports', exportUnits), processManualEdit);
 
 // Poll for processing status
 router.get('/status/:jobId', getManualEditStatus);

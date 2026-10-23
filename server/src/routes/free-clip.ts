@@ -21,7 +21,7 @@ import { LEGAL_VERSIONS } from '../config/legal';
  *
  * One per person: the normalised email (lower case; Gmail dots and +tags removed) is stored only
  * as an HMAC (free_clips/{hash}), unless the visitor asks for product news. Also limited per IP
- * per day and in total per day (FREE_CLIP_DAILY_CAP, default 100), and the jobs run one at a time
+ * per day and in total per day (FREE_CLIP_DAILY_CAP, default 25), and the jobs run one at a time
  * with a short queue. A failed job releases the email so the person can try again.
  */
 const router = express.Router();
@@ -193,7 +193,8 @@ router.post('/', startLimiter, receive, async (req: Request, res: Response) => {
             cleanup(file.path);
             return fail(res, 429, 'Free clips are limited to two per network per day. Create a free account to keep going.', 'IP_LIMIT');
         }
-        const cap = Number(process.env.FREE_CLIP_DAILY_CAP) || 100;
+        // About R3.50 of compute and AI per clip at most (scripts/pricing-model.mjs): 25 a day caps it near R2,600 a month.
+        const cap = Number(process.env.FREE_CLIP_DAILY_CAP) || 25;
         if (!(await takeSlot(daySlot, cap))) {
             await claims.doc(emailHash).delete().catch(() => {});
             await giveSlotBack(ipSlot);

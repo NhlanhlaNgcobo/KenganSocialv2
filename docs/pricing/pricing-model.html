@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>KenganSocial pricing model</title>
+<style>
+@page { size: A4; margin: 15mm 14mm 16mm; }
+* { box-sizing: border-box; }
+body { font-family: "Segoe UI", Arial, sans-serif; color: #15171c; font-size: 9.6pt; line-height: 1.45; margin: 0; }
+h1 { font-size: 21pt; margin: 0 0 1mm; letter-spacing: -0.01em; }
+h2 { font-size: 13pt; margin: 7mm 0 2mm; padding-bottom: 1mm; border-bottom: 1px solid #d4d7dd; break-after: avoid; }
+h3 { font-size: 10.5pt; margin: 4mm 0 1.5mm; break-after: avoid; }
+p { margin: 0 0 2.2mm; }
+.sub { color: #555b66; margin-bottom: 5mm; }
+.box { background: #f3f4f6; border-left: 3px solid #15171c; padding: 3mm 4mm; margin: 2mm 0 3mm; }
+table { width: 100%; border-collapse: collapse; margin: 1.5mm 0 3mm; break-inside: avoid; font-size: 8.8pt; }
+th, td { padding: 1.3mm 2mm; border-bottom: 1px solid #e4e6ea; text-align: right; vertical-align: top; }
+th:first-child, td:first-child { text-align: left; }
+th { background: #f6f7f9; font-weight: 600; }
+td.l, th.l { text-align: left; }
+.ok { color: #116b3a; font-weight: 600; } .bad { color: #a3221b; font-weight: 600; }
+ul { margin: 0 0 2.5mm; padding-left: 5mm; } li { margin-bottom: 1mm; }
+code { font-family: Consolas, monospace; font-size: 8.4pt; background: #f1f2f4; padding: 0 1mm; border-radius: 1mm; }
+.small { font-size: 8.2pt; color: #555b66; }
+.formula { font-family: Consolas, monospace; font-size: 8.6pt; background: #f6f7f9; padding: 2mm 3mm; border-radius: 1.5mm; margin: 1mm 0 3mm; white-space: pre-wrap; }
+a { color: #15171c; }
+</style></head><body>
+
+<h1>KenganSocial pricing model</h1>
+<p class="sub">Credits, usage limits and prices per plan, worked out from what each service costs per second and per execution. 23 October 2026. Generated from <code>scripts/pricing-model.mjs</code>; re-run it when a provider changes its prices.</p>
+
+<div class="box"><b>Result.</b> With the new allowances every paid plan keeps a gross margin of <b>at least 60%</b> even when a customer uses 100% of every allowance, on the 10%-discounted annual price, after VAT and Payfast fees, with a 20% safety buffer on every third-party price. Prices stay the same (R299, R699, R3,499, R8,999). An automated test (<code>server/tests/security/pricing.test.ts</code>) fails if the app's limits drift from this model or a plan drops below 60%.</div>
+
+<table>
+<tr><th>Plan</th><th>Price</th><th>Cost at 100% use</th><th>Margin monthly</th><th>Margin annual</th><th>Lowest price for 60%</th><th>Margin before (annual)</th></tr>
+<tr><td>Creator Starter</td><td>R299</td><td>R69,45</td><td class="ok">68.2%</td><td class="ok">65.1%</td><td>R256</td><td class="bad">52.2%</td></tr><tr><td>Creator Pro</td><td>R699</td><td>R164,81</td><td class="ok">68.3%</td><td class="ok">65.2%</td><td>R597</td><td class="bad">23.0%</td></tr><tr><td>Agency</td><td>R3 499</td><td>R847,81</td><td class="ok">67.8%</td><td class="ok">64.7%</td><td>R3 037</td><td class="bad">9.6%</td></tr><tr><td>Enterprise</td><td>R8 999</td><td>R847,81</td><td class="ok">84.9%</td><td class="ok">83.7%</td><td>R3 037</td><td class="">—</td></tr>
+</table>
+<p class="small">"Lowest price for 60%" is the list price at which the annual price still reaches 60% at full use. "Before" costs the old allowances with the same unit costs. Enterprise runs on the Agency allowances in the app; extras are quoted from the unit costs below.</p>
+
+<h2>1. How the costs are measured</h2>
+<p>Every action is costed three ways and the plan limits are counted in the same units:</p>
+<ul>
+<li><b>By the second:</b> video work (transcription, analysis, rendering, exporting) is measured in <i>VM-seconds</i>: seconds of one 4-CPU server (e2-standard-4, Johannesburg). The server costs ~US$140/month; capacity is bought for peaks, so only 50.0% of every second is counted as useful. One useful VM-second costs <b>R0,00189</b>.</li>
+<li><b>By execution:</b> each call to an outside AI or media API is costed from the provider's price, at its worst case (largest output it is allowed to produce, most expensive model in the fallback chain).</li>
+<li><b>By plan limits:</b> a plan's cost is every allowance used in full, times the unit's worst-case cost.</li>
+</ul>
+<div class="formula">rand cost of an API call = US$ price × R17.5 (exchange) × 1.15 (VAT on imported services) × 1.2 (safety buffer)
+net revenue           = list price ÷ 1.15 (treated as VAT-inclusive)
+payment fee           = (price × 3.2% + R2.00) × 1.15
+gross margin          = (net revenue − cost at 100% use − payment fee) ÷ net revenue   ≥ 60%</div>
+
+<h3>Compute per second of media (e2-standard-4, VM-seconds per second)</h3>
+<table>
+<tr><th>Work</th><th>VM-s per media second</th><th>Cost per media minute</th><th class="l">Basis</th></tr>
+<tr><td>Transcription, Whisper base (Creator Starter)</td><td>0.1</td><td>R0,011</td><td class="l">faster-whisper int8 on CPU</td></tr>
+<tr><td>Transcription, Whisper small (Creator Pro)</td><td>0.3</td><td>R0,034</td><td class="l">≈3× base</td></tr>
+<tr><td>Transcription, Whisper medium (Agency, trial)</td><td>0.9</td><td>R0,102</td><td class="l">≈9× base</td></tr>
+<tr><td>Scene and face analysis of the source</td><td>0.05</td><td>R0,006</td><td class="l">PySceneDetect, YuNet</td></tr>
+<tr><td>Clip render 1080×1920 with face tracking</td><td>1.5</td><td>R0,170</td><td class="l">FFmpeg libx264 veryfast</td></tr>
+<tr><td>Editor export</td><td>1.5</td><td>R0,170</td><td class="l">same encoder</td></tr>
+<tr><td>Remotion render (launch, tutorial, video ad)</td><td>9</td><td>R1,021</td><td class="l">20-s template took 1-3 min (DEPLOY.md); launch videos 90-274 s</td></tr>
+</table>
+
+<h3>Third-party prices used (US$, before buffer)</h3>
+<table>
+<tr><th>Service</th><th>Price</th><th class="l">Used by</th></tr>
+<tr><td>Claude Haiku 4.5 (OpenRouter)</td><td>$1 / $5 per M tokens</td><td class="l">all text AI, clip finding, storyboards</td></tr>
+<tr><td>Claude Opus (lyrics structuring)</td><td>$5 / $25 per M tokens</td><td class="l">lyrics analyser</td></tr>
+<tr><td>Fast AI image (Nano Banana 2)</td><td>$0.0672 each</td><td class="l">carousels, thumbnails, AI Writer images</td></tr>
+<tr><td>Best AI image (GPT Image, medium, up to 1536 px)</td><td>$0.08 each</td><td class="l">carousels</td></tr>
+<tr><td>ElevenLabs Multilingual v2</td><td>$0.10 per 1,000 characters</td><td class="l">video ad voiceover</td></tr>
+<tr><td>Treblo music</td><td>$0.1 per 30-s track (estimate)</td><td class="l">video ads, launch videos</td></tr>
+<tr><td>Perplexity Sonar</td><td>$0.007 per query</td><td class="l">trending</td></tr>
+<tr><td>OpenAI whisper-1</td><td>$0.006 per minute</td><td class="l">lyrics only</td></tr>
+<tr><td>Remotion Automators licence</td><td>$0.01 per render, $100/month minimum</td><td class="l">all Remotion renders</td></tr>
+</table>
+
+<h2>2. Cost of each unit a plan counts</h2>
+<table>
+<tr><th>Unit</th><th>Worst-case cost</th><th class="l">What it covers</th></tr>
+<tr><td>AI credit</td><td>R0,36</td><td class="l">up to US$0.015 of model use: a Haiku call with 4k tokens in and 1.5k out costs US$0.0115</td></tr>
+<tr><td>Scheduled post</td><td>R0,15</td><td class="l">platform downloads ~50 MB once, plus the publish job</td></tr>
+<tr><td>Export unit (5 min of video)</td><td>R0,85</td><td class="l">300 s × 1.5 VM-s</td></tr>
+<tr><td>Render unit</td><td>R4,44</td><td class="l">the dearest of: a 30-s launch video (capture, storyboard with screenshots, music, Remotion), a 25-s video ad (voice, music, Remotion), or 5 min of AI edit</td></tr>
+<tr><td>Transcription minute</td><td>R0,011 / R0,034 / R0,102</td><td class="l">base / small / medium Whisper</td></tr>
+<tr><td>AI clip project</td><td>R4,21 (30 min) · R5,56 (60 min) · R9,41 (120 min)</td><td class="l">source analysis + one 8.5k-token chunk per ~20 min of speech (max 8k tokens out) + 10 clips of 60 s rendered; transcription is counted separately</td></tr>
+<tr><td>Storage, per GB a month</td><td>R3,07</td><td class="l">stored and downloaded once</td></tr>
+</table>
+
+<h3>AI credits per action</h3>
+<table>
+<tr><th>Action</th><th>Credits</th><th>Worst-case provider cost</th><th class="l">Change</th></tr>
+<tr><td>Text generation (hook, script, repurpose, AI Writer, brand voice, DM draft)</td><td>1</td><td>≤ $0.015</td><td class="l">DM drafts were free; AI Writer used a separate 50-credit balance any plan got</td></tr>
+<tr><td>Captions</td><td>1 per platform</td><td>≤ $0.015 each</td><td class="l">was 1 for all platforms together</td></tr>
+<tr><td>Thumbnail headline ideas</td><td>1</td><td>≤ $0.015</td><td class="l">was free (without credits: built from the clip's words)</td></tr>
+<tr><td>Trending refresh (manual)</td><td>2</td><td>~$0.019</td><td class="l">was free; refreshing every 5 min could cost ~R3,000/month per workspace</td></tr>
+<tr><td>Brand set-up from a website</td><td>5</td><td>~$0.07</td><td class="l">was free on any plan with credits</td></tr>
+<tr><td>AI Edit: learn a style</td><td>5</td><td>~$0.045</td><td class="l">unchanged</td></tr>
+<tr><td>Fast AI image</td><td>5</td><td>$0.0672</td><td class="l">was 2 (1 for a thumbnail background)</td></tr>
+<tr><td>Best AI image</td><td>6</td><td>$0.08</td><td class="l">unchanged</td></tr>
+<tr><td>Lyrics analysis (6-min song)</td><td>17</td><td>~$0.25</td><td class="l">was free on every plan, including Free</td></tr>
+</table>
+
+<h3>Counted by length (per second, rounded up)</h3>
+<ul>
+<li><b>Transcription</b> is counted in minutes (was whole hours: a 61-minute video used 2 hours, and the standalone transcribe used 1 hour whatever its length).</li>
+<li><b>Editor exports</b> count 1 per started 5 minutes of exported video (was 1 per export of any length).</li>
+<li><b>AI edits</b> count 1 render per started 5 minutes of source (was 1 for up to 3 hours of video).</li>
+<li><b>Longest clip source</b>: Creator Starter 30 min, Creator Pro 60 min (was 90), Agency 120 min (was 180).</li>
+</ul>
+
+<h2>3. Plans: allowances and full-use cost</h2>
+<table>
+<tr><th>Allowance per month</th><th>Creator Starter<br><span class="small">before → now</span></th><th>Creator Pro<br><span class="small">before → now</span></th><th>Agency<br><span class="small">before → now</span></th></tr>
+<tr><td>Scheduled posts</td><td>30</td><td>100</td><td>Unlimited → <b>1 000</b></td></tr><tr><td>Editor exports (5-min units)</td><td>10 → <b>8</b></td><td>30 → <b>20</b></td><td>150 → <b>80</b></td></tr><tr><td>Transcription (minutes)</td><td>180 → <b>120</b></td><td>600 → <b>420</b></td><td>2 400 → <b>1 200</b></td></tr><tr><td>AI clip projects</td><td>3</td><td>12 → <b>7</b></td><td>40 → <b>15</b></td></tr><tr><td>AI credits</td><td>100 → <b>60</b></td><td>250 → <b>100</b></td><td>1 300 → <b>500</b></td></tr><tr><td>Video renders</td><td>6 → <b>3</b></td><td>25 → <b>5</b></td><td>150 → <b>25</b></td></tr><tr><td>Storage (GB)</td><td>2</td><td>10 → <b>5</b></td><td>50 → <b>20</b></td></tr>
+<tr><td>Longest clip source</td><td>30 min</td><td>90 → <b>60 min</b></td><td>180 → <b>120 min</b></td></tr>
+</table>
+<p class="small">Unchanged: connected accounts (2 / 3 / 6 / 25), DM automation rules (0 / 10 / 50 / unlimited; rules cost nothing to run, AI drafts are paid in credits), client approvals (Creator Pro 5 clients, Agency unlimited). Agency "unlimited posts" becomes 1,000 a month (33 a day).</p>
+
+<h3>Creator Starter: R299/month (R269/month billed yearly)</h3>
+<table>
+<tr><th>Cost line at 100% use</th><th>Posts</th><th>Exports</th><th>Transcription</th><th>AI clip projects</th><th>AI credits</th><th>Renders</th><th>Storage</th><th>Platform (Firestore, sync)</th><th>Total</th></tr>
+<tr><td>Rand</td><td>R4,46</td><td>R6,81</td><td>R1,36</td><td>R12,64</td><td>R21,74</td><td>R13,32</td><td>R6,13</td><td>R3,00</td><td><b>R69,45</b></td></tr>
+</table>
+<table>
+<tr><th>Billing</th><th>Price</th><th>Net of VAT</th><th>Payfast fee</th><th>Cost incl. fee</th><th>Gross profit</th><th>Margin</th></tr>
+<tr><td>monthly</td><td>R299</td><td>R260,00</td><td>R13,30</td><td>R82,76</td><td>R177,24</td><td class="ok">68.2%</td></tr><tr><td>annual</td><td>R269</td><td>R233,91</td><td>R12,20</td><td>R81,65</td><td>R152,26</td><td class="ok">65.1%</td></tr>
+</table><h3>Creator Pro: R699/month (R629/month billed yearly)</h3>
+<table>
+<tr><th>Cost line at 100% use</th><th>Posts</th><th>Exports</th><th>Transcription</th><th>AI clip projects</th><th>AI credits</th><th>Renders</th><th>Storage</th><th>Platform (Firestore, sync)</th><th>Total</th></tr>
+<tr><td>Rand</td><td>R14,87</td><td>R17,01</td><td>R14,29</td><td>R38,89</td><td>R36,23</td><td>R22,20</td><td>R15,33</td><td>R6,00</td><td><b>R164,81</b></td></tr>
+</table>
+<table>
+<tr><th>Billing</th><th>Price</th><th>Net of VAT</th><th>Payfast fee</th><th>Cost incl. fee</th><th>Gross profit</th><th>Margin</th></tr>
+<tr><td>monthly</td><td>R699</td><td>R607,83</td><td>R28,02</td><td>R192,84</td><td>R414,99</td><td class="ok">68.3%</td></tr><tr><td>annual</td><td>R629</td><td>R546,96</td><td>R25,45</td><td>R190,26</td><td>R356,69</td><td class="ok">65.2%</td></tr>
+</table><h3>Agency: R3 499/month (R3 149/month billed yearly)</h3>
+<table>
+<tr><th>Cost line at 100% use</th><th>Posts</th><th>Exports</th><th>Transcription</th><th>AI clip projects</th><th>AI credits</th><th>Renders</th><th>Storage</th><th>Platform (Firestore, sync)</th><th>Total</th></tr>
+<tr><td>Rand</td><td>R148,68</td><td>R68,06</td><td>R122,50</td><td>R141,14</td><td>R181,13</td><td>R110,99</td><td>R61,32</td><td>R14,00</td><td><b>R847,81</b></td></tr>
+</table>
+<table>
+<tr><th>Billing</th><th>Price</th><th>Net of VAT</th><th>Payfast fee</th><th>Cost incl. fee</th><th>Gross profit</th><th>Margin</th></tr>
+<tr><td>monthly</td><td>R3 499</td><td>R3 042,61</td><td>R131,06</td><td>R978,88</td><td>R2 063,73</td><td class="ok">67.8%</td></tr><tr><td>annual</td><td>R3 149</td><td>R2 738,26</td><td>R118,18</td><td>R966,00</td><td>R1 772,26</td><td class="ok">64.7%</td></tr>
+</table><h3>Enterprise: R8 999/month (R8 099/month billed yearly)</h3>
+<table>
+<tr><th>Cost line at 100% use</th><th>Posts</th><th>Exports</th><th>Transcription</th><th>AI clip projects</th><th>AI credits</th><th>Renders</th><th>Storage</th><th>Platform (Firestore, sync)</th><th>Total</th></tr>
+<tr><td>Rand</td><td>R148,68</td><td>R68,06</td><td>R122,50</td><td>R141,14</td><td>R181,13</td><td>R110,99</td><td>R61,32</td><td>R14,00</td><td><b>R847,81</b></td></tr>
+</table>
+<table>
+<tr><th>Billing</th><th>Price</th><th>Net of VAT</th><th>Payfast fee</th><th>Cost incl. fee</th><th>Gross profit</th><th>Margin</th></tr>
+<tr><td>monthly</td><td>R8 999</td><td>R7 825,22</td><td>R333,46</td><td>R1 181,28</td><td>R6 643,94</td><td class="ok">84.9%</td></tr><tr><td>annual</td><td>R8 099</td><td>R7 042,61</td><td>R300,34</td><td>R1 148,16</td><td>R5 894,45</td><td class="ok">83.7%</td></tr>
+</table>
+
+<h2>4. Free plan, trial and free starter clip</h2>
+<table>
+<tr><th>Who</th><th>Cost per user at full use</th><th class="l">Notes</th></tr>
+<tr><td>Free plan</td><td>R6,57 / month</td><td class="l">no AI, 3 exports, 10 posts, 0.5 GB</td></tr>
+<tr><td>7-day trial (now)</td><td>R106,93 once</td><td class="l">every Agency feature unlocked, Creator Starter quantities (enforced in planGate)</td></tr>
+<tr><td>7-day trial (before)</td><td class="bad">R2 355,99 once</td><td class="l">full Agency allowances, no card: a fake sign-up could cost about this much</td></tr>
+<tr><td>Free starter clip</td><td>~R3,02 each</td><td class="l">one per email, 2 per network a day; daily cap now 25 (was 100): at most ~R2 267 a month</td></tr>
+</table>
+
+<h2>5. Fixed costs and break-even</h2>
+<table>
+<tr><th>Fixed monthly cost</th><th>Rand</th></tr>
+<tr><td>Remotion licence minimum ($100, render fees count towards it)</td><td>R2 012</td></tr><tr><td>Backups, snapshots, domain, email, monitoring</td><td>R600</td></tr>
+<tr><td><b>Total</b></td><td><b>R2 613</b></td></tr>
+</table>
+<p>The server itself is costed per VM-second inside each plan (at 50.0% utilisation); when usage grows, a second server is added and the per-second cost stays the same. Even if every customer used 100% of every allowance, the average paid plan contributes R2 325 a month, so the fixed costs are covered from about <b>15 paying customers</b> on the cheapest plan (2 on an even mix). Typical customers use far less than 100%, so real break-even comes sooner.</p>
+
+<h2>6. Sensitivity</h2>
+<table>
+<tr><th>Scenario</th><th>Creator Starter<br><span class="small">annual margin</span></th><th>Creator Pro<br><span class="small">annual margin</span></th><th>Agency<br><span class="small">annual margin</span></th><th>Enterprise<br><span class="small">annual margin</span></th></tr>
+<tr><td>Base case (R17.5/$, 20% buffer, prices VAT-inclusive)</td><td>65.1%</td><td>65.2%</td><td>64.7%</td><td>83.7%</td></tr>
+<tr><td>No safety buffer (prices exactly as published)</td><td>67.2%</td><td>67.5%</td><td>67.2%</td><td>84.7%</td></tr>
+<tr><td>Weaker rand: R20 per US$</td><td class="">63.3%</td><td class="">63.3%</td><td class="">62.6%</td><td class="">82.9%</td></tr>
+<tr><td>Not VAT-registered (no VAT taken from the price)</td><td>69.6%</td><td>69.8%</td><td>69.3%</td><td>85.8%</td></tr>
+</table>
+<p class="small">With the 20% buffer kept on, every plan holds 60% up to <b>R23.06 per US$</b> (equivalent to about R28 if providers charge exactly their published prices). If the rand weakens past that, change <code>usdZar</code> in the model and re-run: the pricing test then fails and points at the plan that needs a smaller allowance or a higher price.</p>
+
+<h2>7. What changed in the app</h2>
+<ul>
+<li><b>Limits</b> (server and client <code>planLimits.ts</code>, pricing page, Billing): new allowances above; transcription counted in minutes.</li>
+<li><b>Per-second counting:</b> transcription by the minute everywhere (clips, repurpose, AI edit, standalone transcribe); editor exports and AI edits per 5 minutes of video.</li>
+<li><b>Per-execution counting:</b> captions per platform; AI images 5 or 6 credits everywhere (carousels, thumbnails, AI Writer); trending refresh, website set-up, thumbnail headlines, DM drafts and lyrics now cost credits, with refunds when the work fails or is served from cache.</li>
+<li><b>AI Writer</b> uses the plan's monthly AI credits; the old never-resetting 50-credit balance is gone. Its legacy video render uses the render allowance.</li>
+<li><b>Trial</b> keeps every Agency feature but with Creator Starter quantities.</li>
+<li><b>Free starter clip</b> daily cap 25 by default (<code>FREE_CLIP_DAILY_CAP</code>).</li>
+<li><b>Guard rail:</b> <code>server/tests/security/pricing.test.ts</code> checks the app's limits, prices and credit costs against this model and fails if any paid plan falls below 60%.</li>
+</ul>
+
+<h2>8. Findings still open</h2>
+<ul>
+<li><b>Prices to confirm with the providers:</b> Treblo's per-track price is not published (estimated at $0.1); the lyrics model is costed at Opus 4.5/4.6 rates; Payfast recurring-card fees; the VM's exact Johannesburg price. Update <code>scripts/pricing-model.mjs</code> and re-run.</li>
+<li><b>Measure on the real server:</b> the VM-seconds per media second come from local runs and the deploy notes. Time a 10-minute clip project and a 25-s video ad on the VM and update <code>COMPUTE</code>.</li>
+<li><b>Two legacy endpoints are still unmetered:</b> <code>/api/ai/video/analyze</code> (Whisper base on uploads up to 100 MB) and <code>/api/ai/video/edit</code>. Their size cap limits the exposure; meter or retire them next.</li>
+<li><b>Advertised but not enforced:</b> the connected-accounts limit (2/3/6/25) and storage (only enforced for the Agency library).</li>
+<li><b>Fallbacks are cheaper, not dearer:</b> when a cheaper provider answers (Gemini Flash, Pollinations' free images), real costs are below this model. The worst case is what the margin is guaranteed on.</li>
+</ul>
+
+<h2>Sources</h2>
+<ul class="small"><li>Claude Haiku 4.5 on OpenRouter: $1 / $5 per million tokens: <a href="https://openrouter.ai/anthropic/claude-haiku-4-5/pricing">https://openrouter.ai/anthropic/claude-haiku-4-5/pricing</a></li><li>Gemini API pricing (Flash, Flash-Lite, Flash Image): <a href="https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing">https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing</a></li><li>OpenRouter image models compared (Nano Banana 2 $0.0672, GPT Image): <a href="https://openrouter.ai/blog/insights/image-generation-models-compared/">https://openrouter.ai/blog/insights/image-generation-models-compared/</a></li><li>OpenAI image API pricing (GPT Image medium ~$0.053): <a href="https://www.modellix.ai/blog/openai-image-generation-api-pricing">https://www.modellix.ai/blog/openai-image-generation-api-pricing</a></li><li>ElevenLabs API pricing ($0.10 per 1,000 characters, Multilingual): <a href="https://developer.puter.com/tutorials/elevenlabs-api-pricing/">https://developer.puter.com/tutorials/elevenlabs-api-pricing/</a></li><li>Perplexity Sonar API pricing ($1/$1 per M tokens + $5 per 1,000 requests): <a href="https://developer.puter.com/tutorials/perplexity-api-pricing/">https://developer.puter.com/tutorials/perplexity-api-pricing/</a></li><li>Treblo API (credit-based, from ~$11/month; per-track price not published): <a href="https://kompozy.io/reviews/treblo">https://kompozy.io/reviews/treblo</a></li><li>Remotion licence (Automators: $0.01 per render, $100/month minimum): <a href="https://www.remotion.dev/docs/license/pricing">https://www.remotion.dev/docs/license/pricing</a></li><li>Google Video Intelligence pricing (not used by the app today): <a href="https://cloud.google.com/video-intelligence/pricing">https://cloud.google.com/video-intelligence/pricing</a></li><li>e2-standard-4 in africa-south1 (~$128/month on demand): <a href="https://gcloud-compute.com/e2-standard-4.html">https://gcloud-compute.com/e2-standard-4.html</a></li><li>Firebase / Cloud Storage pricing: <a href="https://firebase.google.com/pricing">https://firebase.google.com/pricing</a></li><li>Payfast fees (card 3.2% + R2.00): <a href="https://payfast.io/fees">https://payfast.io/fees</a></li><li>USD/ZAR rate (16.38 on 16 Sep 2026; Oct forecast 16.25-17.33): <a href="https://longforecast.com/dollar-to-rand-forecast-2017-2018-2019-2020-2021-usd-to-zar">https://longforecast.com/dollar-to-rand-forecast-2017-2018-2019-2020-2021-usd-to-zar</a></li></ul>
+<p class="small">Third-party price pages disagree in places; where they did, the higher figure was used and a 20% buffer added on top.</p>
+</body></html>

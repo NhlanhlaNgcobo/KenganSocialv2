@@ -66,6 +66,7 @@ These need the real Linux VM to do safely; none blocks a small pilot.
 - [ ] **Soon**: Bake the Whisper speech model into the video image, so the first transcription after a deploy doesn't download it.
 - [ ] **Soon**: Error tracking and alerts (for example Sentry) beyond container logs.
 - [ ] **Soon**: Email notifications to the agency when a client responds to a review link. In-app notifications already work; there is no email provider yet.
+- [ ] **Soon**: Confirm the provider prices the pricing model estimates (Treblo per track, Payfast recurring-card fee, the VM's Johannesburg price) and time a clip project and a video ad on the VM; update `scripts/pricing-model.mjs` and re-run `node scripts/build-pricing-doc.mjs`. See [pricing/KenganSocial_Pricing_Model.pdf](pricing/KenganSocial_Pricing_Model.pdf).
 - [ ] **Soon**: Decide the font: Geist is flagged as overused by the design checker; keeping it is a brand choice.
 
 ## Done and verified locally (23 October 2026)

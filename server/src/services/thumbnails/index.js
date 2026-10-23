@@ -75,9 +75,9 @@ const STOP = new Set(
 const TAIL = /\s+(a|an|and|as|at|by|for|from|in|into|of|on|or|the|to|with|about|that|this|your|our|my)$/i;
 
 /** Short headline options. Each is 2-6 words; the first is the strongest. */
-export async function headlines({ title = '', hook = '', caption = '', transcript = '' }) {
+export async function headlines({ title = '', hook = '', caption = '', transcript = '', allowAi = true }) {
     const source = [hook, title, caption].filter(Boolean).join(' | ');
-    if (aiConfigured() && (source || transcript)) {
+    if (allowAi && aiConfigured() && (source || transcript)) {
         try {
             const prompt = `You write YouTube and TikTok thumbnail text that gets clicks. From this video, give the topic and 4 thumbnail headlines.
 Rules: 2-5 words each, concrete and curiosity-driven, no hashtags, no emojis, no quotes, no clickbait lies; each should name the specific subject. Mark one keyword per headline to highlight.

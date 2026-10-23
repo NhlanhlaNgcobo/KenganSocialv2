@@ -19,6 +19,8 @@ import {
 } from './messaging';
 import { isOwnMessage } from './send-guard';
 import { automationsEnabled, hasLeads, hasQueue, workspacePlan } from './plan-access';
+import { consumeUsage } from '../../middleware/planGate';
+import { CREDIT_COSTS } from '../../utils/planLimits';
 import {
     addLead,
     claimRun,
@@ -92,13 +94,16 @@ export async function handleMetaMessage(platform: MetaChannel, accountId: string
     if (!hasQueue(plan)) return workspaceId;
     const queued = workspaceRef(workspaceId).collection('dmQueue').doc(`evt_${eventKey}`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 200));
     if ((await queued.get()).exists) return workspaceId; // added by an earlier attempt of this event
+    // The AI draft costs a credit; out of credits, the message is still queued for a manual reply.
+    const paid = (await consumeUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.text)).ok;
+    const draft = paid ? await suggestReply(original, platform) : '';
     try {
         await queued.create({
             senderId,
             senderName: profile.name || profile.username || `${platform === 'instagram' ? 'Instagram' : 'Facebook'} user ${senderId.slice(-4)}`,
             senderAvatar: profile.avatar,
             originalMessage: original,
-            aiSuggestedReply: await suggestReply(original, platform),
+            aiSuggestedReply: draft,
             platform,
             status: 'pending',
             windowEndsAt: receivedAt + REPLY_WINDOW_MS,

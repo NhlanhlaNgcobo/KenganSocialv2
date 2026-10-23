@@ -2,6 +2,8 @@ import express, { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { analyzeLyrics } from '../services/lyrics/analyze.js';
+import { consumeUsage, planRateLimit, refundUsage } from '../middleware/planGate';
+import { CREDIT_COSTS } from '../utils/planLimits';
 
 /**
  * POST /api/lyrics/analyze (multipart)
@@ -34,7 +36,12 @@ function handleUpload(req: Request, res: Response, next: NextFunction) {
     });
 }
 
-router.post('/analyze', withWorkspace, handleUpload, async (req: Request, res: Response) => {
+router.post('/analyze', withWorkspace, planRateLimit(), handleUpload, async (req: Request, res: Response) => {
+    // Speech-to-text plus a large model structuring the song: the costliest AI action, in credits.
+    const workspaceId = (req as any).workspaceId;
+    const plan = (req as any).plan || 'starter';
+    const usage = await consumeUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.lyrics);
+    if (!usage.ok) return res.status(usage.status).json(usage.body);
     try {
         const energy = Number(req.body.energy);
         const analysis = await analyzeLyrics({
@@ -45,6 +52,7 @@ router.post('/analyze', withWorkspace, handleUpload, async (req: Request, res: R
         });
         res.json(analysis);
     } catch (error: any) {
+        await refundUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.lyrics);
         if (error.status === 400) return res.status(400).json({ error: error.message });
         console.error('[Lyrics] Analyze failed:', error.message);
         res.status(502).json({ error: 'Lyric analysis failed. Try again, or paste the lyrics.' });
