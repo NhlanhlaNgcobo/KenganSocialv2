@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>KenganSocial: what needs you before launch</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #16181d; font-size: 10.2pt; line-height: 1.42; margin: 0; }
+  h1 { font-size: 20pt; margin: 0 0 2mm; letter-spacing: -0.01em; }
+  .sub { color: #555b66; margin: 0 0 5mm; }
+  .note { background: #f3f4f6; border-left: 3px solid #16181d; padding: 3mm 4mm; margin: 0 0 5mm; }
+  h2 { font-size: 12.5pt; margin: 6mm 0 2mm; padding-bottom: 1mm; border-bottom: 1px solid #d5d8de; break-after: avoid; }
+  ol { margin: 0; padding: 0; list-style: none; counter-reset: item; }
+  li { position: relative; padding: 1.6mm 0 1.6mm 9mm; break-inside: avoid; border-bottom: 1px dotted #e3e5ea; }
+  li::before { content: ""; position: absolute; left: 0; top: 2.2mm; width: 4.2mm; height: 4.2mm; border: 1.3px solid #16181d; border-radius: 1mm; }
+  li b { display: block; }
+  li span { color: #4a505a; }
+  code { font-family: Consolas, monospace; font-size: 9pt; background: #f1f2f4; padding: 0 1mm; border-radius: 1mm; }
+  .tag { display: inline-block; font-size: 7.6pt; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: .3mm 1.6mm; border-radius: 1mm; margin-left: 1.5mm; vertical-align: 1px; }
+  .must { background: #16181d; color: #fff; }
+  .soon { background: #d9dce2; color: #16181d; }
+  footer { margin-top: 6mm; color: #6b717c; font-size: 8.6pt; }
+</style>
+</head>
+<body>
+<h1>What needs you before launch</h1>
+<p class="sub">KenganSocial · 23 October 2026 · Tick each box as you finish it.</p>
+<div class="note">The code side is done and tested on this computer: Payfast subscriptions, private media links, resumable uploads, the AI editing worker, the security fixes and the updated policies. What's left needs your accounts, money or approval. <b>Must</b> items block launch; <b>Soon</b> items can follow in the first weeks.</div>
+
+<h2>1. Hosting and domain</h2>
+<ol>
+  <li><b>Turn billing back on in Google Cloud <span class="tag must">Must</span></b><span>Both billing accounts are closed, so the server can't be created. Re-open one and link it to the KenganSocial project.</span></li>
+  <li><b>Create the server <span class="tag must">Must</span></b><span>One VM running the docker-compose stack (web proxy, API, AI worker, video service, Redis). Tell me when billing is on and I'll walk you through it or set it up.</span></li>
+  <li><b>Point <code>api.kengansocial.co.za</code> at the server <span class="tag must">Must</span></b><span>In GoDaddy DNS, add an A record for <code>api</code> with the server's IP address.</span></li>
+  <li><b>Decide where the website itself is hosted <span class="tag must">Must</span></b><span>You deleted the Vercel project. Either create a new one linked to GitHub or serve the website from the same server. Then point <code>kengansocial.co.za</code> and <code>www</code> at it.</span></li>
+</ol>
+
+<h2>2. Payments (Payfast)</h2>
+<ol>
+  <li><b>Open a Payfast merchant account <span class="tag must">Must</span></b><span>Also create a sandbox account for testing.</span></li>
+  <li><b>Put the sandbox details in the server settings <span class="tag must">Must</span></b><span><code>PAYFAST_MODE=sandbox</code>, <code>PAYFAST_MERCHANT_ID</code>, <code>PAYFAST_MERCHANT_KEY</code> and <code>PAYFAST_PASSPHRASE</code> (set the passphrase in Payfast's dashboard first). Put them in the server's <code>.env</code> file, never in chat.</span></li>
+  <li><b>Run a test subscription end to end <span class="tag must">Must</span></b><span>Subscribe, confirm the plan unlocks, cancel renewal, and check you keep access until the period ends. Payfast only sends confirmations to a public HTTPS address, so this has to happen on the live server (step 1).</span></li>
+  <li><b>Switch to live <span class="tag must">Must</span></b><span>Set <code>PAYFAST_MODE=live</code> with the live merchant details, then make one real low-value payment and refund it.</span></li>
+  <li><b>Decide what happens to anyone still on Paystack <span class="tag soon">Soon</span></b><span>Existing Paystack records are kept as they are. Moving those customers to Payfast is a manual decision; keep <code>PAYSTACK_SECRET_KEY</code> until none remain.</span></li>
+</ol>
+
+<h2>3. Secrets and settings on the server</h2>
+<ol>
+  <li><b>Replace the leaked Firebase service-account key <span class="tag must">Must</span></b><span>The key with ID starting <code>ac504d10</code> was pasted in a chat earlier. In Google Cloud, delete it, create a new one, and put it on the server only.</span></li>
+  <li><b>Set <code>TOKEN_ENCRYPTION_KEY</code> <span class="tag must">Must</span></b><span>Exactly 64 hexadecimal characters. Private media links and connected-account tokens depend on it, so set it once and never change it.</span></li>
+  <li><b>Set <code>FREE_CLIP_SECRET</code> <span class="tag must">Must</span></b><span>Any long random value; keep it forever. Changing it would let earlier free-clip users claim again.</span></li>
+  <li><b>Set the public addresses <span class="tag must">Must</span></b><span><code>SERVER_URL</code>, <code>CLIENT_URL</code> and <code>FRONTEND_URL</code> must be the real <code>https://</code> domains. The server refuses to start in production otherwise.</span></li>
+  <li><b>Remove the testing switches <span class="tag must">Must</span></b><span><code>DEV_PLAN_OVERRIDE</code> must be removed; the server refuses to start in production if it's set. Set <code>NODE_ENV=production</code>.</span></li>
+</ol>
+
+<h2>4. Firebase</h2>
+<ol>
+  <li><b>Publish the database and storage rules <span class="tag must">Must</span></b><span>Run <code>firebase deploy --only firestore:rules,firestore:indexes,storage</code>. The calendar needs the new index.</span></li>
+  <li><b>Make old uploaded files private <span class="tag must">Must</span></b><span>Files uploaded before the private-links change may still be public in the storage bucket. Remove public access from the bucket; the app now hands out expiring links instead.</span></li>
+  <li><b>Clean up test accounts <span class="tag soon">Soon</span></b><span>Delete the <code>@example.com</code> test users and the test free-clip records, or tell me to do it.</span></li>
+</ol>
+
+<h2>5. Social platforms and AI</h2>
+<ol>
+  <li><b>Submit the Meta app for review <span class="tag must">Must</span></b><span>Needed before customers outside your team can connect Facebook and Instagram, post, read comments and run ads.</span></li>
+  <li><b>Get TikTok and YouTube app approval <span class="tag must">Must</span></b><span>Until they're approved, posting only works for your own test accounts.</span></li>
+  <li><b>Add AI keys <span class="tag must">Must</span></b><span>Gemini or OpenAI turn on AI clip ranking, headlines and captions; until then the app uses its non-AI methods.</span></li>
+  <li><b>Add optional provider keys <span class="tag soon">Soon</span></b><span>ElevenLabs (voiceovers), Treblo (music) and an image generator (AI thumbnail backgrounds). Each feature switches on when its key is present.</span></li>
+</ol>
+
+<h2>6. Legal and privacy (POPIA)</h2>
+<ol>
+  <li><b>Register an Information Officer <span class="tag must">Must</span></b><span>With the Information Regulator, as POPIA requires.</span></li>
+  <li><b>Review the updated policies <span class="tag must">Must</span></b><span>The Privacy Policy and Terms now name Payfast and say plans renew automatically until cancelled. They're dated 23 October 2026, so users accept them again on their next visit. Have them checked by someone qualified if you can.</span></li>
+  <li><b>Make the billing and support inboxes work <span class="tag must">Must</span></b><span><code>billing@kengansocial.co.za</code> and the support address are listed in the policies and must receive mail.</span></li>
+</ol>
+
+<h2>7. Before inviting real users</h2>
+<ol>
+  <li><b>Run the live checks together <span class="tag must">Must</span></b><span>Once the server is up I'll run <code>scripts/check-deploy.mjs</code> against the real domains and test sign-up, two separate workspaces, upload, clips, scheduling and payment.</span></li>
+  <li><b>Set up backups <span class="tag must">Must</span></b><span>Turn on scheduled Firestore exports and server disk snapshots, then test restoring one.</span></li>
+  <li><b>Set up an uptime alert <span class="tag soon">Soon</span></b><span>Any uptime monitor pointed at <code>https://api.kengansocial.co.za/api/health/ready</code>, alerting your phone or email.</span></li>
+  <li><b>Keep one API server for now <span class="tag soon">Soon</span></b><span>Scheduling still runs inside the API, so running two copies would double-post. That's fine for the first hundreds of users; tell me before scaling out.</span></li>
+</ol>
+
+<footer>Generated from the KenganSocial codebase (commit after ea636d7). Settings named here are documented in <code>server/.env.example</code> and <code>.env.example</code>.</footer>
+</body>
+</html>

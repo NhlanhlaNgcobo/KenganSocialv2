@@ -1,5 +1,7 @@
 # Deployment fix progress
 
+> **Update, 23 October 2026 (afternoon).** Checkout now uses **Payfast** recurring subscriptions; the Paystack notes below describe the earlier step and remain only for legacy records. Since then: resumable uploads are wired (8 MB chunks, retry-safe, resumable; Clips, Repurpose and the editor use them from 32 MB); scheduled posts sign media links at publish time and fail per platform; the API runs the AI worker in-process outside production; the Privacy Policy, Terms and app copy name Payfast and automatic renewal (dated 23 October 2026). Security tests: 16 passed. The owner's remaining steps are in `KenganSocial_What_Needs_You.pdf`.
+
 Public launch remains blocked. The Word checklist records five locally verified items and eight partial items. This update covers the working tree, not a deployed release.
 
 ## Verified evidence
