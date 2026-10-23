@@ -24,7 +24,7 @@ Not yet usable by testers:
 
 - **Connecting social accounts.** None of the platform app credentials are set (YouTube, Facebook/Instagram, TikTok, LinkedIn, Pinterest, Threads), so the Connections page cannot complete a sign-in, and nothing can publish. See 2.4.
 - **Analytics and Inbox** only fill in once accounts are connected.
-- **Payments** (Paystack) are wired but untested end to end.
+- **Payments** (Payfast recurring subscriptions) are wired but untested end to end.
 
 ---
 
@@ -82,7 +82,7 @@ Start with YouTube and LinkedIn: they are the quickest to get working for tester
 
 ### 2.5 Giving testers access to paid features
 
-With `NODE_ENV=production`, everyone starts on the Starter plan. For testers, set the plan by hand in Firestore: `workspaces/{workspaceId}` → `plan: "creator"` (or `"agency"` to try Leads). Alternatively, put Paystack in test mode and let them subscribe with a test card, which also tests billing.
+With `NODE_ENV=production`, everyone starts on the Starter plan. For testers, set the plan by hand in Firestore: `workspaces/{workspaceId}` → `plan: "creator"` (or `"agency"` to try Leads). Alternatively, put Payfast in sandbox mode and let them subscribe with a sandbox card, which also tests billing.
 
 ### 2.6 Known limits that will affect testers
 
@@ -144,7 +144,7 @@ These allowed one workspace to reach another's data and are now closed. They wer
 
 ## 4. Before charging money
 
-- Test the Paystack flow end to end in test mode: subscribe, renew, fail a payment, cancel, and confirm the workspace plan changes each time (webhook to Firestore).
+- Test the Payfast flow end to end in sandbox mode: subscribe, renew, fail a payment, cancel, and confirm the workspace plan changes each time (Payfast notify to Firestore).
 - Make sure limits match the pricing page (`client/src/utils/planLimits.ts` and `server/src/middleware/planGate.ts`).
 - Get platform app reviews approved (2.4); without them, only listed test users can connect accounts.
 - Write a short terms of service that covers user-uploaded content and the platforms' own terms.
@@ -166,4 +166,4 @@ These allowed one workspace to reach another's data and are now closed. They wer
 1. Hosting, production settings and Firebase deploy (2.1–2.3).
 2. YouTube and LinkedIn apps in testing mode (2.4), testers' plans (2.5), invite 3–5 testers (2.7).
 3. During the pilot: guarantee workspaces (3.3.1), move files to Storage (3.3.4), fix the Storage and `scheduled_posts` rules.
-4. Before a wider launch: workers (3.4), Meta and TikTok reviews, Paystack testing, POPIA paperwork, agency workspace switcher.
+4. Before a wider launch: workers (3.4), Meta and TikTok reviews, Payfast testing, POPIA paperwork, agency workspace switcher.

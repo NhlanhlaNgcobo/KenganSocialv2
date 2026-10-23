@@ -72,7 +72,7 @@ Log out and back in once, so Docker works without `sudo`.
 
 ## 4. Production settings
 
-Edit `~/kengansocial/server/.env` with `nano`. It was copied from `.env.example`, which explains each variable. Change at least these:
+Edit `~/kengansocial/server/.env` with `nano`. Start from `server/.env.example` (it lists the settings the API checks at start-up; the root `.env.example` explains the rest). Change at least these:
 
 | Variable | Value |
 |---|---|
@@ -88,7 +88,9 @@ Edit `~/kengansocial/server/.env` with `nano`. It was copied from `.env.example`
 | AI keys | `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY`. Use a paid tier for Gemini (`docs/API_APPLICATIONS.md`). |
 | `AI_FREE_FALLBACK` | `off` while there are no AI keys: launch and tutorial videos then use the built-in (non-AI) storyboards straight away, and AI-only buttons say AI isn't set up, instead of queueing on a free public AI service |
 | Platform apps | `YOUTUBE_*`, `FACEBOOK_*`, `META_APP_SECRET`, `META_VERIFY_TOKEN`, `TIKTOK_*` |
-| Paystack | test keys while testing; `PAYSTACK_CALLBACK_URL=https://kengansocial.co.za/dashboard/billing` |
+| Payfast | `PAYFAST_MODE=sandbox`, `PAYFAST_MERCHANT_ID`, `PAYFAST_MERCHANT_KEY`, `PAYFAST_PASSPHRASE` while testing; `live` after a sandbox subscribe/cancel test. Payfast confirms payments at `https://api.kengansocial.co.za/api/billing/payfast/notify` |
+| `FREE_CLIP_SECRET` | any long random value (`openssl rand -hex 32`); never change it |
+| Paystack | only `PAYSTACK_SECRET_KEY`, and only while older Paystack subscriptions remain |
 | `YOUTUBE_LINK_IMPORT` | leave empty (off) |
 
 `REDIS_URL`, `PYTHON_API_URL`, `PORT` and the temp folder are set by `docker-compose.yml`, so leave them as they are.
@@ -108,7 +110,7 @@ docker compose ps
 docker compose logs -f api
 ```
 
-The first build takes 10–15 minutes. Once the DNS record has spread, Caddy gets the HTTPS certificate by itself. `https://api.kengansocial.co.za/api/health` should then answer `{"status":"ok",…}`.
+The first build takes 10–15 minutes. Once the DNS record has spread, Caddy gets the HTTPS certificate by itself. `https://api.kengansocial.co.za/api/health` should then answer `{"status":"ok",…}`, and `https://api.kengansocial.co.za/api/health/ready` should report Redis, Firestore, the video service and the AI worker as `ready` (point your uptime monitor at this one).
 
 ## 5. Web app on Vercel
 
@@ -170,7 +172,7 @@ Then sign up in the browser, accept the Terms, connect a platform and export a s
 | Task | Command (on the VM, in `~/kengansocial`) |
 |---|---|
 | Update to the latest code | `git pull && docker compose up -d --build` |
-| Logs | `docker compose logs -f api` (or `video`, `caddy`, `redis`) |
+| Logs | `docker compose logs -f api` (or `ai-worker`, `video`, `caddy`, `redis`). Logs rotate at 5 × 20 MB per service. |
 | Restart | `docker compose restart api` |
 | Disk space | `df -h` and `docker system df`. Renders and uploads older than 3 days are deleted automatically (`TEMP_RETENTION_HOURS`). |
 | Back up media | snapshot the disk on a schedule: `gcloud compute resource-policies create snapshot-schedule kengan-daily --region=africa-south1 --daily-schedule --start-time=02:00 --max-retention-days=7`, then `gcloud compute disks add-resource-policies kengan-api --resource-policies=kengan-daily --zone=africa-south1-a` |
