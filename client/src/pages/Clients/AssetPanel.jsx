@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarPlus, Check, CheckCircle2, Copy, Download, Loader2, MessageSquare, Pin, RotateCcw, Send, Trash2, Upload, X } from 'lucide-react';
+import { CalendarPlus, Check, CheckCircle2, Copy, Download, Loader2, Lock, MessageSquare, Pin, RotateCcw, Send, Trash2, Upload, X } from 'lucide-react';
 import { agencyApi, formatTimecode, PLATFORM_LABELS, STATUS_META, uploadLibraryVideo } from '../../lib/agency-api';
 
 /** Calendar platform ids. */
@@ -13,6 +13,7 @@ const ACTIVITY = {
     comment: 'commented on version',
     approved: 'approved version',
     changes_requested: 'requested changes on version',
+    reopened: 'reopened for review, version',
 };
 
 export function StatusBadge({ status }) {
@@ -35,6 +36,7 @@ export default function AssetPanel({ assetId, clients, onClose, onChanged, onDel
     const [draft, setDraft] = useState(null);
     const [reply, setReply] = useState('');
     const [pin, setPin] = useState(false);
+    const [internal, setInternal] = useState(false); // team-only note, never shown on the review page
     const [busy, setBusy] = useState('');
     const [upload, setUpload] = useState(null);
     const [versionNote, setVersionNote] = useState('');
@@ -112,9 +114,19 @@ export default function AssetPanel({ assetId, clients, onClose, onChanged, onDel
         e.preventDefault();
         if (!reply.trim()) return;
         run('reply', async () => {
-            const { comment } = await agencyApi.comment(asset.id, { text: reply, version, timecode: pin && time > 0 ? time : null });
+            const { comment } = await agencyApi.comment(asset.id, { text: reply, version, timecode: pin && time > 0 ? time : null, internal });
             setReply('');
             setData((d) => ({ ...d, comments: [...d.comments, comment] }));
+        });
+    };
+
+    /** Sends an approved (or changes-requested) video back to the client: clears the decision. */
+    const reopen = () => {
+        if (!window.confirm('Reopen this video for review? The current approval is cleared and the client can decide again.')) return;
+        run('reopen', async () => {
+            const { asset: next } = await agencyApi.updateAsset(asset.id, { status: 'in_review' });
+            onChanged(next);
+            await load();
         });
     };
 
@@ -237,6 +249,9 @@ export default function AssetPanel({ assetId, clients, onClose, onChanged, onDel
                     {approvedNow ? (
                         <div className="cl-approved">
                             <CheckCircle2 size={16} /> Approved by {asset.approval.by} on {new Date(asset.approval.at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={reopen} disabled={busy === 'reopen'}>
+                                {busy === 'reopen' ? <Loader2 size={13} className="spin" /> : <RotateCcw size={13} />} Reopen
+                            </button>
                         </div>
                     ) : asset.approval?.status === 'changes_requested' ? (
                         <div className="cl-changes">
@@ -278,10 +293,10 @@ export default function AssetPanel({ assetId, clients, onClose, onChanged, onDel
                         {shown.length === 0 ? <p className="muted cl-small">No comments yet. When the client comments on their link, it shows here.</p> : null}
                         <ul className="cl-comments">
                             {shown.map((c) => (
-                                <li key={c.id} className={`${c.author.kind === 'client' ? 'is-client' : 'is-team'} ${c.resolved ? 'is-resolved' : ''}`}>
+                                <li key={c.id} className={`${c.author.kind === 'client' ? 'is-client' : 'is-team'} ${c.resolved ? 'is-resolved' : ''} ${c.internal ? 'is-internal' : ''}`}>
                                     <div className="cl-comment__head">
                                         <strong>{c.author.name}</strong>
-                                        <span className="cl-who">{c.author.kind === 'client' ? 'Client' : 'Team'}</span>
+                                        <span className="cl-who">{c.author.kind === 'client' ? 'Client' : c.internal ? 'Internal note' : 'Team'}</span>
                                         {asset.versions.length > 1 && c.version ? <span className="cl-vtag">v{c.version}</span> : null}
                                         {c.timecode != null ? (
                                             <button type="button" className="cl-time" onClick={() => seek(c.timecode, c.version || version)}>
@@ -300,13 +315,16 @@ export default function AssetPanel({ assetId, clients, onClose, onChanged, onDel
                             ))}
                         </ul>
                         <form className="cl-reply" onSubmit={sendReply}>
-                            <textarea className="input" rows={2} maxLength={2000} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply to the client (they see this on their review page)…" />
+                            <textarea className="input" rows={2} maxLength={2000} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={internal ? 'Note for the team (the client never sees this)…' : 'Reply to the client (they see this on their review page)…'} />
                             <div className="cl-reply__row">
                                 <label className="check">
                                     <input type="checkbox" checked={pin} onChange={(e) => setPin(e.target.checked)} /> <Pin size={13} /> At {formatTimecode(time)}
                                 </label>
+                                <label className="check">
+                                    <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} /> <Lock size={13} /> Internal note
+                                </label>
                                 <button type="submit" className="btn btn-primary btn-sm" disabled={!reply.trim() || busy === 'reply'}>
-                                    {busy === 'reply' ? <Loader2 size={14} className="spin" /> : <Send size={14} />} Reply
+                                    {busy === 'reply' ? <Loader2 size={14} className="spin" /> : <Send size={14} />} {internal ? 'Add note' : 'Reply'}
                                 </button>
                             </div>
                         </form>

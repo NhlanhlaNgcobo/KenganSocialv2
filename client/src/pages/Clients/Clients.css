@@ -621,8 +621,93 @@
 
 .cl-reply__row {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
   justify-content: space-between;
   align-items: center;
+}
+
+.cl-reply__row .btn {
+  margin-left: auto;
+}
+
+/* Team-only note: never shown on the client's review page. */
+.cl-comments li.is-internal {
+  border-style: dashed;
+  background: var(--bg-inset);
+}
+
+.cl-approved .btn {
+  margin-left: auto;
+  color: inherit;
+}
+
+/* Client feedback notifications */
+.cl-notify {
+  position: relative;
+}
+
+.cl-notify__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  width: min(360px, calc(100vw - 32px));
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+  background: var(--bg-solid);
+  box-shadow: var(--shadow-lg);
+}
+
+.cl-notify__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 6px 8px;
+  font-size: 0.82rem;
+}
+
+.cl-notify__panel ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cl-notify__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  text-align: left;
+  font-size: 0.84rem;
+}
+
+.cl-notify__item:hover {
+  background: var(--bg-hover);
+}
+
+.cl-notify__item.is-unread strong::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  vertical-align: middle;
+}
+
+.cl-notify__item small {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 
 .cl-chips {

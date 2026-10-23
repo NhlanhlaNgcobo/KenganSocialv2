@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { BadgeCheck, Check, CheckSquare, Copy, Eye, Film, FolderOpen, Link2, Loader2, Lock, MessageSquare, Pencil, Plus, Send, Upload, Users, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { BadgeCheck, Bell, Check, CheckSquare, Copy, Eye, Film, FolderOpen, Link2, Loader2, Lock, MessageSquare, Pencil, Plus, Send, Upload, Users, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { APPROVAL_PLANS } from '../../utils/planLimits';
 import { agencyApi, formatBytes, formatTimecode, uploadLibraryVideo } from '../../lib/agency-api';
@@ -13,6 +13,10 @@ import './Clients.css';
  * Clients & approvals: each client brand has a video library; videos go to the client on a review
  * link (no login), the client comments and approves, and approved videos go to the calendar.
  */
+
+/** Client feedback shows up without a reload: refreshed this often while the tab is visible, and on focus. */
+const POLL_MS = 45 * 1000;
+const MIN_REFRESH_GAP_MS = 10 * 1000;
 
 const FILTERS = [
     { id: 'all', label: 'All' },
@@ -93,6 +97,56 @@ function ReviewLinks({ reviews, clients, onRevoke }) {
     );
 }
 
+/** The bell: what clients said or decided on review links, newest first. */
+function FeedbackBell({ items, unread, onOpen, onReadAll }) {
+    const [open, setOpen] = useState(false);
+    const wrap = useRef(null);
+    useEffect(() => {
+        if (!open) return undefined;
+        const close = (e) => !wrap.current?.contains(e.target) && setOpen(false);
+        document.addEventListener('mousedown', close);
+        return () => document.removeEventListener('mousedown', close);
+    }, [open]);
+    return (
+        <div className="cl-notify" ref={wrap}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={unread ? `Client feedback, ${unread} new` : 'Client feedback'}>
+                <Bell size={15} /> Feedback {unread ? <span className="cl-dot">{unread}</span> : null}
+            </button>
+            {open ? (
+                <div className="cl-notify__panel" role="dialog" aria-label="Client feedback">
+                    <div className="cl-notify__head">
+                        <strong>Client feedback</strong>
+                        {unread ? (
+                            <button type="button" className="link-button" onClick={onReadAll}>
+                                Mark all read
+                            </button>
+                        ) : null}
+                    </div>
+                    {items.length === 0 ? <p className="muted cl-small">Nothing yet. Comments and approvals from review links show up here.</p> : null}
+                    <ul>
+                        {items.map((n) => (
+                            <li key={n.id}>
+                                <button
+                                    type="button"
+                                    className={`cl-notify__item ${n.read ? '' : 'is-unread'}`}
+                                    onClick={() => {
+                                        setOpen(false);
+                                        onOpen(n);
+                                    }}
+                                >
+                                    <strong>{n.title}</strong>
+                                    {n.message ? <small>{n.message}</small> : null}
+                                    {n.createdAt ? <small>{new Date(n.createdAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small> : null}
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 /** Shown on plans without approvals: what it does and where to upgrade. */
 function UpgradePrompt() {
     return (
@@ -140,19 +194,29 @@ function ClientsWorkspace() {
     const [status, setStatus] = useState('all');
     const [selecting, setSelecting] = useState(false);
     const [selected, setSelected] = useState([]);
-    const [openAsset, setOpenAsset] = useState(null);
+    const [searchParams, setSearchParams] = useSearchParams();
+    // A notification link (/dashboard/clients?asset=<id>) opens that video.
+    const [openAsset, setOpenAsset] = useState(() => searchParams.get('asset'));
     const [clientModal, setClientModal] = useState(null); // null | 'new' | client
     const [sending, setSending] = useState(null);
     const [uploads, setUploads] = useState([]);
     const [error, setError] = useState('');
+    const [notifications, setNotifications] = useState({ items: [], unread: 0 });
     const fileRef = useRef(null);
+    const lastRefresh = useRef(0);
+    const alive = useRef(true);
 
-    // Everything loads once; later changes update local state from each response.
-    useEffect(() => {
-        let cancelled = false;
-        Promise.all([agencyApi.clients(), agencyApi.library(), agencyApi.reviews()])
+    // Loads everything; later changes update local state from each response, and a light poll
+    // (plus window focus) picks up client comments and decisions without a reload.
+    const refresh = useCallback((initial = false) => {
+        lastRefresh.current = Date.now();
+        agencyApi
+            .notifications()
+            .then((n) => alive.current && setNotifications({ items: n.notifications || [], unread: n.unread || 0 }))
+            .catch(() => {});
+        return Promise.all([agencyApi.clients(), agencyApi.library(), agencyApi.reviews()])
             .then(([c, l, r]) => {
-                if (cancelled) return;
+                if (!alive.current) return;
                 setClients(c.clients);
                 setMaxClients(c.maxClients);
                 setAssets(l.assets);
@@ -160,15 +224,57 @@ function ClientsWorkspace() {
                 setReviews(r.reviews);
             })
             .catch((err) => {
-                if (cancelled) return;
+                // A failed background poll stays quiet; the next one tries again.
+                if (!alive.current || !initial) return;
                 setError(err.message);
                 setClients((c) => c || []);
                 setAssets((a) => a || []);
             });
-        return () => {
-            cancelled = true;
-        };
     }, []);
+
+    useEffect(() => {
+        alive.current = true;
+        refresh(true);
+        const maybeRefresh = () => document.visibilityState === 'visible' && Date.now() - lastRefresh.current > MIN_REFRESH_GAP_MS && refresh();
+        const timer = setInterval(maybeRefresh, POLL_MS);
+        window.addEventListener('focus', maybeRefresh);
+        document.addEventListener('visibilitychange', maybeRefresh);
+        return () => {
+            alive.current = false;
+            clearInterval(timer);
+            window.removeEventListener('focus', maybeRefresh);
+            document.removeEventListener('visibilitychange', maybeRefresh);
+        };
+    }, [refresh]);
+
+    // Once opened, drop ?asset= so closing the drawer and reloading does not reopen it.
+    const assetParam = searchParams.get('asset');
+    useEffect(() => {
+        if (!assetParam) return;
+        setSearchParams(
+            (p) => {
+                p.delete('asset');
+                return p;
+            },
+            { replace: true }
+        );
+    }, [assetParam, setSearchParams]);
+
+    const openNotification = (n) => {
+        if (n.assetId) {
+            setTab('library');
+            setOpenAsset(n.assetId);
+        }
+        if (!n.read) {
+            setNotifications((s) => ({ items: s.items.map((x) => (x.id === n.id ? { ...x, read: true } : x)), unread: Math.max(0, s.unread - 1) }));
+            agencyApi.markNotificationsRead([n.id]).catch(() => {});
+        }
+    };
+
+    const readAllNotifications = () => {
+        setNotifications((s) => ({ items: s.items.map((x) => ({ ...x, read: true })), unread: 0 }));
+        agencyApi.markNotificationsRead().catch(() => {});
+    };
 
     const clientById = useMemo(() => Object.fromEntries((clients || []).map((c) => [c.id, c])), [clients]);
     const activeClient = clientFilter !== 'all' && clientFilter !== 'none' ? clientById[clientFilter] : null;
@@ -247,6 +353,7 @@ function ClientsWorkspace() {
                     <p>Keep each client's videos in one place, send them a link to approve (no login for them), and schedule what's approved.</p>
                 </div>
                 <div className="cl-head-actions">
+                    <FeedbackBell items={notifications.items} unread={notifications.unread} onOpen={openNotification} onReadAll={readAllNotifications} />
                     <div className="segmented" role="tablist">
                         <button role="tab" aria-selected={tab === 'library'} className={tab === 'library' ? 'is-active' : ''} onClick={() => setTab('library')}>
                             <Film size={15} /> Library

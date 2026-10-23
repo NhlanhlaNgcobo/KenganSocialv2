@@ -10,7 +10,7 @@ import { withWorkspace } from '../middleware/withWorkspace';
 import { APPROVAL_PLANS, MAX_CLIENTS, PLAN_LIMITS } from '../utils/planLimits';
 import { fail, requireEditor, requireWorkspace, route } from '../services/marketing/http';
 import { deleteVersions, MAX_VIDEO_BYTES, storeVideo, VIDEO_TYPES } from '../services/agency/media.js';
-import { assetSummary, clean, EXPIRY_DAYS, hashToken, newToken, PLATFORMS, publicComment, publicVersions, STATUSES } from '../services/agency/review.js';
+import { appendActivity, assetSummary, clean, editsApprovedContent, EXPIRY_DAYS, hashToken, newToken, PLATFORMS, publicComment, publicVersions, reviewAfterDelete } from '../services/agency/review.js';
 
 /**
  * Clients & approvals (for agencies and anyone who needs sign-off before posting).
@@ -27,12 +27,15 @@ import { assetSummary, clean, EXPIRY_DAYS, hashToken, newToken, PLATFORMS, publi
  *   GET    /api/agency/library/:id             video, versions, comments, reviews it is in
  *   PATCH  /api/agency/library/:id             { title, caption, platforms, dueDate, clientId, status }
  *   DELETE /api/agency/library/:id
- *   POST   /api/agency/library/:id/comments    { text, timecode, version }   team reply
+ *   POST   /api/agency/library/:id/comments    { text, timecode, version, internal }   team reply (internal = team-only note)
  *   PATCH  /api/agency/library/:id/comments/:commentId   { resolved }
  *  Review links
  *   GET    /api/agency/reviews
  *   POST   /api/agency/reviews                 { assetIds, title, message, expiresInDays, allowDownload } → { review, url }
  *   DELETE /api/agency/reviews/:id             revoke
+ *  Client feedback notifications (written by the public review routes into top-level `notifications`)
+ *   GET    /api/agency/notifications           latest review notifications + unread count
+ *   POST   /api/agency/notifications/read      { ids? }  mark read (all when no ids)
  *
  * Data (server-only, Firestore rules deny clients): workspaces/{ws}/clients, /library (+ /comments),
  * /reviews; review_links/{sha256(token)} → { workspaceId, reviewId } for the public review page.
@@ -189,34 +192,39 @@ async function addVersion(req: Request, { filePath, mimeType, title, clientId, a
     }
     const uploaderName = await memberName(req);
 
-    let ref;
-    let existing: any = null;
+    let ref: FirebaseFirestore.DocumentReference;
     if (assetId) {
         ref = libraryCol(req).doc(String(assetId));
-        const snap = await ref.get();
-        if (!snap.exists) throw fail(404, 'Video not found.');
-        existing = snap.data();
+        if (!(await ref.get()).exists) throw fail(404, 'Video not found.');
     } else {
         ref = libraryCol(req).doc(uuidv4());
     }
 
     const stored = await storeVideo({ filePath, mimeType, workspaceId: (req as any).workspaceId, assetId: ref.id });
-    const n = existing ? Math.max(0, ...(existing.versions || []).map((v: any) => v.n)) + 1 : 1;
-    const version = { n, ...stored, note: clean(note, 300), uploadedAt: new Date().toISOString(), uploadedBy: (req as any).uid, uploadedByName: uploaderName };
-    const activity = { type: existing ? 'new_version' : 'uploaded', by: uploaderName, at: new Date().toISOString(), version: n };
+    const versionFor = (n: number) => ({ n, ...stored, note: clean(note, 300), uploadedAt: new Date().toISOString(), uploadedBy: (req as any).uid, uploadedByName: uploaderName });
 
-    if (existing) {
-        // A new version goes back into review if it was out with the client; approval is per version.
-        const wasOut = ['in_review', 'changes_requested', 'approved'].includes(existing.status);
-        await ref.update({
-            versions: FieldValue.arrayUnion(version),
-            currentVersion: n,
-            status: wasOut ? 'in_review' : existing.status,
-            approval: null,
-            activity: [...(existing.activity || []).slice(-49), activity],
-            updatedAt: now(),
+    if (assetId) {
+        // Numbered and written in a transaction so two uploads at once cannot share a version number
+        // or drop each other's activity. A new version goes back into review if it was out with the
+        // client; approval is per version, so it is cleared.
+        await db.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            if (!snap.exists) throw fail(404, 'Video not found.');
+            const existing: any = snap.data();
+            const n = Math.max(0, ...(existing.versions || []).map((v: any) => v.n)) + 1;
+            const wasOut = ['in_review', 'changes_requested', 'approved'].includes(existing.status);
+            tx.update(ref, {
+                versions: FieldValue.arrayUnion(versionFor(n)),
+                currentVersion: n,
+                status: wasOut ? 'in_review' : existing.status,
+                approval: null,
+                activity: appendActivity(existing.activity, { type: 'new_version', by: uploaderName, at: new Date().toISOString(), version: n }),
+                updatedAt: now(),
+            });
         });
     } else {
+        const version = versionFor(1);
+        const activity = { type: 'uploaded', by: uploaderName, at: new Date().toISOString(), version: 1 };
         await ref.set({
             title: clean(title, 120) || 'Untitled video',
             clientId,
@@ -293,7 +301,7 @@ router.get('/library/:id', route(async (req, res) => {
 router.patch('/library/:id', requireEditor, route(async (req, res) => {
     const { ref } = await loadAsset(req);
     const b = req.body || {};
-    const update: Record<string, unknown> = { updatedAt: now() };
+    const update: Record<string, any> = {};
     if (b.title !== undefined) update.title = clean(b.title, 120) || 'Untitled video';
     if (b.caption !== undefined) update.caption = clean(b.caption, 2200);
     if (b.platforms !== undefined) update.platforms = (Array.isArray(b.platforms) ? b.platforms : []).filter((p: string) => PLATFORMS.includes(p));
@@ -304,7 +312,26 @@ router.patch('/library/:id', requireEditor, route(async (req, res) => {
         if (!['draft', 'in_review'].includes(b.status)) throw fail(400, 'Only the client can approve or request changes.');
         update.status = b.status;
     }
-    await ref.update(update);
+    const name = await memberName(req);
+    await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw fail(404, 'Video not found.');
+        const current: any = snap.data();
+        const write: Record<string, unknown> = { ...update, updatedAt: now() };
+        // Moving it back to draft or in review reopens it: any approval or change request is cleared.
+        // Changing approved content (caption, platforms, client) also needs the client to look again,
+        // so it goes back to in review. Title and planned post date only change the label and the
+        // schedule, so an approval survives them; new media is a new version (handled on upload).
+        const reopen = update.status !== undefined || (current.status === 'approved' && editsApprovedContent(current, update));
+        if (reopen) {
+            write.approval = null;
+            if (update.status === undefined) write.status = 'in_review';
+            if (current.status === 'approved' || current.approval) {
+                write.activity = appendActivity(current.activity, { type: 'reopened', by: name, at: new Date().toISOString(), version: current.currentVersion });
+            }
+        }
+        tx.update(ref, write);
+    });
     res.json({ asset: assetSummary(ref.id, (await ref.get()).data()) });
 }));
 
@@ -316,6 +343,13 @@ router.delete('/library/:id', requireEditor, route(async (req, res) => {
     const batch = db.batch();
     comments.docs.forEach((c) => batch.delete(c.ref));
     batch.delete(ref);
+    // Review links drop the video; a link left with nothing in it is switched off.
+    const reviews = await reviewsCol(req).where('assetIds', 'array-contains', ref.id).limit(200).get();
+    for (const r of reviews.docs) {
+        const { remaining, revoke } = reviewAfterDelete(r.data().assetIds, ref.id);
+        batch.update(r.ref, revoke ? { assetIds: remaining, revoked: true } : { assetIds: remaining });
+        if (revoke && r.data().token) batch.set(db.collection('review_links').doc(hashToken(r.data().token)), { revoked: true }, { merge: true });
+    }
     await batch.commit();
     await ws(req).set({ libraryBytes: FieldValue.increment(-bytes) }, { merge: true });
     res.json({ success: true });
@@ -332,6 +366,8 @@ router.post('/library/:id/comments', route(async (req, res) => {
         version: Number(req.body?.version) || data.currentVersion,
         author: { kind: 'team', name: await memberName(req), uid: (req as any).uid },
         resolved: false,
+        // Internal notes stay with the team; the public review page never returns them.
+        internal: req.body?.internal === true,
         createdAt: now(),
     };
     const added = await ref.collection('comments').add(comment);
@@ -416,19 +452,23 @@ router.post('/reviews', requireEditor, route(async (req, res) => {
     };
     const ref = await reviewsCol(req).add(review);
     await db.collection('review_links').doc(hashToken(token)).set({ workspaceId: (req as any).workspaceId, reviewId: ref.id, expiresAt, revoked: false });
-    // Everything sent is now waiting on the client (approved videos stay approved).
-    const batch = db.batch();
-    for (const s of snaps) {
-        const d: any = s.data();
-        const update: Record<string, unknown> = {
-            activity: [...(d.activity || []).slice(-49), { type: 'sent', by: name, at: new Date().toISOString(), version: d.currentVersion }],
-            updatedAt: now(),
-        };
-        if (d.status === 'draft') update.status = 'in_review';
-        batch.update(s.ref, update);
-    }
-    await batch.commit();
-    const assets = new Map(snaps.map((s) => [s.id, assetSummary(s.id, s.data())]));
+    // Everything sent is now waiting on the client (approved videos stay approved). Read again inside
+    // a transaction so a client comment landing at the same moment keeps its activity entry.
+    const sent = await db.runTransaction(async (tx) => {
+        const fresh = await Promise.all(snaps.map((s) => tx.get(s.ref)));
+        for (const s of fresh) {
+            if (!s.exists) continue;
+            const d: any = s.data();
+            const update: Record<string, unknown> = {
+                activity: appendActivity(d.activity, { type: 'sent', by: name, at: new Date().toISOString(), version: d.currentVersion }),
+                updatedAt: now(),
+            };
+            if (d.status === 'draft') update.status = 'in_review';
+            tx.update(s.ref, update);
+        }
+        return fresh.filter((s) => s.exists).map((s) => ({ id: s.id, data: { ...(s.data() as any), status: s.data()!.status === 'draft' ? 'in_review' : s.data()!.status } }));
+    });
+    const assets = new Map(sent.map((s) => [s.id, assetSummary(s.id, s.data)]));
     res.status(201).json({ review: reviewSummary(ref.id, { ...review, createdAt: new Date().toISOString() }, assets) });
 }));
 
@@ -439,6 +479,50 @@ router.delete('/reviews/:id', requireEditor, route(async (req, res) => {
     await ref.update({ revoked: true });
     await db.collection('review_links').doc(hashToken(snap.data()!.token)).set({ revoked: true }, { merge: true });
     res.json({ success: true });
+}));
+
+// ---------------------------------------------------------------- Notifications
+
+const notificationsQuery = (req: Request) => db.collection('notifications').where('workspaceId', '==', (req as any).workspaceId);
+
+function publicNotification(id: string, n: any) {
+    return { id, title: n.title, message: n.message || '', type: n.type || 'info', kind: n.kind || null, assetId: n.assetId || null, clientId: n.clientId || null, link: n.link || null, read: !!n.read, createdAt: iso(n.createdAt) };
+}
+
+/** Latest client feedback for this workspace (needs the notifications workspaceId+createdAt index). */
+router.get('/notifications', route(async (req, res) => {
+    let docs;
+    try {
+        docs = (await notificationsQuery(req).orderBy('createdAt', 'desc').limit(40).get()).docs;
+    } catch (error: any) {
+        // Index not deployed yet: fall back to an unordered read and sort here.
+        console.warn('[Agency] notifications index missing, falling back:', error.message);
+        docs = (await notificationsQuery(req).limit(200).get()).docs;
+    }
+    const items = docs
+        .filter((d) => d.data().source === 'review')
+        .map((d) => publicNotification(d.id, d.data()))
+        .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+        .slice(0, 40);
+    res.set('Cache-Control', 'no-store');
+    res.json({ notifications: items, unread: items.filter((n) => !n.read).length });
+}));
+
+router.post('/notifications/read', route(async (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).slice(0, 100) : null;
+    const snaps = ids
+        ? await Promise.all(ids.map((id: string) => db.collection('notifications').doc(id).get()))
+        : (await notificationsQuery(req).where('read', '==', false).limit(200).get()).docs;
+    const batch = db.batch();
+    let count = 0;
+    for (const s of snaps) {
+        // Only this workspace's review notifications, whatever ids were sent.
+        if (!s.exists || s.data()?.workspaceId !== (req as any).workspaceId || s.data()?.source !== 'review' || s.data()?.read) continue;
+        batch.update(s.ref, { read: true });
+        count += 1;
+    }
+    if (count) await batch.commit();
+    res.json({ success: true, marked: count });
 }));
 
 export default router;

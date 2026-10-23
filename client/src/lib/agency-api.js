@@ -63,6 +63,10 @@ export const agencyApi = {
     reviews: () => apiClient('/agency/reviews'),
     createReview: (body) => apiClient('/agency/reviews', { method: 'POST', body }),
     revokeReview: (id) => apiClient(`/agency/reviews/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+    notifications: () => apiClient('/agency/notifications'),
+    /** @param {string[]} [ids] omit to mark everything read */
+    markNotificationsRead: (ids) => apiClient('/agency/notifications/read', { method: 'POST', body: ids ? { ids } : {} }),
 };
 
 /** Public review page calls: no sign-in, the token in the link is the access. */

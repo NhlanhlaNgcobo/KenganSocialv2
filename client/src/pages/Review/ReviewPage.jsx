@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { AlertTriangle, CalendarDays, Check, CheckCircle2, Download, Loader2, MessageSquare, Pin, RotateCcw, Send } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Check, CheckCircle2, Download, Loader2, MessageSquare, Pin, RefreshCw, RotateCcw, Send } from 'lucide-react';
 import { formatTimecode, PLATFORM_LABELS, reviewApi, STATUS_META } from '../../lib/agency-api';
 import './Review.css';
 
@@ -58,7 +58,7 @@ function NameGate({ who, onSave }) {
     );
 }
 
-function AssetReview({ token, asset, agencyName, who, needName, allowDownload, onChange }) {
+function AssetReview({ token, asset, agencyName, who, needName, allowDownload, onChange, onRefresh }) {
     const videoRef = useRef(null);
     const [version, setVersion] = useState(asset.currentVersion);
     const [time, setTime] = useState(0);
@@ -68,6 +68,7 @@ function AssetReview({ token, asset, agencyName, who, needName, allowDownload, o
     const [note, setNote] = useState('');
     const [busy, setBusy] = useState('');
     const [error, setError] = useState('');
+    const [stale, setStale] = useState(false); // the server said this view is out of date (409)
     const [showCaption, setShowCaption] = useState(false);
     const pendingSeek = useRef(null);
 
@@ -101,10 +102,12 @@ function AssetReview({ token, asset, agencyName, who, needName, allowDownload, o
         }
         setBusy(label);
         setError('');
+        setStale(false);
         try {
             await fn();
         } catch (err) {
             setError(err.message);
+            setStale(err.status === 409);
         } finally {
             setBusy('');
         }
@@ -122,7 +125,8 @@ function AssetReview({ token, asset, agencyName, who, needName, allowDownload, o
 
     const decide = (decision) =>
         run(decision, async () => {
-            const { approval, status } = await reviewApi.decide(token, asset.id, { name: who.name, email: who.email, decision, note: decision === 'changes_requested' ? note : '' });
+            // The version on screen: the server refuses (409) if a newer one was uploaded meanwhile.
+            const { approval, status } = await reviewApi.decide(token, asset.id, { name: who.name, email: who.email, decision, version, note: decision === 'changes_requested' ? note : '' });
             const extra = decision === 'changes_requested' && note.trim()
                 ? [{ id: `local-${Date.now()}`, text: note.trim(), timecode: null, version: asset.currentVersion, author: { kind: 'client', name: who.name }, resolved: false, createdAt: new Date().toISOString() }]
                 : [];
@@ -241,7 +245,26 @@ function AssetReview({ token, asset, agencyName, who, needName, allowDownload, o
                 </div>
             )}
             {asset.status === 'changes_requested' && !mode ? <p className="rv-note">You asked for changes. The team will upload a new version to this same link.</p> : null}
-            {error ? <div className="error-banner">{error}</div> : null}
+            {error ? (
+                <div className="error-banner" role="alert">
+                    {error}
+                    {stale ? (
+                        <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={async () => {
+                                setError('');
+                                setStale(false);
+                                setMode(null);
+                                const next = await onRefresh();
+                                if (next) setVersion(next.currentVersion);
+                            }}
+                        >
+                            <RefreshCw size={14} /> Refresh
+                        </button>
+                    ) : null}
+                </div>
+            ) : null}
 
             {/* Comments */}
             <section className="rv-comments">
@@ -312,6 +335,18 @@ export default function ReviewPage() {
             .then(setData)
             .catch((err) => setError(err.message));
     }, [token]);
+
+    /** Reloads the review after a conflict; returns the fresh copy of one video (or null). */
+    const refreshAsset = async (assetId) => {
+        try {
+            const next = await reviewApi.get(token);
+            setData(next);
+            return next.assets.find((a) => a.id === assetId) || null;
+        } catch (err) {
+            setError(err.message);
+            return null;
+        }
+    };
 
     useEffect(() => {
         if (data?.agency?.name) document.title = `Review · ${data.agency.name}`;
@@ -392,7 +427,7 @@ export default function ReviewPage() {
 
                 {assets.length === 0 ? <div className="surface rv-empty">The videos in this review were removed by the agency.</div> : null}
                 {assets.map((a) => (
-                    <AssetReview key={a.id} token={token} asset={a} agencyName={agency.name} who={who} needName={needName} allowDownload={review.allowDownload} onChange={update} />
+                    <AssetReview key={a.id} token={token} asset={a} agencyName={agency.name} who={who} needName={needName} allowDownload={review.allowDownload} onChange={update} onRefresh={() => refreshAsset(a.id)} />
                 ))}
             </main>
 
