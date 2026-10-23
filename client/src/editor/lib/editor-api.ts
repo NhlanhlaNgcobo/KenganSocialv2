@@ -2,6 +2,8 @@
  * Server calls used by the editor. UI components never call fetch directly.
  */
 import { apiClient, apiFetch } from '../../lib/api';
+import { resumableUpload } from '../../lib/resumable-upload';
+import { RESUMABLE_FROM_BYTES } from '../../lib/clips-api';
 
 const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -86,6 +88,10 @@ export interface AnalysisJob {
 
 export const editorApi = {
     async uploadSource(file: Blob, name: string): Promise<string> {
+        if (file.size >= RESUMABLE_FROM_BYTES) {
+            const named = file instanceof File ? file : new File([file], name, { type: file.type || 'video/mp4' });
+            return resumableUpload(named);
+        }
         const form = new FormData();
         form.append('video', file, name);
         const data = await apiClient('/video/manual-edit/upload', { method: 'POST', body: form });

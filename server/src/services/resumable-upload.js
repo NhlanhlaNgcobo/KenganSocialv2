@@ -40,12 +40,15 @@ export class ResumableUploads {
     }
     async status(id, owner, workspaceId) {
         const meta = await this.read(id, owner, workspaceId);
-        const chunks = {};
+        // Which chunks are saved (sizes, not hashes: hashing every chunk would re-read up to 2 GB).
+        const received = [];
         for (const name of await fs.readdir(this.directory(id))) {
             if (!/^\d+\.chunk$/.test(name)) continue;
-            chunks[name.split('.')[0]] = hash(await fs.readFile(path.join(this.directory(id), name)));
+            const index = Number(name.split('.')[0]);
+            const { size } = await fs.stat(path.join(this.directory(id), name));
+            if (size === Math.min(CHUNK_BYTES, meta.size - index * CHUNK_BYTES)) received.push(index);
         }
-        return { id, size: meta.size, chunkBytes: CHUNK_BYTES, chunks };
+        return { id, size: meta.size, chunkBytes: CHUNK_BYTES, received: received.sort((a, b) => a - b), completed: Boolean(meta.completed) };
     }
     async put(id, owner, workspaceId, index, buffer) {
         const meta = await this.read(id, owner, workspaceId);
@@ -66,6 +69,10 @@ export class ResumableUploads {
     async complete(id, owner, workspaceId) {
         const meta = await this.read(id, owner, workspaceId);
         await fs.mkdir(this.outputRoot, { recursive: true });
+        // A retried "complete" (the first response was lost) returns the same file.
+        if (meta.completed && meta.output && (await fs.stat(meta.output).catch(() => null))) {
+            return { path: meta.output, uploadId: id, size: meta.size, filename: meta.name };
+        }
         const extension = /^\.(mp4|mov|webm|m4v|mp3|wav|m4a|png|jpg|jpeg|webp)$/i.test(path.extname(meta.name)) ? path.extname(meta.name).toLowerCase() : '.bin';
         const output = path.join(this.outputRoot, `source_${id}${extension}`);
         const temp = `${output}.${randomUUID()}.part`;
@@ -81,7 +88,7 @@ export class ResumableUploads {
             await fs.rename(temp, output);
             // Keep chunks for retrying the final response; expired sessions are swept later.
             const next = path.join(this.directory(id), `${randomUUID()}.json`);
-            await fs.writeFile(next, JSON.stringify({ ...meta, completed: true }));
+            await fs.writeFile(next, JSON.stringify({ ...meta, completed: true, output }));
             await fs.rename(next, path.join(this.directory(id), 'session.json'));
             return { path: output, uploadId: id, size: meta.size, filename: meta.name };
         } catch (error) {

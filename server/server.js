@@ -229,6 +229,14 @@ app.listen(PORT, () => {
     // Start scheduler cron job (check every 60 seconds)
     startSchedulerCron(60000);
 
+    // AI editing runs in its own worker (docker-compose "ai-worker"). Locally, run it inside the
+    // API so queued edits don't wait for a worker nobody started.
+    if (process.env.NODE_ENV !== 'production' && process.env.AI_EDIT_INLINE_WORKER !== 'off') {
+        import('./src/workers/ai-edit.ts')
+            .then(() => console.log('🤖 AI edit worker running inside the API (development)'))
+            .catch((error) => console.error('[AI worker] Could not start in-process:', error.message));
+    }
+
     // Start OAuth token auto-refresh cron (every 6 hours)
     startTokenRefreshCron();
 

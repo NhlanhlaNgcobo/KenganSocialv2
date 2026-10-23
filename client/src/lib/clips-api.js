@@ -2,6 +2,10 @@
  * Clips API: long video → ranked short clips. Server: /api/clips.
  */
 import { apiClient, apiFetch } from './api';
+import { resumableUpload } from './resumable-upload';
+
+// Bigger files go up in chunks that survive dropped connections.
+export const RESUMABLE_FROM_BYTES = 32 * 1024 * 1024;
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const API_ROOT = API_URL.replace(/\/api$/, '');
@@ -18,6 +22,7 @@ async function authHeaders() {
 
 /** Uploads a video with progress (fetch cannot report upload progress). Resolves to the upload ID. */
 export async function uploadVideo(file, onProgress = () => {}) {
+    if (file.size >= RESUMABLE_FROM_BYTES) return resumableUpload(file, onProgress);
     const headers = await authHeaders();
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();

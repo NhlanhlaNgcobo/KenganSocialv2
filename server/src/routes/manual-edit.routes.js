@@ -9,6 +9,7 @@ import { requireAuth } from '../middleware/auth.middleware.js';
 import { withWorkspace } from '../middleware/withWorkspace.ts';
 import { checkLimit } from '../middleware/planGate.ts';
 import multer from 'multer';
+import resumableRoutes from './resumable-upload.js';
 import os from 'os';
 
 const upload = multer({
@@ -26,6 +27,9 @@ router.use(requireAuth, withWorkspace);
 
 // Upload a source video file — returns uploadId
 router.post('/upload', upload.single('video'), uploadSourceVideo);
+
+// Large files in 8 MB chunks that survive dropped connections — also returns an uploadId
+router.use('/resumable', resumableRoutes);
 
 // Submit an edit config for processing — returns jobId
 router.post('/', checkLimit('exports'), processManualEdit);

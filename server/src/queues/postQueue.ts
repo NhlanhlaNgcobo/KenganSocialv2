@@ -48,8 +48,9 @@ async function processJob(job: Job<PublishPayload>) {
 
     // Process platforms concurrently
     const results = await Promise.allSettled(
-        // Platforms download the file themselves, so they get the public address (e.g. the tunnel).
-        platforms.map(p => publishMultiplexer(p, workspaceId, { mediaUrl: publicMediaUrl(mediaUrl, workspaceId), caption, ...platformOptions[p] }))
+        // Platforms download the file themselves, so each gets a link signed now (valid 48 h), however
+        // long ago the post was scheduled. A bad link fails that platform with a reason, not the job.
+        platforms.map(async p => publishMultiplexer(p, workspaceId, { mediaUrl: publicMediaUrl(mediaUrl, workspaceId), caption, ...platformOptions[p] }))
     );
 
     const published: { platform: string, postId: string }[] = [];
