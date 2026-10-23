@@ -39,6 +39,10 @@ const ACTION_LABEL = { send_dm: 'send message', reply_comment: 'public reply', a
 const TRIGGER_LABEL = { dm_keyword: 'DM keyword', comment_keyword: 'comment keyword' };
 const PLATFORM_NAME = { instagram: 'Instagram', facebook: 'Facebook Page' };
 const EMPTY = { name: '', triggerType: 'dm_keyword', keywords: '', actionType: 'send_dm', message: '', publicReply: '', connections: [] };
+const CHANNEL_NAME = { instagram: 'Instagram', facebook: 'Messenger' };
+
+const timeOf = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const dateTimeOf = (ms) => new Date(ms).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 export default function AutomationPage() {
     const { currentWorkspace } = useWorkspace();
@@ -50,6 +54,9 @@ export default function AutomationPage() {
     const [loadError, setLoadError] = useState('');
     const [form, setForm] = useState(EMPTY);
     const [availableConnections, setAvailableConnections] = useState([]);
+    // Channels whose automatic sends are paused by the hourly limit ({ instagram: { until } }), and the plan.
+    const [pause, setPause] = useState({});
+    const [plan, setPlan] = useState(null);
     const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
     const fetchAutomations = useCallback(async () => {
@@ -61,8 +68,11 @@ export default function AutomationPage() {
                 apiClient(`/workspaces/${currentWorkspace.id}/automations`),
                 apiClient(`/workspaces/${currentWorkspace.id}/connections`)
             ]);
-            if (rules.status === 'fulfilled') setAutomations(rules.value.automations || []);
-            else setLoadError(`Automations could not be loaded: ${rules.reason?.message || 'unknown error'}`);
+            if (rules.status === 'fulfilled') {
+                setAutomations(rules.value.automations || []);
+                setPause(rules.value.pause || {});
+                setPlan(rules.value.plan || null);
+            } else setLoadError(`Automations could not be loaded: ${rules.reason?.message || 'unknown error'}`);
             // Rules run on Instagram and Facebook Page messages and comments.
             if (conns.status === 'fulfilled') {
                 setAvailableConnections((conns.value.connections || []).filter(c => c.status === 'active' && PLATFORM_NAME[c.platform]));
@@ -173,11 +183,32 @@ export default function AutomationPage() {
                         Answer Instagram and Facebook messages and comments automatically, and turn the people who reach out into leads.
                         Replies to messages are sent only within 24 hours of the person&apos;s message, as Meta requires.
                     </p>
+                    <p className="auto-help">
+                        Each rule replies to the same person at most once a day, and pauses in a conversation for 12 hours after you reply by hand.
+                        These rules run first; the simpler keyword auto-replies under <Link to="/dashboard/dm">Inbox → Auto-replies</Link> only answer messages no rule here answered.
+                    </p>
                 </div>
                 <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
                     <Plus size={18} /> New automation
                 </button>
             </div>
+
+            {Object.entries(pause).map(([channel, p]) => (
+                <div key={channel} role="status" className="error-banner" style={{ marginBottom: 16 }}>
+                    <AlertCircle size={14} />
+                    <span>
+                        Automatic {CHANNEL_NAME[channel] || channel} replies are paused until {timeOf(p.until)}: the hourly limit for automatic messages was reached.
+                        Replies you send by hand from the Inbox still go out.
+                    </span>
+                </div>
+            ))}
+
+            {plan === 'starter' ? (
+                <div role="status" className="error-banner" style={{ marginBottom: 16 }}>
+                    <AlertCircle size={14} />
+                    <span>Automations are not included in the Free plan, so these rules don&apos;t run. <Link to="/dashboard/billing">See plans</Link></span>
+                </div>
+            ) : null}
 
             {loadError ? (
                 <div role="alert" style={{ background: 'var(--error-bg)', color: 'var(--error)', border: '1px solid var(--error)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>{loadError}</div>
@@ -218,7 +249,15 @@ export default function AutomationPage() {
                                         </div>
                                         <span className="auto-help">
                                             {platformsOf(auto)} · “{(auto.trigger?.config?.keywords || []).join('”, “')}” · ran {auto.runCount || 0} times
+                                            {auto.failureCount ? ` · failed ${auto.failureCount} times` : ''}
+                                            {auto.status !== 'active' ? ' · paused' : ''}
                                         </span>
+                                        {auto.lastError ? (
+                                            <span className="auto-help" role="status" style={{ color: 'var(--error)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                <AlertCircle size={12} />
+                                                Last problem{auto.lastErrorAt ? ` (${dateTimeOf(auto.lastErrorAt)})` : ''}: {auto.lastError}
+                                            </span>
+                                        ) : null}
                                     </div>
                                 </div>
                                 <div className="auto-right">
@@ -286,7 +325,11 @@ export default function AutomationPage() {
 
                             <label htmlFor="auto-action">Action</label>
                             <select id="auto-action" className="input" value={form.actionType} onChange={e => set({ actionType: e.target.value })}>
-                                {ACTION_TYPES[form.triggerType].map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                                {ACTION_TYPES[form.triggerType].map(a => (
+                                    <option key={a.id} value={a.id} disabled={a.id === 'add_lead' && plan && plan !== 'agency'}>
+                                        {a.label}{a.id === 'add_lead' && plan && plan !== 'agency' ? ' (Agency plan)' : ''}
+                                    </option>
+                                ))}
                             </select>
 
                             {needsMessage && (

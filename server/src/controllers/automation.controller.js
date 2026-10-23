@@ -1,4 +1,6 @@
 import { getFirestore } from '../config/firebase.js';
+import { countActiveRules, ruleAllowance, workspacePlan } from '../services/meta/plan-access.ts';
+import { activePause } from '../services/meta/send-guard.ts';
 
 const STATUSES = ['active', 'paused'];
 const TRIGGER_TYPES = ['dm_keyword', 'comment_keyword'];
@@ -48,6 +50,21 @@ function sanitizeRule({ trigger, action }) {
     };
 }
 
+/**
+ * Plan rules (services/meta/plan-access.ts): how many rules may be active, and whether the
+ * add-to-Leads action is included. Sends the refusal and returns false when not allowed.
+ */
+async function allowActiveRule(res, workspaceId, { addsLead, excludeId } = {}) {
+    const [plan, others] = await Promise.all([
+        workspacePlan(workspaceId),
+        countActiveRules(workspaceId, excludeId ? { collection: 'automations', id: excludeId } : undefined),
+    ]);
+    const allowance = ruleAllowance(plan, others, { addsLead });
+    if (allowance.ok) return true;
+    res.status(allowance.status).json({ ...allowance.body, error: allowance.body.message || allowance.body.error });
+    return false;
+}
+
 function sanitizeConnections(connections) {
     return Array.isArray(connections)
         ? [...new Set(connections.filter((c) => PLATFORMS.includes(c)))]
@@ -62,18 +79,20 @@ export async function getAutomations(req, res) {
         const db = getFirestore();
         const { workspaceId } = req.params;
 
-        const snapshot = await db.collection('workspaces')
-            .doc(workspaceId)
-            .collection('automations')
-            .orderBy('createdAt', 'desc')
-            .get();
+        const workspace = db.collection('workspaces').doc(workspaceId);
+        const [snapshot, wsSnap, plan] = await Promise.all([
+            workspace.collection('automations').orderBy('createdAt', 'desc').get(),
+            workspace.get(),
+            workspacePlan(workspaceId),
+        ]);
 
         const automations = [];
         snapshot.forEach(doc => {
-            automations.push(doc.data());
+            automations.push({ ...doc.data(), id: doc.id });
         });
 
-        res.json({ automations });
+        // pause: channels whose automated sends are paused by the hourly limit; plan: for the page's notices.
+        res.json({ automations, pause: activePause(wsSnap.data()?.automationPause), plan });
     } catch (error) {
         console.error('[Automation Controller] Get automations error:', error);
         res.status(500).json({ error: 'Failed to fetch automations' });
@@ -94,6 +113,8 @@ export async function createAutomation(req, res) {
         }
         const rule = sanitizeRule({ trigger, action });
         if (rule.error) return res.status(400).json({ error: rule.error });
+        const initialStatus = STATUSES.includes(status) ? status : 'active';
+        if (initialStatus === 'active' && !(await allowActiveRule(res, workspaceId, { addsLead: rule.value.action.type === 'add_lead' }))) return;
 
         const now = new Date().toISOString();
         const automationRef = db.collection('workspaces')
@@ -107,7 +128,10 @@ export async function createAutomation(req, res) {
             trigger: rule.value.trigger,
             action: rule.value.action,
             connections: sanitizeConnections(connections),
-            status: STATUSES.includes(status) ? status : 'active',
+            status: initialStatus,
+            runCount: 0,
+            failureCount: 0,
+            lastError: null,
             createdAt: now,
             updatedAt: now,
         };
@@ -160,6 +184,13 @@ export async function updateAutomation(req, res) {
         if (body.connections !== undefined) {
             updates.connections = sanitizeConnections(body.connections);
         }
+        const current = existing.data();
+        const willBeActive = (updates.status ?? current.status) === 'active';
+        const actionType = (updates.action ?? current.action)?.type;
+        if (willBeActive && (current.status !== 'active' || updates.action) &&
+            !(await allowActiveRule(res, workspaceId, { addsLead: actionType === 'add_lead', excludeId: automationId }))) return;
+        // Turning a rule back on clears its last error, so the page shows a fresh state.
+        if (updates.status === 'active' && current.status !== 'active') updates.lastError = null;
 
         updates.updatedAt = new Date().toISOString();
 

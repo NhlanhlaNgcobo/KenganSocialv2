@@ -57,10 +57,10 @@ What to expect: uploads appear on your channel. Testing-mode tokens expire after
    - `<SERVER>/api/connections/facebook/callback`
    - `<SERVER>/api/connections/meta_ads/callback`
 3. Add the products **Instagram** (Instagram API with Facebook Login), **Messenger** and **Marketing API**.
-4. **Webhooks** (products menu): callback URL `<SERVER>/api/webhooks/meta`, verify token = `META_VERIFY_TOKEN`. Subscribe:
-   - object **Instagram**: `messages`, `comments`
-   - object **Page**: `feed`, `messages`
-   Connecting an account subscribes its Page automatically (`/{page-id}/subscribed_apps`).
+4. **Webhooks** (products menu): callback URL `<SERVER>/api/webhooks/meta`, verify token = `META_VERIFY_TOKEN`. Subscribe the app (this part is manual, in the dashboard):
+   - object **Instagram**: `messages` (includes echoes of the account's own messages) and `comments`. Instagram comment and message webhooks are chosen **only here**: no API call can turn them on for you. In **Instagram → API setup with Facebook login → Configure webhooks**, also make sure the `comments` field is subscribed, and that the app is in **Live** mode (in Development mode Meta only delivers events for app roles).
+   - object **Page**: `feed`, `messages`, `message_echoes`.
+   Connecting an account then subscribes its Page automatically (`POST /{page-id}/subscribed_apps`): the fields the Page already had are kept and the ones KenganSocial needs are added (Facebook: `feed`, `messages`, `message_echoes`; Instagram: `messages`, or `name` if Meta refuses that, which is enough to install the app on the Page). The result is stored on the connection (`webhookSubscription`); if it failed, the Connections page shows a warning with a **Retry** button (`POST /api/connections/:platform/webhooks`).
 5. **App settings → Basic**: copy the **App ID** and **App Secret**. Add a privacy policy URL (`http://localhost:5173/privacy` is fine while testing).
 6. **App roles → Roles**: your Facebook account is already Admin. Add anyone else who will test as Tester.
 7. In `server/.env`:
@@ -70,6 +70,10 @@ What to expect: uploads appear on your channel. Testing-mode tokens expire after
    META_APP_SECRET=...        # the same App Secret
    META_VERIFY_TOKEN=any-random-string-you-choose
    ```
+
+**How automations behave** (services/meta): a rule replies to the same person at most once per 24 hours; the identical text is never sent to the same person twice within 10 minutes; automatic sends stop for the rest of the hour after 200 on one channel (Meta's Instagram limit is about 200 automated DMs an hour), and the Automations page says so; replies you send by hand are never limited this way. When the owner answers a conversation by hand (in Instagram, Messenger, Business Suite or the KenganSocial Inbox), automation pauses in that conversation for 12 hours. Meta's own "instant replies" and "away messages" in Business Suite also count as replies by hand, so turn them off if you use KenganSocial automations. A send that fails for a temporary reason is retried by the webhook worker (after 30 s, 2 min, 10 min and 1 h) without sending twice; a revoked token marks the connection Expired so Connections asks for a reconnect.
+
+Deploy `firestore.indexes.json` (`firebase deploy --only firestore:indexes`): it includes a TTL policy on `automationRuns.expireAt`, which deletes automation run records after 30 days.
 
 In development mode, Meta grants every permission to app roles without review. For App Review, request exactly these (the scopes in `server/src/routes/connections.ts`; the in-app explanations are in `client/src/content/platform-permissions.js`):
 

@@ -13,6 +13,9 @@ interface Automation {
     replyTemplate: string;
     isActive: boolean;
     sentCount: number;
+    lastError?: string | null;
+    lastErrorAt?: number | null;
+    failureCount?: number;
 }
 
 interface QueuedMsg {
@@ -64,6 +67,8 @@ export default function DMManager() {
     const [queue, setQueue] = useState<QueuedMsg[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
+    // Channels whose automatic sends are paused by the hourly limit.
+    const [pause, setPause] = useState<Record<string, { until: number }>>({});
     const [actionError, setActionError] = useState('');
     const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -91,6 +96,7 @@ export default function DMManager() {
             }
             const [aData, cData] = await Promise.all([apiClient('/dm/automations'), apiClient('/dm/comments')]);
             setAutomations(aData.automations || []);
+            setPause(aData.pause || {});
             setComments(cData.comments || []);
         } catch (err: any) {
             setLoadError(err.message || 'The inbox could not be loaded.');
@@ -120,7 +126,7 @@ export default function DMManager() {
     const createAutomation = async () => {
         setCreateError('');
         if (plan === 'starter') {
-            setCreateError('Upgrade to Nano or higher to create auto-replies.');
+            setCreateError('Upgrade to Creator Starter or higher to create auto-replies.');
             return;
         }
         if (!newAuto.keyword.trim()) {
@@ -215,7 +221,7 @@ export default function DMManager() {
                         <MessagesSquare size={18} /> Comments {comments.length > 0 && <span className="dm-count-badge">{comments.length}</span>}
                     </button>
                     <button className={`nav-btn ${activeTab === 'automations' ? 'active' : ''}`} onClick={() => setActiveTab('automations')}>
-                        <Settings2 size={18} /> Keyword Automations
+                        <Settings2 size={18} /> Auto-replies
                     </button>
                 </div>
             </div>
@@ -224,6 +230,13 @@ export default function DMManager() {
                 <div className="content-inner">
                     {loadError ? <div role="alert" className="dm-error">{loadError}</div> : null}
                     {actionError ? <div role="alert" className="dm-error">{actionError}</div> : null}
+                    {Object.entries(pause).map(([channel, p]) => (
+                        <div key={channel} role="status" className="dm-error">
+                            Automatic {CHANNEL_LABEL[channel] || channel} replies are paused until{' '}
+                            {new Date(p.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: the hourly limit for automatic messages was reached.
+                            Replies you send from here still go out.
+                        </div>
+                    ))}
 
                     {/* ── INBOX VIEW ── */}
                     {activeTab === 'inbox' && (
@@ -239,11 +252,11 @@ export default function DMManager() {
                                 <div className="empty-state">
                                     <p>
                                         {plan === 'nano'
-                                            ? 'You are on Nano: upgrade to Creator for the reply queue.'
-                                            : 'The AI reply queue is available on Creator and Agency plans.'}
+                                            ? 'You are on Creator Starter: upgrade to Creator Pro for the reply queue.'
+                                            : 'The AI reply queue is available on Creator Pro and Agency plans.'}
                                     </p>
                                     <p className="dm-hint">
-                                        Keyword auto-replies still work on Nano. <Link to="/dashboard/billing">See plans</Link>
+                                        Keyword auto-replies still work on Creator Starter. <Link to="/dashboard/billing">See plans</Link>
                                     </p>
                                 </div>
                             ) : loading && queue.length === 0 ? (
@@ -391,9 +404,14 @@ export default function DMManager() {
                     {activeTab === 'automations' && (
                         <div className="auto-view">
                             <div className="view-header">
-                                <h3>Automation Rules</h3>
+                                <h3>Keyword auto-replies</h3>
                                 <button className="btn-primary" onClick={openCreate}>+ New Rule</button>
                             </div>
+                            <p className="dm-hint">
+                                A simple keyword → reply for direct messages. They answer only messages that no rule on the{' '}
+                                <Link to="/dashboard/automation">Automations page</Link> answered (that page also handles comments and leads).
+                                Each replies to the same person at most once a day, and pauses in a conversation for 12 hours after you reply by hand.
+                            </p>
 
                             {loading && automations.length === 0 ? (
                                 <div className="empty-state"><Loader2 size={20} className="spin" /> Loading rules…</div>
@@ -425,8 +443,18 @@ export default function DMManager() {
                                                 <p>{a.replyTemplate}</p>
                                             </div>
 
+                                            {a.lastError ? (
+                                                <p role="status" className="dm-error" style={{ margin: '8px 0' }}>
+                                                    Last problem{a.lastErrorAt ? ` (${new Date(a.lastErrorAt).toLocaleString()})` : ''}: {a.lastError}
+                                                </p>
+                                            ) : null}
+
                                             <div className="card-footer">
-                                                <span>Stats: <strong>{a.sentCount || 0}</strong> sent</span>
+                                                <span>
+                                                    Stats: <strong>{a.sentCount || 0}</strong> sent
+                                                    {a.failureCount ? <> · <strong>{a.failureCount}</strong> failed</> : null}
+                                                    {!a.isActive ? ' · paused' : ''}
+                                                </span>
                                                 <button
                                                     className="btn-icon danger"
                                                     onClick={() => handleDeleteAuto(a)}

@@ -5,6 +5,7 @@ import { processLeadScore } from '../services/leads/scoreService';
 import { CHAT_MODEL, chatClient } from '../services/llm-client.js';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { requirePlan } from '../middleware/planGate';
+import { LEAD_STATUSES, sanitizeImport, sanitizeNewLead } from '../services/leads/sanitize';
 
 // mergeParams: the workspace comes from /api/workspaces/:workspaceId/leads.
 const router = express.Router({ mergeParams: true });
@@ -31,33 +32,7 @@ const leadsOf = (req: Request) => db.collection('workspaces').doc((req as any).w
 
 /** Fields a client may change on a lead. */
 const EDITABLE = ['status', 'notes', 'tags', 'displayName', 'username', 'platform', 'followersCount', 'signals', 'industryMatch', 'hasPreviousCollab'];
-const STATUSES = ['prospect', 'contacted', 'negotiating', 'closed', 'lost'];
-const PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube', 'email', 'whatsapp', 'other'];
-
-/** Validates a manually-added lead. Returns { value } or { error }. */
-function sanitizeNewLead(body: any): { value?: Record<string, unknown>; error?: string } {
-    const username = String(body?.username || '').trim().replace(/^@/, '').slice(0, 100);
-    if (!username) return { error: 'Add the lead\'s username.' };
-    const platform = String(body?.platform || 'instagram').toLowerCase();
-    if (!PLATFORMS.includes(platform)) return { error: 'Pick a supported platform.' };
-    const followers = Number(body?.followersCount ?? 0);
-    if (!Number.isFinite(followers) || followers < 0) return { error: 'Followers must be a positive number.' };
-    const status = STATUSES.includes(body?.status) ? body.status : 'prospect';
-    return {
-        value: {
-            username,
-            platform,
-            displayName: String(body?.displayName || '').trim().slice(0, 120) || username,
-            followersCount: Math.floor(followers),
-            notes: String(body?.notes || '').slice(0, 5000),
-            status,
-            tags: Array.isArray(body?.tags) ? body.tags.filter((t: unknown) => typeof t === 'string').slice(0, 20) : ['manual'],
-            industryMatch: !!body?.industryMatch,
-            hasPreviousCollab: !!body?.hasPreviousCollab,
-            signals: { totalLikes: 0, totalComments: 0, dmOpened: false, dmReplied: false, linkClicked: false, bookingMade: false, storyReply: false },
-        },
-    };
-}
+const STATUSES = LEAD_STATUSES;
 
 const csvCell = (value: unknown) => {
     const text = value === undefined || value === null ? '' : String(value);
@@ -101,13 +76,16 @@ router.get('/export', ...guard, route(async (req, res) => {
 }));
 
 router.post('/import', ...guard, route(async (req, res) => {
-    const leads: any[] = Array.isArray(req.body?.leads) ? req.body.leads.slice(0, 500) : [];
-    const batch = db.batch();
-    leads.forEach((l) => {
-        batch.set(leadsOf(req).doc(), processLeadScore({ status: 'prospect', ...l, createdAt: FieldValue.serverTimestamp() }));
-    });
-    await batch.commit();
-    res.json({ success: true, count: leads.length });
+    const { leads, skipped, error } = sanitizeImport(req.body?.leads);
+    if (error) return res.status(400).json({ error });
+    if (leads.length) {
+        const batch = db.batch();
+        leads.forEach((l) => {
+            batch.set(leadsOf(req).doc(), processLeadScore({ ...(l as any), source: 'Import', createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }));
+        });
+        await batch.commit();
+    }
+    res.json({ success: true, count: leads.length, skipped: skipped.slice(0, 50), skippedCount: skipped.length });
 }));
 
 router.post('/import-engagers', ...guard, route(async (_req, res) => {

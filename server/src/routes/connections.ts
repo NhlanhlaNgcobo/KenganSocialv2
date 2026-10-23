@@ -482,13 +482,68 @@ async function metaCandidates(platform: MetaPlatform, userToken: string): Promis
         }));
 }
 
-/** Subscribes a Page to the webhook fields KenganSocial uses (needs pages_manage_metadata). Best effort. */
-async function subscribePage(pageId: string, pageToken: string, fields: string) {
+/**
+ * Page webhook fields each Meta connection needs (POST /{page-id}/subscribed_apps, which needs
+ * pages_manage_metadata). Facebook: Page comments (feed), Messenger messages and the Page's own
+ * replies (message_echoes, to notice the owner answering by hand). Instagram: its messages and
+ * comments are chosen in the app's Instagram webhook settings, but they are only delivered for a Page
+ * that has the app installed, which this subscription does; if Meta refuses `messages` (it can need
+ * pages_messaging, which the Instagram sign-in doesn't ask for), the Page is subscribed to `name`
+ * (rare events) just to install the app. Each list is tried in turn until one is accepted.
+ */
+const PAGE_WEBHOOK_FIELDS: Record<'instagram' | 'facebook', string[][]> = {
+    instagram: [['messages'], ['name']],
+    facebook: [['feed', 'messages', 'message_echoes'], ['feed', 'messages']],
+};
+
+export interface WebhookSubscription {
+    ok: boolean;
+    pageId: string;
+    fields: string[];
+    error: string | null;
+    at: number;
+}
+
+/** Fields this app already has on the Page, so a new subscription adds to them instead of replacing them. */
+async function subscribedFields(pageId: string, pageToken: string): Promise<string[] | null> {
     try {
-        await axios.post(graphUrl(`${pageId}/subscribed_apps`), null, { params: { subscribed_fields: fields, access_token: pageToken } });
+        const { data } = await axios.get(graphUrl(`${pageId}/subscribed_apps`), { params: { access_token: pageToken }, timeout: 15000 });
+        const appId = env('FACEBOOK_APP_ID');
+        const ours = (data?.data || []).find((a: any) => (appId ? String(a.id) === appId : true));
+        return Array.isArray(ours?.subscribed_fields) ? ours.subscribed_fields.map(String) : [];
     } catch (err: any) {
-        console.warn(`[Meta] Page ${pageId} webhook subscription failed:`, graphErrorMessage(err));
+        console.warn(`[Meta] Could not read Page ${pageId} webhook subscriptions:`, graphErrorMessage(err));
+        return null;
     }
+}
+
+/**
+ * Subscribes the Page to the union of what it already has, what this connection needs, and what the
+ * workspace's other Meta connection on the same Page needs (so connecting Instagram after Facebook
+ * keeps `feed`). The result is stored on the connection (webhookSubscription) and shown on Connections.
+ */
+async function subscribePage(workspaceId: string, platform: 'instagram' | 'facebook', pageId: string, pageToken: string): Promise<WebhookSubscription> {
+    const other = platform === 'instagram' ? 'facebook' : 'instagram';
+    const sibling = (await getConnectionDoc(workspaceId, other).catch(() => null))?.data;
+    const sameSibling = sibling && String(sibling.pageId || sibling.accountId) === pageId && sibling.status === 'active';
+    const siblingFields = sameSibling ? sibling.webhookSubscription?.fields || PAGE_WEBHOOK_FIELDS[other][0] : [];
+    const existing = await subscribedFields(pageId, pageToken);
+    let lastError = 'unknown error';
+    for (const needed of PAGE_WEBHOOK_FIELDS[platform]) {
+        const fields = [...new Set<string>([...(existing || []), ...siblingFields, ...needed])];
+        try {
+            const { data } = await axios.post(graphUrl(`${pageId}/subscribed_apps`), null, {
+                params: { subscribed_fields: fields.join(','), access_token: pageToken },
+                timeout: 15000,
+            });
+            if (data?.success === false) throw new Error('Meta did not confirm the subscription');
+            return { ok: true, pageId, fields, error: null, at: Date.now() };
+        } catch (err: any) {
+            lastError = graphErrorMessage(err);
+            console.warn(`[Meta] Page ${pageId} webhook subscription (${fields.join(',')}) failed:`, lastError);
+        }
+    }
+    return { ok: false, pageId, fields: existing || [], error: lastError.slice(0, 300), at: Date.now() };
 }
 
 async function saveMetaConnection(workspaceId: string, platform: MetaPlatform, c: MetaCandidate, login: MetaLogin) {
@@ -496,7 +551,7 @@ async function saveMetaConnection(workspaceId: string, platform: MetaPlatform, c
     const userExpiry = Date.now() + login.expiresIn * 1000;
     if (platform === 'instagram') {
         // Instagram events (messages, comments) are chosen in the app's webhook settings; the Page must have the app installed.
-        await subscribePage(c.pageId!, c.pageToken!, 'messages');
+        const webhookSubscription = await subscribePage(workspaceId, 'instagram', c.pageId!, c.pageToken!);
         await saveConnection(workspaceId, 'instagram', {
             accessToken: login.userToken,
             refreshToken: login.userToken, // a long-lived Meta token renews by exchanging itself
@@ -513,10 +568,11 @@ async function saveMetaConnection(workspaceId: string, platform: MetaPlatform, c
                 // Messages and comment replies go through the linked Page (services/meta/messaging.ts).
                 pageId: c.pageId,
                 pageAccessToken: encrypt(c.pageToken!),
+                webhookSubscription,
             },
         });
     } else if (platform === 'facebook') {
-        await subscribePage(c.pageId!, c.pageToken!, 'feed,messages');
+        const webhookSubscription = await subscribePage(workspaceId, 'facebook', c.pageId!, c.pageToken!);
         await saveConnection(workspaceId, 'facebook', {
             accessToken: c.pageToken!, // Page token: what posting, replies and messages use
             refreshToken: login.userToken,
@@ -526,7 +582,7 @@ async function saveMetaConnection(workspaceId: string, platform: MetaPlatform, c
             followersCount: c.followers,
             accountAvatar: c.avatar || undefined,
             scope: cfg.scopes,
-            meta: { metaUserId: login.metaUserId, pageId: c.accountId, pageName: c.name },
+            meta: { metaUserId: login.metaUserId, pageId: c.accountId, pageName: c.name, webhookSubscription },
         });
     } else {
         await saveConnection(workspaceId, 'meta_ads', {
@@ -644,6 +700,31 @@ router.delete('/:platform/candidates', withWorkspace, async (req: Request, res: 
     if (!META_PICK_PLATFORMS.includes(platform) || !workspaceId) return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
     await pendingRef(workspaceId, platform).delete();
     res.json({ success: true });
+});
+
+// Subscribes the Instagram account's Page, or the Facebook Page, to webhooks again (the "Retry" on
+// Connections when messages and comments aren't arriving).
+router.post('/:platform/webhooks', withWorkspace, requireWorkspaceRole('owner', 'admin'), async (req: Request, res: Response) => {
+    const platform = req.params.platform;
+    const workspaceId = (req as any).workspaceId;
+    if (platform !== 'instagram' && platform !== 'facebook') return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
+    if (!workspaceId) return res.status(403).json({ error: 'NO_WORKSPACE' });
+    try {
+        const conn = await getConnectionDoc(workspaceId, platform);
+        if (!conn) return res.status(404).json({ error: 'NOT_CONNECTED', message: 'Connect the account first.' });
+        const encrypted = platform === 'instagram' ? conn.data.pageAccessToken : conn.data.accessToken;
+        const pageId = String(conn.data.pageId || conn.data.accountId || '');
+        if (!encrypted || !pageId) return res.status(409).json({ error: 'RECONNECT_REQUIRED', message: 'Reconnect the account to enable messages and comments.' });
+        const webhookSubscription = await subscribePage(workspaceId, platform, pageId, decrypt(encrypted));
+        await conn.ref.update({ webhookSubscription, updatedAt: FieldValue.serverTimestamp() });
+        if (!webhookSubscription.ok) {
+            return res.status(502).json({ error: 'SUBSCRIBE_FAILED', message: `Meta refused the webhook subscription: ${webhookSubscription.error}`, webhookSubscription });
+        }
+        res.json({ success: true, webhookSubscription });
+    } catch (err: any) {
+        console.error(`[Meta ${platform} webhooks]`, err.message);
+        res.status(500).json({ error: 'SUBSCRIBE_FAILED', message: 'The subscription could not be renewed. Try again.' });
+    }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1008,6 +1089,9 @@ async function refreshPlatformToken(workspaceId: string, platform: Platform): Pr
         tokenExpiry,
         status: 'active',
         expiredAt: FieldValue.delete(),
+        tokenError: FieldValue.delete(),
+        userTokenExpired: FieldValue.delete(),
+        userTokenError: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -1019,6 +1103,17 @@ async function refreshPlatformToken(workspaceId: string, platform: Platform): Pr
 //   Scans all connections expiring within 24 hours
 // ─────────────────────────────────────────────────────────────────────────────
 const EXPIRED_RETENTION_MS = 6 * 86400 * 1000;
+
+/** Whether an Instagram connection's Page token (what messaging and comment replies use) still works. */
+async function pageTokenWorks(conn: FirebaseFirestore.DocumentData) {
+    if (!conn.pageId || !conn.pageAccessToken) return false;
+    try {
+        await axios.get(graphUrl(String(conn.pageId)), { params: { fields: 'id', access_token: decrypt(conn.pageAccessToken) }, timeout: 15000 });
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 /**
  * Renews tokens expiring within 24 hours, marks ones that can't be renewed as expired, and deletes
@@ -1050,6 +1145,19 @@ export async function runTokenMaintenance() {
                     const refused = (httpStatus >= 400 && httpStatus < 500) || /invalid_grant|invalid|revoked|expired/i.test(String(err.message));
                     console.error(`[TokenRefreshCron] ❌ Failed to refresh ${platform} for ${workspaceId}${refused ? '' : ' (will retry)'}:`, err.response?.data || err.message);
                     if (!refused) continue;
+
+                    // Instagram: the user token could not be renewed, but messaging and comment replies use
+                    // the Page token. While that still works, keep the connection active (Connections asks
+                    // for a reconnect to keep publishing) instead of stopping the Inbox and automations.
+                    if (platform === 'instagram' && (await pageTokenWorks(connDoc.data()))) {
+                        await connDoc.ref.update({
+                            userTokenExpired: true,
+                            userTokenError: String(err.response?.data?.error?.message || err.message).slice(0, 300),
+                            updatedAt: FieldValue.serverTimestamp(),
+                        });
+                        console.warn(`[TokenRefreshCron] Instagram user token for ${workspaceId} could not be renewed; the Page token still works, so messaging continues`);
+                        continue;
+                    }
 
                     // Mark as expired and notify user. If it isn't reconnected, the sweep below deletes it.
                     await connDoc.ref.update({

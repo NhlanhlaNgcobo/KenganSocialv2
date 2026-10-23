@@ -276,6 +276,24 @@ export default function ConnectionsPage() {
         }
     };
 
+    // Meta webhooks: a Page that isn't subscribed gets no messages or comments, so the Inbox and automations stay silent.
+    const [retryingWebhooks, setRetryingWebhooks] = useState(null);
+    const [webhookNotice, setWebhookNotice] = useState(null); // { platform, tone, text }
+    const retryWebhooks = async (connection) => {
+        setRetryingWebhooks(connection.platform);
+        setWebhookNotice(null);
+        try {
+            await apiClient(`/connections/${connection.platform}/webhooks`, { method: 'POST' });
+            setWebhookNotice({ platform: connection.platform, tone: 'success', text: 'Subscribed: new messages and comments will arrive.' });
+            await fetchConnections();
+        } catch (error) {
+            setWebhookNotice({ platform: connection.platform, tone: 'error', text: error.message || 'The subscription failed. Try again.' });
+            await fetchConnections();
+        } finally {
+            setRetryingWebhooks(null);
+        }
+    };
+
     const handleRefreshYoutube = async () => {
         setYoutubeRefreshLoading(true);
         setYoutubeMessage('');
@@ -453,6 +471,54 @@ export default function ConnectionsPage() {
                                                         <><AlertCircle size={12} /> Expired</>
                                                     )}
                                                 </div>
+
+                                                {connection.status !== 'active' && (
+                                                    <div className="error-banner" role="status" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                                                        <AlertCircle size={12} />
+                                                        <span>
+                                                            {connection.tokenError?.message
+                                                                ? `Meta stopped accepting this account's access (${connection.tokenError.message}). `
+                                                                : 'Access to this account has expired. '}
+                                                            Reconnect it to keep posting, messages and automations working.
+                                                        </span>
+                                                        <button className="btn btn-sm btn-secondary" onClick={() => handleConnect(connection.platform, group)} disabled={!!connecting}>
+                                                            <RefreshCw size={12} /> Reconnect
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {connection.platform === 'instagram' && connection.status === 'active' && connection.userTokenExpired && (
+                                                    <div className="error-banner" role="status" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                                                        <AlertCircle size={12} />
+                                                        <span>Reconnect Instagram to keep publishing. Messages and comment replies still work.</span>
+                                                        <button className="btn btn-sm btn-secondary" onClick={() => handleConnect('instagram', group)} disabled={!!connecting}>
+                                                            <RefreshCw size={12} /> Reconnect
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {['instagram', 'facebook'].includes(connection.platform) && connection.status === 'active' && connection.webhookSubscription && !connection.webhookSubscription.ok && (
+                                                    <div className="error-banner" role="status" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                                                        <AlertCircle size={12} />
+                                                        <span>
+                                                            New messages and comments are not arriving: Meta refused the webhook subscription
+                                                            {connection.webhookSubscription.error ? ` (${connection.webhookSubscription.error})` : ''}.
+                                                        </span>
+                                                        <button
+                                                            className="btn btn-sm btn-secondary"
+                                                            onClick={() => retryWebhooks(connection)}
+                                                            disabled={retryingWebhooks === connection.platform}
+                                                        >
+                                                            {retryingWebhooks === connection.platform ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />} Retry
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {webhookNotice?.platform === connection.platform && (
+                                                    <div className={webhookNotice.tone === 'error' ? 'error-banner' : 'success-banner'} role="status" style={{ marginTop: 8 }}>
+                                                        {webhookNotice.text}
+                                                    </div>
+                                                )}
 
                                                 <div style={{ marginTop: '12px' }}>
                                                     <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
