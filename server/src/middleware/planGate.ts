@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-import { redis } from '../utils/redis';
+import { readyUsageRedis } from '../utils/usageRedis';
+import { RESERVE_USAGE, REFUND_USAGE } from '../services/usage-reservation';
 import { PLAN_LIMITS, PlanFeature } from '../utils/planLimits';
 import { getMonth, endOfMonth } from '../utils/dateUtils';
 
@@ -15,6 +16,7 @@ const ALLOWED: UsageResult = { ok: true, status: 200, body: {} };
 export async function consumeUsage(workspaceId: string, plan: string, feature: PlanFeature, units = 1): Promise<UsageResult> {
     const limit = (PLAN_LIMITS as any)[plan]?.[feature] ?? 0;
     const amount = Math.max(1, Math.ceil(units));
+    if (!workspaceId || !Number.isSafeInteger(amount)) return { ok: false, status: 400, body: { error: 'INVALID_USAGE_REQUEST' } };
 
     // 1. Feature completely locked on this plan
     if (limit === 0) {
@@ -26,16 +28,11 @@ export async function consumeUsage(workspaceId: string, plan: string, feature: P
     }
 
     // 2. Unlimited (-1) — track for usage but do not block
-    if (limit === -1) {
-        await trackAgencyUsage(workspaceId, feature, amount);
-        return ALLOWED;
-    }
-
-    // 3. Hard cap — check Redis counter
-    const key = `usage:${workspaceId}:${feature}:${getMonth()}`;
+    const key = `${limit === -1 ? 'agency_usage' : 'usage'}:${workspaceId}:${feature}:${getMonth()}`;
     try {
-        const current = parseInt((await redis.get(key)) || '0');
-        if (current + amount > limit) {
+        const redis = await readyUsageRedis();
+        const [allowed, current] = await redis.eval(RESERVE_USAGE, 1, key, amount, limit, endOfMonth()) as [number, number];
+        if (!allowed) {
             return {
                 ok: false,
                 status: 402,
@@ -54,10 +51,6 @@ export async function consumeUsage(workspaceId: string, plan: string, feature: P
                 },
             };
         }
-        const multi = redis.multi();
-        multi.incrby(key, amount);
-        multi.expireat(key, endOfMonth());
-        await multi.exec();
         return ALLOWED;
     } catch (err) {
         console.error('[PlanGate] Redis check failed:', err);
@@ -77,7 +70,8 @@ export async function refundUsage(workspaceId: string, plan: string, feature: Pl
     const limit = (PLAN_LIMITS as any)[plan]?.[feature] ?? 0;
     if (limit <= 0) return;
     try {
-        await redis.decrby(`usage:${workspaceId}:${feature}:${getMonth()}`, Math.max(1, Math.ceil(units)));
+        const redis = await readyUsageRedis();
+        await redis.eval(REFUND_USAGE, 1, `usage:${workspaceId}:${feature}:${getMonth()}`, Math.max(1, Math.ceil(units)));
     } catch (err) {
         console.error('[PlanGate] Refund failed:', err);
     }
@@ -111,15 +105,6 @@ export function checkLimit(feature: PlanFeature, units: number | ((req: Request)
 /**
  * Agency overage tracker — tracks usage above fair-use thresholds.
  */
-async function trackAgencyUsage(workspaceId: string, feature: string, amount = 1) {
-    const key = `agency_usage:${workspaceId}:${feature}:${getMonth()}`;
-    try {
-        await redis.incrby(key, amount);
-    } catch (err) {
-        console.error('[PlanGate] Agency usage tracking failed:', err);
-    }
-}
-
 /**
  * Per-plan rate limiter — provides higher throughput for higher-tier users.
  */

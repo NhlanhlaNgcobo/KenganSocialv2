@@ -1,6 +1,8 @@
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { storedMediaUrl, parseMediaUrl, signMediaUrl, mediaWorkspace } from './media-links.js';
 import { getStorage } from '../config/firebase.js';
 import { v4 as uuidv4 } from 'uuid';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import fs from 'fs/promises';
 import { createReadStream } from 'fs';
 import path from 'path';
@@ -105,7 +107,12 @@ function localPublicBase() {
  * A media URL that outside services (Instagram, TikTok, …) can download: locally stored files are
  * rewritten from the local API address to SERVER_URL (e.g. the ngrok tunnel). Other URLs pass through.
  */
-export function publicMediaUrl(url) {
+export function publicMediaUrl(url, workspaceId) {
+    const ref = parseMediaUrl(url);
+    if (ref) {
+        if (!workspaceId || mediaWorkspace(ref.key) !== workspaceId) throw new Error('Media belongs to a different workspace');
+        return signMediaUrl(url, 48 * 60 * 60);
+    }
     if (!url || getStorageDriver() !== 'local') return url;
     const server = (process.env.SERVER_URL || '').replace(/\/+$/, '');
     const local = `${localApiBase()}/uploads/`;
@@ -162,7 +169,7 @@ export async function uploadFile(buffer, destination, mimeType) {
             const fullPath = resolveLocalPath(fileName);
             await fs.mkdir(path.dirname(fullPath), { recursive: true });
             await fs.writeFile(fullPath, buffer);
-            return `${localPublicBase()}/${fileName}`;
+            return storedMediaUrl('local', fileName);
         }
 
         if (driver === 's3') {
@@ -172,7 +179,7 @@ export async function uploadFile(buffer, destination, mimeType) {
                 Body: buffer,
                 ContentType: mimeType,
             }));
-            return `${s3PublicBase()}/${fileName}`;
+            return storedMediaUrl('s3', fileName, process.env.S3_BUCKET);
         }
 
         const bucket = await resolveWritableBucket();
@@ -180,12 +187,12 @@ export async function uploadFile(buffer, destination, mimeType) {
 
         await file.save(buffer, {
             metadata: { contentType: mimeType },
-            public: true,
+            public: false,
         });
 
         // For Firebase Storage, the public URL looks like this:
         // https://storage.googleapis.com/[BUCKET_NAME]/[FILE_PATH]
-        return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+        return storedMediaUrl('firebase', fileName, bucket.name);
     } catch (error) {
         console.error('[Storage Service] Upload error:', error);
         throw new Error('Failed to upload file to storage');
@@ -208,7 +215,7 @@ export async function uploadLocalFile(filePath, destination, mimeType) {
             const fullPath = resolveLocalPath(fileName);
             await fs.mkdir(path.dirname(fullPath), { recursive: true });
             await fs.copyFile(filePath, fullPath);
-            return `${localPublicBase()}/${fileName}`;
+            return storedMediaUrl('local', fileName);
         }
 
         if (driver === 's3') {
@@ -220,12 +227,12 @@ export async function uploadLocalFile(filePath, destination, mimeType) {
                 ContentLength: size,
                 ContentType: mimeType,
             }));
-            return `${s3PublicBase()}/${fileName}`;
+            return storedMediaUrl('s3', fileName, process.env.S3_BUCKET);
         }
 
         const bucket = await resolveWritableBucket();
-        await bucket.upload(filePath, { destination: fileName, metadata: { contentType: mimeType }, public: true, resumable: true });
-        return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+        await bucket.upload(filePath, { destination: fileName, metadata: { contentType: mimeType }, public: false, resumable: true });
+        return storedMediaUrl('firebase', fileName, bucket.name);
     } catch (error) {
         console.error('[Storage Service] File upload error:', error);
         throw new Error('Failed to upload file to storage');
@@ -237,16 +244,17 @@ export async function uploadLocalFile(filePath, destination, mimeType) {
  */
 export async function deleteFile(fileUrl) {
     try {
-        const driver = getStorageDriver();
+        const ref = parseMediaUrl(fileUrl);
+        const driver = ref?.driver || getStorageDriver();
 
         if (driver === 'local') {
-            const key = localKeyFromUrl(fileUrl);
+            const key = ref?.key || localKeyFromUrl(fileUrl);
             if (key) await fs.unlink(resolveLocalPath(key));
             return;
         }
 
         if (driver === 's3') {
-            const key = fileUrl.split(`${s3PublicBase()}/`)[1];
+            const key = ref?.key || fileUrl.split(`${s3PublicBase()}/`)[1];
             if (key) {
                 await getS3().send(new DeleteObjectCommand({
                     Bucket: process.env.S3_BUCKET,
@@ -258,7 +266,7 @@ export async function deleteFile(fileUrl) {
 
         for (const bucketName of getCandidateBucketNames()) {
             const bucket = getStorage().bucket(bucketName);
-            const filePath = fileUrl.split(`${bucket.name}/`)[1];
+            const filePath = ref?.bucket === bucketName ? ref.key : fileUrl.split(`${bucket.name}/`)[1];
             if (filePath) {
                 await bucket.file(filePath).delete();
                 return;
@@ -343,4 +351,16 @@ export async function getPrefixSizeBytes(prefix) {
     }
 
     return null;
+}
+
+/** Provider download URLs are minted only after a scoped link has been verified. */
+export async function storageReadUrl(ref) {
+    if (ref.driver === 's3' && ref.bucket === process.env.S3_BUCKET) {
+        return getSignedUrl(getS3(), new GetObjectCommand({ Bucket: ref.bucket, Key: ref.key }), { expiresIn: 300 });
+    }
+    if (ref.driver === 'firebase' && getCandidateBucketNames().includes(ref.bucket)) {
+        const [url] = await getStorage().bucket(ref.bucket).file(ref.key).getSignedUrl({ action: 'read', expires: Date.now() + 300000 });
+        return url;
+    }
+    throw new Error('Unknown media storage');
 }

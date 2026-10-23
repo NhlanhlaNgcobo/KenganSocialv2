@@ -2,7 +2,7 @@ import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import axios from 'axios';
 import { db } from '../utils/firestore';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getUploadPath, storeUpload } from '../services/manual-edit.service.js';
@@ -14,6 +14,7 @@ const PYTHON_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
 
 import { withWorkspace } from '../middleware/withWorkspace';
 import { checkLimit, planRateLimit } from '../middleware/planGate';
+import { requireOwnedUpload } from '../middleware/ownedUpload.js';
 
 // POST /api/video/process
 // Canonical video pipeline v2:
@@ -44,7 +45,7 @@ router.post('/process', withWorkspace, planRateLimit(), checkLimit('renders'), a
         userId: uid,
         status: 'transcribing',
         progress: 0,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
         type: 'process_pipeline',
         analysisPreferences,
         stylePreset
@@ -187,15 +188,15 @@ router.get('/jobs/:jobId', withWorkspace, async (req: Request, res: Response) =>
 });
 
 // POST /api/video/transcribe
-router.post('/transcribe', withWorkspace, planRateLimit(), checkLimit('transcribeHrs'), async (req: Request, res: Response) => {
-    const { videoUrl } = req.body;
+router.post('/transcribe', withWorkspace, requireOwnedUpload, planRateLimit(), checkLimit('transcribeHrs'), async (req: Request, res: Response) => {
+    const videoUrl = (req as any).sourcePath;
     const workspaceId = (req as any).workspaceId;
 
     if (!videoUrl) return res.status(400).json({ error: 'Missing videoUrl' });
 
     const jobId = `transcribe_${Date.now()}`;
     await db.collection('render_jobs').doc(jobId).set({
-        jobId, workspaceId, status: 'transcribing', progress: 10, createdAt: admin.firestore.FieldValue.serverTimestamp(), type: 'standalone_transcribe'
+        jobId, workspaceId, status: 'transcribing', progress: 10, createdAt: FieldValue.serverTimestamp(), type: 'standalone_transcribe'
     });
 
     (async () => {
@@ -211,13 +212,14 @@ router.post('/transcribe', withWorkspace, planRateLimit(), checkLimit('transcrib
 });
 
 // POST /api/video/analyze-viral
-router.post('/analyze-viral', withWorkspace, planRateLimit(), checkLimit('clipAnalysis'), async (req: Request, res: Response) => {
-    const { transcript, videoUrl } = req.body;
+router.post('/analyze-viral', withWorkspace, requireOwnedUpload, planRateLimit(), checkLimit('clipAnalysis'), async (req: Request, res: Response) => {
+    const { transcript } = req.body;
+    const videoUrl = (req as any).sourcePath;
     const workspaceId = (req as any).workspaceId;
 
     const jobId = `analysis_${Date.now()}`;
     await db.collection('render_jobs').doc(jobId).set({
-        jobId, workspaceId, status: 'analyzing', progress: 10, createdAt: admin.firestore.FieldValue.serverTimestamp(), type: 'standalone_analysis'
+        jobId, workspaceId, status: 'analyzing', progress: 10, createdAt: FieldValue.serverTimestamp(), type: 'standalone_analysis'
     });
 
     (async () => {
@@ -232,26 +234,10 @@ router.post('/analyze-viral', withWorkspace, planRateLimit(), checkLimit('clipAn
     res.json({ success: true, jobId });
 });
 
-// POST /api/video/export
-router.post('/export', withWorkspace, planRateLimit(), checkLimit('exports'), async (req: Request, res: Response) => {
-    const { jobId, format = 'mp4', quality = '1080p' } = req.body;
-    const workspaceId = (req as any).workspaceId;
-
-    const exportId = `export_${Date.now()}`;
-    await db.collection('render_jobs').doc(jobId).collection('exports').doc(exportId).set({
-        exportId, status: 'exporting', progress: 0, format, quality, createdAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    (async () => {
-        try {
-            // Forward to Python export engine
-            await axios.post(`${PYTHON_URL}/process/export`, { jobId, exportId, workspaceId, format, quality });
-        } catch (e: any) {
-            await db.collection('render_jobs').doc(jobId).collection('exports').doc(exportId).update({ status: 'failed', error: e.message });
-        }
-    })();
-
-    res.json({ success: true, exportId, message: 'Export initiated' });
+// Retired endpoint: the editor exports through the authenticated manual-edit pipeline.
+// Return before charging usage or writing any job document.
+router.post('/export', withWorkspace, (_req: Request, res: Response) => {
+    res.status(410).json({ error: 'EXPORT_ENDPOINT_RETIRED', message: 'Export through the video editor.' });
 });
 
 export default router;

@@ -1,6 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { db } from '../utils/firestore';
-import admin from 'firebase-admin';
+
 import { fetchTrendingResult } from '../services/trending/trendingService';
 
 const router = express.Router();

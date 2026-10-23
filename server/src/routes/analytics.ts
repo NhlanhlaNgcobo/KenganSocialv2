@@ -1,3 +1,4 @@
+import { cachedConnectionAnalytics } from '../services/analytics/cache';
 import express, { Request, Response } from 'express';
 import { db } from '../utils/firestore';
 import { fetchConnectionAnalytics, calculateBestPostingTimes, AnalyticsSnapshot, AnalyticsPost } from '../services/analytics/analyticsService';
@@ -29,7 +30,7 @@ router.get('/overview', withWorkspace, async (req: Request, res: Response) => {
         const connsSnap = await db.collection('workspaces').doc(workspaceId).collection('connections').get();
 
         const snapshots: AnalyticsSnapshot[] = await Promise.all(
-            connsSnap.docs.map((doc) => fetchConnectionAnalytics(workspaceId, doc.id, doc.data(), periodDays))
+            connsSnap.docs.map((doc) => cachedConnectionAnalytics(workspaceId, doc.id, doc.data(), periodDays))
         );
 
         const ok = snapshots.filter((s) => s.status === 'ok');

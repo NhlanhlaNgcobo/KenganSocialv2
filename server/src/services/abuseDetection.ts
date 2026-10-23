@@ -3,7 +3,8 @@ import cron from 'node-cron';
 // Simulated imports for external dependencies
 import { redis } from '../utils/redis';
 import { db } from '../utils/firestore';
-import { sendSlackAlert, sendEmail } from '../utils/notifications';
+// No external alert transport is configured. These events go to the deployment log sink.
+async function logAbuseAlert(message: string) { console.error('[Abuse alert]', message); }
 
 /**
  * Initiates hourly and 6-hourly cron jobs for abuse detection and API budgets.
@@ -24,7 +25,7 @@ async function checkUsageAnomalies() {
     try {
         // Note: Logical stubs to fetch active workspaces.
         // If workspace uses >3x plan average in 24hrs: alert + Slack ping
-        // Example: await sendSlackAlert('Workspace {{id}} is using >3x their plan average limit.');
+        // Example: await logAbuseAlert('Workspace {{id}} is using >3x their plan average limit.');
 
         // If agency clip analysis >40 videos in 24hrs: warn email to workspace owner
         // Example: await sendEmail(ownerEmail, 'Warning: >40 videos processed in 24 hours');
@@ -41,13 +42,13 @@ async function checkApiBudgets() {
 
         // If GCP projected monthly spend >$1,200: alert founder
         if (gcpSpend > 1200) {
-            await sendSlackAlert(`🚨 GCP projected monthly spend exceeded $1,200 (${gcpSpend})`);
+            await logAbuseAlert(`🚨 GCP projected monthly spend exceeded $1,200 (${gcpSpend})`);
         }
 
         // If AssemblyAI projected spend >$800: switch to batch mode (slower, cheaper)
         if (assemblyAISpend > 800) {
             await db.collection('settings').doc('system').set({ assemblyAIMode: 'batch' }, { merge: true });
-            await sendSlackAlert(`⚠️ AssemblyAI switched to batch mode due to budget cap (${assemblyAISpend})`);
+            await logAbuseAlert(`⚠️ AssemblyAI switched to batch mode due to budget cap (${assemblyAISpend})`);
         }
     } catch (err) {
         console.error('Budget Check Error:', err);
@@ -68,7 +69,7 @@ export async function checkDMSpam(workspaceId: string, messageContent: string, r
 
     if (sentCount > 10) {
         await db.collection('workspaces').doc(workspaceId).set({ dmLockedUntil: Date.now() + 86400000 }, { merge: true });
-        await sendSlackAlert(`🛑 Workspace ${workspaceId} locked for 24h due to DM spam`);
+        await logAbuseAlert(`🛑 Workspace ${workspaceId} locked for 24h due to DM spam`);
         throw new Error('SPAM_DETECTED: DM capabilities locked for 24 hours.');
     }
 
@@ -126,7 +127,7 @@ export async function detectDuplicateAccounts(domain: string, stripeFingerprint:
         const domainCount = await redis.incr(domainKey);
         // Don't expire the key to enforce total lifetime domains, or apply expiration as business requires
         if (domainCount > 3) {
-            await sendSlackAlert(`🔍 Domain ${domain} flagged for manual review (Account #${domainCount})`);
+            await logAbuseAlert(`🔍 Domain ${domain} flagged for manual review (Account #${domainCount})`);
         }
     }
 

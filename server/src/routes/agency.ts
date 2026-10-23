@@ -3,7 +3,7 @@ import multer from 'multer';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
@@ -63,7 +63,7 @@ const ws = (req: Request) => db.collection('workspaces').doc((req as any).worksp
 const clientsCol = (req: Request) => ws(req).collection('clients');
 const libraryCol = (req: Request) => ws(req).collection('library');
 const reviewsCol = (req: Request) => ws(req).collection('reviews');
-const now = () => admin.firestore.FieldValue.serverTimestamp();
+const now = () => FieldValue.serverTimestamp();
 const iso = (v: any) => (v?.toDate ? v.toDate().toISOString() : v || null);
 const HEX = /^#[0-9a-f]{6}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -209,7 +209,7 @@ async function addVersion(req: Request, { filePath, mimeType, title, clientId, a
         // A new version goes back into review if it was out with the client; approval is per version.
         const wasOut = ['in_review', 'changes_requested', 'approved'].includes(existing.status);
         await ref.update({
-            versions: admin.firestore.FieldValue.arrayUnion(version),
+            versions: FieldValue.arrayUnion(version),
             currentVersion: n,
             status: wasOut ? 'in_review' : existing.status,
             approval: null,
@@ -236,7 +236,7 @@ async function addVersion(req: Request, { filePath, mimeType, title, clientId, a
             updatedAt: now(),
         });
     }
-    await ws(req).set({ libraryBytes: admin.firestore.FieldValue.increment(stored.bytes) }, { merge: true });
+    await ws(req).set({ libraryBytes: FieldValue.increment(stored.bytes) }, { merge: true });
     return assetSummary(ref.id, (await ref.get()).data());
 }
 
@@ -317,7 +317,7 @@ router.delete('/library/:id', requireEditor, route(async (req, res) => {
     comments.docs.forEach((c) => batch.delete(c.ref));
     batch.delete(ref);
     await batch.commit();
-    await ws(req).set({ libraryBytes: admin.firestore.FieldValue.increment(-bytes) }, { merge: true });
+    await ws(req).set({ libraryBytes: FieldValue.increment(-bytes) }, { merge: true });
     res.json({ success: true });
 }));
 
@@ -335,7 +335,7 @@ router.post('/library/:id/comments', route(async (req, res) => {
         createdAt: now(),
     };
     const added = await ref.collection('comments').add(comment);
-    await ref.update({ commentCount: admin.firestore.FieldValue.increment(1), updatedAt: now() });
+    await ref.update({ commentCount: FieldValue.increment(1), updatedAt: now() });
     res.status(201).json({ comment: publicComment(added.id, { ...comment, createdAt: new Date().toISOString() }) });
 }));
 
@@ -347,7 +347,7 @@ router.patch('/library/:id/comments/:commentId', route(async (req, res) => {
     const resolved = !!req.body?.resolved;
     if (!!snap.data()?.resolved !== resolved) {
         await cref.update({ resolved });
-        if (snap.data()?.author?.kind === 'client') await ref.update({ openComments: admin.firestore.FieldValue.increment(resolved ? -1 : 1) });
+        if (snap.data()?.author?.kind === 'client') await ref.update({ openComments: FieldValue.increment(resolved ? -1 : 1) });
     }
     res.json({ comment: publicComment(cref.id, { ...snap.data(), resolved }) });
 }));

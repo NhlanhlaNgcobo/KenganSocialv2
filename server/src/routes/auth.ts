@@ -1,6 +1,6 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import admin from 'firebase-admin';
+import { getAuth as firebaseAuth } from 'firebase-admin/auth';
 import { db } from '../utils/firestore';
 import { redis } from '../utils/redis';
 import { PLAN_LIMITS } from '../utils/planLimits';
@@ -95,7 +95,7 @@ router.post('/verify', async (req: Request, res: Response) => {
         }
 
         const idToken = authHeader.split('Bearer ')[1];
-        const decoded = await admin.auth().verifyIdToken(idToken);
+        const decoded = await firebaseAuth().verifyIdToken(idToken);
 
         // Fetch user document from Firestore
         const userDoc = await db.collection('users').doc(decoded.uid).get();
@@ -137,7 +137,7 @@ router.post('/workspace/create', async (req: Request, res: Response) => {
         }
 
         const idToken = authHeader.split('Bearer ')[1];
-        const decoded = await admin.auth().verifyIdToken(idToken);
+        const decoded = await firebaseAuth().verifyIdToken(idToken);
 
         const { name } = req.body;
         if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -205,7 +205,7 @@ router.post('/profile', async (req: Request, res: Response) => {
             return sendAuthError(res, 'MISSING_TOKEN');
         }
         const idToken = authHeader.split('Bearer ')[1];
-        const decoded = await admin.auth().verifyIdToken(idToken);
+        const decoded = await firebaseAuth().verifyIdToken(idToken);
         const { displayName, photoURL } = req.body || {};
         const userRef = db.collection('users').doc(decoded.uid);
         const prefix = decoded.email?.split('@')[0];
@@ -283,7 +283,7 @@ router.get('/me', async (req: Request, res: Response) => {
         }
 
         const idToken = authHeader.split('Bearer ')[1];
-        const decoded = await admin.auth().verifyIdToken(idToken);
+        const decoded = await firebaseAuth().verifyIdToken(idToken);
 
         const userDoc = await db.collection('users').doc(decoded.uid).get();
         if (!userDoc.exists) {
@@ -308,7 +308,7 @@ router.put('/profile', async (req: Request, res: Response) => {
             return sendAuthError(res, 'MISSING_TOKEN');
         }
         const idToken = authHeader.split('Bearer ')[1];
-        const decoded = await admin.auth().verifyIdToken(idToken);
+        const decoded = await firebaseAuth().verifyIdToken(idToken);
         const { displayName, photoURL, bio } = req.body;
 
         const updates: any = { updatedAt: new Date().toISOString() };
@@ -348,7 +348,7 @@ router.post('/consent', async (req: Request, res: Response) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader?.startsWith('Bearer ')) return sendAuthError(res, 'MISSING_TOKEN');
-        const decoded = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
+        const decoded = await firebaseAuth().verifyIdToken(authHeader.split('Bearer ')[1]);
         const body = req.body || {};
         if (body.acceptTerms !== true) return res.status(400).json({ error: 'Accept the Terms of Service and Privacy Policy to continue.' });
         if (body.confirmAge !== true) return res.status(400).json({ error: 'You must be 18 or older to use KenganSocial.' });
@@ -395,7 +395,7 @@ router.post('/onboarding', async (req: Request, res: Response) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader?.startsWith('Bearer ')) return sendAuthError(res, 'MISSING_TOKEN');
-        const decoded = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
+        const decoded = await firebaseAuth().verifyIdToken(authHeader.split('Bearer ')[1]);
         const body = req.body || {};
         const now = new Date().toISOString();
         const userRef = db.collection('users').doc(decoded.uid);

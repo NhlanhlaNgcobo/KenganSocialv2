@@ -1,4 +1,4 @@
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { findConnections } from '../connection-lookup';
 import { DmError, fillPlaceholders, replyToComment, sendPrivateReply, workspaceRef, type MetaChannel } from './messaging';
 import { addLead, countRun, matchingRules } from './rules';
@@ -83,7 +83,7 @@ export async function handleComment(comment: MetaComment): Promise<string | null
             replies: [],
             privateReplySentAt: null,
             automation: null,
-            receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+            receivedAt: FieldValue.serverTimestamp(),
         });
     } catch (error: any) {
         if (error.code === 6) return workspaceId; // ALREADY_EXISTS: delivered before, rules already ran
@@ -138,7 +138,7 @@ export async function publicReply(workspaceId: string, comment: Pick<MetaComment
     const id = await replyToComment(workspaceId, comment.platform, comment.commentId, text);
     await commentsCol(workspaceId)
         .doc(commentDocId(comment.platform, comment.commentId))
-        .set({ status: 'replied', replies: admin.firestore.FieldValue.arrayUnion({ id, text, kind: 'public', ...actor, at: Date.now() }) }, { merge: true });
+        .set({ status: 'replied', replies: FieldValue.arrayUnion({ id, text, kind: 'public', ...actor, at: Date.now() }) }, { merge: true });
     return id;
 }
 
@@ -161,14 +161,14 @@ export async function privateReply(workspaceId: string, comment: Pick<MetaCommen
             {
                 status: 'replied',
                 privateReplySentAt: Date.now(),
-                privateReplyClaimedAt: admin.firestore.FieldValue.delete(),
-                replies: admin.firestore.FieldValue.arrayUnion({ id, text, kind: 'private', ...actor, at: Date.now() }),
+                privateReplyClaimedAt: FieldValue.delete(),
+                replies: FieldValue.arrayUnion({ id, text, kind: 'private', ...actor, at: Date.now() }),
             },
             { merge: true }
         );
         return id;
     } catch (error) {
-        await ref.set({ privateReplyClaimedAt: admin.firestore.FieldValue.delete() }, { merge: true });
+        await ref.set({ privateReplyClaimedAt: FieldValue.delete() }, { merge: true });
         throw error;
     }
 }

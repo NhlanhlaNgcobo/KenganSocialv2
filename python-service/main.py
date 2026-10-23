@@ -28,6 +28,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import credentials, firestore, storage
 from pydantic import BaseModel
 
+from media_input import copy_media_input
+
 from autoframe import parse_ratio, plan_crop_path
 from style_analysis import analyze_footage, analyze_reference
 from stabilizer import StabilizeOptions, stabilize_video
@@ -215,22 +217,7 @@ def update_job(job_id: str, data: Dict[str, Any]):
 
 
 async def download_file(url: str, dest: Path) -> Path:
-    if url.startswith("file://"):
-        shutil.copy2(Path(url.replace("file://", "")), dest)
-        return dest
-
-    local_path = Path(url)
-    if local_path.exists():
-        shutil.copy2(local_path, dest)
-        return dest
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            resp.raise_for_status()
-            async with aiofiles.open(dest, "wb") as file_handle:
-                async for chunk in resp.content.iter_chunked(1 << 20):
-                    await file_handle.write(chunk)
-    return dest
+    return await asyncio.to_thread(copy_media_input, url, dest, TMP)
 
 
 def cleanup(*paths: Path):

@@ -1,6 +1,6 @@
 import express, { Request } from 'express';
 import rateLimit from 'express-rate-limit';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/firestore';
 import { fail, route } from '../services/marketing/http';
 import { clean, hashToken, isToken, publicComment, publicVersions } from '../services/agency/review.js';
@@ -30,6 +30,7 @@ async function openReview(req: Request) {
     if (!link.exists || !l?.workspaceId) throw fail(404, 'This review link is not valid.');
     if (l.revoked) throw fail(410, 'This review link has been switched off by the agency. Ask them for a new one.');
     if (l.expiresAt && Date.parse(l.expiresAt) < Date.now()) throw fail(410, 'This review link has expired. Ask the agency for a new one.');
+    (req as any).mediaWorkspaceId = l.workspaceId;
     const ws = db.collection('workspaces').doc(l.workspaceId);
     const reviewRef = ws.collection('reviews').doc(l.reviewId);
     const review = await reviewRef.get();
@@ -56,7 +57,7 @@ function reviewer(body: any) {
 
 /** Remembers who has reviewed (names only), for the agency's list. */
 async function noteReviewer(reviewRef: FirebaseFirestore.DocumentReference, name: string) {
-    await reviewRef.update({ reviewers: admin.firestore.FieldValue.arrayUnion(name) }).catch(() => {});
+    await reviewRef.update({ reviewers: FieldValue.arrayUnion(name) }).catch(() => {});
 }
 
 router.get('/:token', readLimiter, route(async (req, res) => {
@@ -87,7 +88,7 @@ router.get('/:token', readLimiter, route(async (req, res) => {
 
     // Count views at most once per 10 minutes so refreshes don't inflate it.
     const last = review.lastViewedAt?.toDate ? review.lastViewedAt.toDate().getTime() : 0;
-    if (Date.now() - last > 10 * 60 * 1000) reviewRef.update({ views: admin.firestore.FieldValue.increment(1), lastViewedAt: admin.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+    if (Date.now() - last > 10 * 60 * 1000) reviewRef.update({ views: FieldValue.increment(1), lastViewedAt: FieldValue.serverTimestamp() }).catch(() => {});
 
     const kit: any = kitSnap.data() || {};
     res.set('Cache-Control', 'no-store');
@@ -115,14 +116,14 @@ router.post('/:token/assets/:assetId/comments', writeLimiter, route(async (req, 
     const duration = (asset.versions || []).find((v: any) => v.n === version)?.duration || 0;
     const raw = req.body?.timecode;
     const timecode = raw === null || raw === undefined || raw === '' || !Number.isFinite(Number(raw)) ? null : Math.min(Math.max(0, Number(raw)), duration || Number(raw));
-    const comment = { text, timecode: timecode === null ? null : Math.round(timecode * 10) / 10, version, author: { kind: 'client', name: who.name, email: who.email }, resolved: false, createdAt: admin.firestore.FieldValue.serverTimestamp() };
+    const comment = { text, timecode: timecode === null ? null : Math.round(timecode * 10) / 10, version, author: { kind: 'client', name: who.name, email: who.email }, resolved: false, createdAt: FieldValue.serverTimestamp() };
     const added = await ref.collection('comments').add(comment);
     await ref.update({
-        commentCount: admin.firestore.FieldValue.increment(1),
-        openComments: admin.firestore.FieldValue.increment(1),
+        commentCount: FieldValue.increment(1),
+        openComments: FieldValue.increment(1),
         clientActivity: true,
         activity: [...(asset.activity || []).slice(-49), { type: 'comment', by: who.name, at: new Date().toISOString(), version }],
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
     });
     await noteReviewer(reviewRef, who.name);
     res.status(201).json({ comment: publicComment(added.id, { ...comment, createdAt: new Date().toISOString() }, { forClient: true }) });
@@ -142,12 +143,12 @@ router.post('/:token/assets/:assetId/decision', writeLimiter, route(async (req, 
         approval,
         clientActivity: true,
         activity: [...(asset.activity || []).slice(-49), { type: decision, by: who.name, at, version: asset.currentVersion }],
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
     });
     // A change request is also a comment, so it appears in the conversation.
     if (note) {
-        await ref.collection('comments').add({ text: note, timecode: null, version: asset.currentVersion, author: { kind: 'client', name: who.name, email: who.email }, resolved: false, decision, createdAt: admin.firestore.FieldValue.serverTimestamp() });
-        await ref.update({ commentCount: admin.firestore.FieldValue.increment(1), openComments: admin.firestore.FieldValue.increment(decision === 'changes_requested' ? 1 : 0) });
+        await ref.collection('comments').add({ text: note, timecode: null, version: asset.currentVersion, author: { kind: 'client', name: who.name, email: who.email }, resolved: false, decision, createdAt: FieldValue.serverTimestamp() });
+        await ref.update({ commentCount: FieldValue.increment(1), openComments: FieldValue.increment(decision === 'changes_requested' ? 1 : 0) });
     }
     await noteReviewer(reviewRef, who.name);
     res.json({ approval, status: decision });

@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { withWorkspace } from '../middleware/withWorkspace';
+import { requireWorkspaceRole } from '../middleware/workspaceAccess';
 import { AdsError, DATE_PRESETS, getAccountOverview, listCampaigns, recentActivity, setCampaignStatus, setDailyBudget, type DatePreset } from '../services/meta/ads';
 
 /**
@@ -9,7 +10,7 @@ import { AdsError, DATE_PRESETS, getAccountOverview, listCampaigns, recentActivi
  *   GET  /api/ads/activity                       recent changes made from KenganSocial
  *   POST /api/ads/campaigns/:id/status   { status: 'ACTIVE' | 'PAUSED' }
  *   POST /api/ads/campaigns/:id/budget   { dailyBudget }  (minor units, e.g. cents)
- * Any member of the workspace can make changes (as with posting); each is recorded in adsActivity.
+ * Only owners and admins can change spend or campaign status; each change is recorded in adsActivity.
  */
 
 const router = express.Router();
@@ -42,13 +43,13 @@ router.get('/activity', ...guard, route(async (req, res) => {
     res.json({ success: true, activity: await recentActivity((req as any).workspaceId) });
 }));
 
-router.post('/campaigns/:id/status', ...guard, route(async (req, res) => {
+router.post('/campaigns/:id/status', ...guard, requireWorkspaceRole('owner', 'admin'), route(async (req, res) => {
     const status = req.body?.status;
     if (status !== 'ACTIVE' && status !== 'PAUSED') return res.status(400).json({ error: 'Status must be ACTIVE or PAUSED.' });
     res.json({ success: true, ...(await setCampaignStatus((req as any).workspaceId, (req as any).uid, String(req.params.id), status)) });
 }));
 
-router.post('/campaigns/:id/budget', ...guard, route(async (req, res) => {
+router.post('/campaigns/:id/budget', ...guard, requireWorkspaceRole('owner', 'admin'), route(async (req, res) => {
     res.json({ success: true, ...(await setDailyBudget((req as any).workspaceId, (req as any).uid, String(req.params.id), Number(req.body?.dailyBudget))) });
 }));
 

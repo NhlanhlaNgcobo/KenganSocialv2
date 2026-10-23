@@ -10,7 +10,7 @@
  *  - Top-level documents keyed by userId: manual_edit_jobs, video_analyses, render_jobs.
  *  - Files under "<workspaceId>/" and "workspaces/<workspaceId>/" in storage.
  */
-import admin from 'firebase-admin';
+import { Timestamp, DocumentReference } from 'firebase-admin/firestore';
 import { db } from '../utils/firestore';
 
 const BY_WORKSPACE = ['scheduled_posts', 'render_jobs', 'ai_usage_logs', 'clip_projects', 'notifications', 'review_links'];
@@ -20,8 +20,8 @@ const MAX_EXPORT_DOCS = 20000;
 
 function plain(value: any): any {
     if (value === null || value === undefined) return value ?? null;
-    if (value instanceof admin.firestore.Timestamp) return value.toDate().toISOString();
-    if (value instanceof admin.firestore.DocumentReference) return value.path;
+    if (value instanceof Timestamp) return value.toDate().toISOString();
+    if (value instanceof DocumentReference) return value.path;
     if (Array.isArray(value)) return value.map(plain);
     if (typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([k]) => !SECRET_FIELDS.has(k)).map(([k, v]) => [k, plain(v)]));
     return value;

@@ -1,6 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { db } from '../utils/firestore';
-import admin from 'firebase-admin';
+import { FieldValue, Query, DocumentData } from 'firebase-admin/firestore';
 import { processLeadScore } from '../services/leads/scoreService';
 import { CHAT_MODEL, chatClient } from '../services/llm-client.js';
 import { withWorkspace } from '../middleware/withWorkspace';
@@ -66,7 +66,7 @@ const csvCell = (value: unknown) => {
 
 router.get('/', ...guard, route(async (req, res) => {
     const { tier, status, sort } = req.query;
-    let query: admin.firestore.Query<admin.firestore.DocumentData> = leadsOf(req);
+    let query: Query<DocumentData> = leadsOf(req);
     if (tier && tier !== 'all') query = query.where('tier', '==', tier);
     if (status && status !== 'all') query = query.where('status', '==', status);
     if (sort === 'score_desc') query = query.orderBy('score', 'desc');
@@ -80,8 +80,8 @@ router.post('/', ...guard, route(async (req, res) => {
     const processedLead = processLeadScore({
         ...(input.value as any),
         source: 'Manual',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
     });
     const ref = leadsOf(req).doc();
     await ref.set(processedLead);
@@ -104,7 +104,7 @@ router.post('/import', ...guard, route(async (req, res) => {
     const leads: any[] = Array.isArray(req.body?.leads) ? req.body.leads.slice(0, 500) : [];
     const batch = db.batch();
     leads.forEach((l) => {
-        batch.set(leadsOf(req).doc(), processLeadScore({ status: 'prospect', ...l, createdAt: admin.firestore.FieldValue.serverTimestamp() }));
+        batch.set(leadsOf(req).doc(), processLeadScore({ status: 'prospect', ...l, createdAt: FieldValue.serverTimestamp() }));
     });
     await batch.commit();
     res.json({ success: true, count: leads.length });
@@ -130,7 +130,7 @@ router.patch('/:id', ...guard, route(async (req, res) => {
     if (updates.status !== undefined && !STATUSES.includes(updates.status as string)) {
         return res.status(400).json({ error: 'Invalid lead status' });
     }
-    await ref.update({ ...updates, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    await ref.update({ ...updates, updatedAt: FieldValue.serverTimestamp() });
 
     if (updates.signals || updates.followersCount) {
         const scored = processLeadScore({ ...(snap.data() as any), ...updates });
@@ -144,7 +144,7 @@ router.post('/:id/recalculate', ...guard, route(async (req, res) => {
     const docSnap = await ref.get();
     if (!docSnap.exists) return res.status(404).json({ error: 'Lead not found' });
     const scored = processLeadScore(docSnap.data() as any);
-    await ref.update({ score: scored.score, tier: scored.tier, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    await ref.update({ score: scored.score, tier: scored.tier, updatedAt: FieldValue.serverTimestamp() });
     res.json({ success: true, score: scored.score, tier: scored.tier });
 }));
 
@@ -185,7 +185,7 @@ router.post('/:id/dm', ...guard, route(async (req, res) => {
         aiSuggestedReply: reply,
         platform: lead.platform || 'instagram',
         status: 'pending',
-        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        receivedAt: FieldValue.serverTimestamp(),
     });
 
     res.json({ success: true, message: 'DM added to the Inbox for approval' });

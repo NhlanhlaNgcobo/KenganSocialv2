@@ -15,8 +15,5 @@
 		}
 	}
 
-	log {
-		output stdout
-		format console
-	}
+	# Access logging is disabled here to avoid retaining signed media query credentials.
 }

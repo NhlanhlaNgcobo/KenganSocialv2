@@ -18,7 +18,7 @@ export function startTrendingCron() {
             // In a production environment with thousands of niches, you might prioritize by user count
             const snap = await db.collection('trending_cache').get();
             const niches = snap.docs.map(doc => doc.data().niche);
-            const uniqueNiches = [...new Set(niches)];
+            const uniqueNiches = [...new Set<string>(niches.filter((n): n is string => typeof n === 'string' && Boolean(n.trim())))];
 
             console.log(`📡 [Cron] Found ${uniqueNiches.length} active niches to update.`);
 

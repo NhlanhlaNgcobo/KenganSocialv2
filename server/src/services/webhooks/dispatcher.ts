@@ -30,7 +30,7 @@ export function onWebhook(source: WebhookSource, type: string, handler: WebhookH
 }
 
 /** Claims an event for processing; returns its data, or null if it is done, locked or not due. */
-async function claim(id: string) {
+async function claim(id: string): Promise<(FirebaseFirestore.DocumentData & { attempts: number }) | null> {
     const ref = collection().doc(id);
     return db.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
@@ -55,7 +55,7 @@ export async function processEvent(id: string) {
     }
     try {
         const result = await handler(e.payload, { eventId: id, accountId: e.accountId, attempt: e.attempts });
-        await ref.update({ status: 'done', processedAt: Date.now(), lockedUntil: 0, lastError: null, workspaceId: result?.workspaceId ?? e.workspaceId ?? null });
+        await ref.update({ status: 'done', processedAt: Date.now(), lockedUntil: 0, lastError: null, workspaceId: (result && result.workspaceId) || e.workspaceId || null });
     } catch (error: any) {
         const message = String(error?.message || error).slice(0, 500);
         const giveUp = e.attempts >= MAX_ATTEMPTS;

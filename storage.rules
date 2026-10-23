@@ -1,17 +1,20 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Allow authenticated users to read any file in their workspace
-    // Restrict access to specific workspace media based on auth uid
+    function owner(workspaceId) {
+      return request.auth != null && firestore.get(/databases/(default)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+    }
+    function member(workspaceId) {
+      return request.auth != null && firestore.exists(/databases/(default)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid));
+    }
+    function writer(workspaceId) {
+      return owner(workspaceId) || (member(workspaceId) && firestore.get(/databases/(default)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role in ['admin', 'editor']);
+    }
     match /{workspaceId}/media/{allPaths=**} {
-      allow read, write: if request.auth != null 
-        && (request.auth.uid == workspaceId || workspaceId in get(/databases/(default)/documents/users/$(request.auth.uid)).data.workspaces)
-        && request.resource.size < 50 * 1024 * 1024; // 50MB limit
+      allow read: if owner(workspaceId) || member(workspaceId);
+      allow create, update: if writer(workspaceId) && request.resource.size < 50 * 1024 * 1024;
+      allow delete: if writer(workspaceId);
     }
-    
-    // Deny everything else
-    match /{allPaths=**} {
-      allow read, write: if false;
-    }
+    match /{allPaths=**} { allow read, write: if false; }
   }
 }

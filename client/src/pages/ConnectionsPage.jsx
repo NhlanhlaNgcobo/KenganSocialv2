@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
     Instagram,
     Facebook,
@@ -131,21 +131,7 @@ export default function ConnectionsPage() {
 
     const youtubeConnection = connections.find((connection) => connection.platform === 'youtube');
 
-    useEffect(() => {
-        fetchConnections();
-        setCustomFolders(loadFolders(currentWorkspace?.id));
-    }, [currentWorkspace?.id]);
-
-    useEffect(() => {
-        if (youtubeConnection && currentWorkspace?.id) {
-            loadYoutubeAssets();
-        } else {
-            setYoutubeVideos([]);
-            setYoutubeComments([]);
-        }
-    }, [youtubeConnection?.id, currentWorkspace?.id]);
-
-    const fetchConnections = async () => {
+    const fetchConnections = useCallback(async () => {
         setLoading(true);
         try {
             if (!currentWorkspace?.id) {
@@ -162,9 +148,9 @@ export default function ConnectionsPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentWorkspace?.id]);
 
-    const loadYoutubeAssets = async () => {
+    const loadYoutubeAssets = useCallback(async () => {
         setYoutubeLoading(true);
         setYoutubeMessage('');
         try {
@@ -181,7 +167,21 @@ export default function ConnectionsPage() {
         } finally {
             setYoutubeLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchConnections();
+        setCustomFolders(loadFolders(currentWorkspace?.id));
+    }, [currentWorkspace?.id, fetchConnections]);
+
+    useEffect(() => {
+        if (youtubeConnection?.id && currentWorkspace?.id) {
+            loadYoutubeAssets();
+        } else {
+            setYoutubeVideos([]);
+            setYoutubeComments([]);
+        }
+    }, [youtubeConnection?.id, currentWorkspace?.id, loadYoutubeAssets]);
 
     const updateConnectionGroup = async (connectionId, groupName) => {
         try {

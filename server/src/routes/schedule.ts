@@ -1,7 +1,7 @@
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { db } from '../utils/firestore';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { postQueue, schedulePostJob } from '../queues/postQueue';
 
 const router = express.Router();
@@ -75,7 +75,7 @@ router.post('/create', withWorkspace, planRateLimit(), checkLimit('posts'), asyn
             caption: typeof caption === 'string' ? caption : '',
             platformOptions: platformOptions || {},
             scheduledAt: when,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
         };
 
         await db.collection('scheduled_posts').doc(postId).set(data);
@@ -180,8 +180,12 @@ router.get('/calendar', withWorkspace, async (req: Request, res: Response) => {
 
         const startDate = new Date(start as string);
         const endDate = new Date(end as string);
+        if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || endDate < startDate) {
+            return res.status(400).json({ error: 'INVALID_DATE_RANGE' });
+        }
 
         const snapshot = await db.collection('scheduled_posts')
+            .where('workspaceId', '==', workspaceId)
             .where('scheduledAt', '>=', startDate)
             .where('scheduledAt', '<=', endDate)
             .orderBy('scheduledAt', 'asc')
@@ -248,7 +252,7 @@ router.post('/draft', withWorkspace, async (req: Request, res: Response) => {
             mediaUrl: mediaUrl || '',
             caption: caption || '',
             platformOptions: platformOptions || {},
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
         };
 
         await db.collection('scheduled_posts').doc(postId).set(data);

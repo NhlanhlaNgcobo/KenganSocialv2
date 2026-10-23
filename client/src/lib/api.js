@@ -36,9 +36,13 @@ export function buildApiError(errorData, status) {
  */
 export async function apiFetch(url, init) {
     try {
-        return await fetch(url, init);
+        const isRead = !init?.method || ['GET', 'HEAD'].includes(init.method.toUpperCase());
+        const timeout = isRead ? AbortSignal.timeout(30000) : null;
+        const signal = timeout ? (init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout) : init?.signal;
+        return await fetch(url, { ...init, signal });
     } catch (cause) {
         if (cause?.name === 'AbortError') throw cause;
+        if (cause?.name === 'TimeoutError') throw new Error('This request took too long. Please try again.');
         const error = new Error(NETWORK_ERROR);
         error.code = 'NETWORK_ERROR';
         error.cause = cause;

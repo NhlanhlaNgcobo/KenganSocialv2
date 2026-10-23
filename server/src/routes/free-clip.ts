@@ -42,7 +42,8 @@ const upload = multer({
     limits: { fileSize: MAX_BYTES, files: 1 },
     fileFilter: (_req, file, cb) => {
         const ok = /^video\//.test(file.mimetype || '');
-        cb(ok ? null : new Error('Upload a video file (MP4 or MOV).'), ok);
+        if (!ok) return cb(new Error('Upload a video file (MP4 or MOV).'));
+        cb(null, true);
     },
 });
 

@@ -48,41 +48,38 @@ export default function DashboardPage() {
     useEffect(() => {
         if (!currentWorkspace?.id) return;
         let cancelled = false;
-        (async () => {
-            setLoading(true);
-            const now = new Date();
-            const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-            const [analytics, scheduler, connectionsRes, calendar, clips] = await Promise.allSettled([
-                apiClient('/analytics/overview?period=30d'),
-                apiClient(`/scheduler/stats/${currentWorkspace.id}`),
-                apiClient(`/workspaces/${currentWorkspace.id}/connections`),
-                apiClient(`/schedule/calendar?start=${now.toISOString()}&end=${weekAhead.toISOString()}`),
-                clipsApi.list(),
-            ]);
-            if (cancelled) return;
-            const summary = analytics.status === 'fulfilled' ? analytics.value?.summary || {} : {};
-            const sched = scheduler.status === 'fulfilled' ? scheduler.value?.stats || {} : {};
-            const engagement = Number(summary?.avgEngagementRate) || 0;
-            setStats({
-                published: Number(sched.published) || 0,
-                scheduled: Number(sched.scheduled) || 0,
-                failed: Number(sched.failed) || 0,
-                reach: Number(summary?.totalReach) || 0,
-                engagementRate: Math.round(engagement * 10) / 10,
-            });
-            setConnections(connectionsRes.status === 'fulfilled' ? connectionsRes.value.connections || [] : []);
-            setUpcoming(
-                calendar.status === 'fulfilled'
-                    ? (calendar.value.posts || [])
-                          .map((p) => ({ ...p, when: toDate(p.scheduledAt) }))
-                          .filter((p) => p.when && p.when >= now && p.status !== 'draft')
-                          .sort((a, b) => a.when - b.when)
-                          .slice(0, 5)
-                    : []
-            );
-            setProjects(clips.status === 'fulfilled' ? (clips.value.projects || []).slice(0, 4) : []);
-            setLoading(false);
-        })();
+        const load = () => {
+        setStats(null);
+        setUpcoming(null);
+        setProjects(null);
+        setConnections([]);
+        setLoading(true);
+        const now = new Date();
+        const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const update = (fn) => (value) => { if (!cancelled) fn(value); };
+        // Each section resolves independently; a provider timeout cannot hold up the others.
+        apiClient('/analytics/overview?period=30d').then(update((data) => {
+            const summary = data?.summary || {};
+            setStats((current) => ({ ...current, reach: Number(summary.totalReach) || 0,
+                engagementRate: Math.round((Number(summary.avgEngagementRate) || 0) * 10) / 10 }));
+        })).catch(() => {});
+        apiClient(`/scheduler/stats/${currentWorkspace.id}`).then(update((data) => {
+            const sched = data?.stats || {};
+            setStats((current) => ({ ...current, published: Number(sched.published) || 0,
+                scheduled: Number(sched.scheduled) || 0, failed: Number(sched.failed) || 0 }));
+        })).catch(() => {}).finally(update(() => setLoading(false)));
+        apiClient(`/workspaces/${currentWorkspace.id}/connections`)
+            .then(update((data) => setConnections(data.connections || []))).catch(() => {});
+        apiClient(`/schedule/calendar?start=${now.toISOString()}&end=${weekAhead.toISOString()}`)
+            .then(update((data) => setUpcoming((data.posts || [])
+                .map((p) => ({ ...p, when: toDate(p.scheduledAt) }))
+                .filter((p) => p.when && p.when >= now && p.status !== 'draft')
+                .sort((a, b) => a.when - b.when).slice(0, 5))))
+            .catch(update(() => setUpcoming([])));
+        clipsApi.list().then(update((data) => setProjects((data.projects || []).slice(0, 4))))
+            .catch(update(() => setProjects([])));
+        };
+        load();
         return () => {
             cancelled = true;
         };

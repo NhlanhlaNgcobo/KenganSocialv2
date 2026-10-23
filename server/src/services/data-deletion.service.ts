@@ -1,6 +1,7 @@
 import axios from 'axios';
 import crypto from 'crypto';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
+import { getAuth as firebaseAuth } from 'firebase-admin/auth';
 import { db } from '../utils/firestore';
 import { decrypt } from '../utils/tokenEncryption';
 import { graphUrl } from '../config/meta';
@@ -205,7 +206,7 @@ export async function deleteUserAccount(uid: string) {
 
     const memberOf = await db.collection('workspaces').where('members', 'array-contains', uid).get();
     for (const ws of memberOf.docs) {
-        await ws.ref.update({ members: admin.firestore.FieldValue.arrayRemove(uid) });
+        await ws.ref.update({ members: FieldValue.arrayRemove(uid) });
         await ws.ref.collection('members').doc(uid).delete();
     }
 
@@ -214,7 +215,7 @@ export async function deleteUserAccount(uid: string) {
     }
     await db.recursiveDelete(db.collection('users').doc(uid));
     try {
-        await admin.auth().deleteUser(uid);
+        await firebaseAuth().deleteUser(uid);
     } catch (error: any) {
         if (error.code !== 'auth/user-not-found') throw error;
     }

@@ -12,7 +12,8 @@ import { MAX_SOURCE_MINUTES } from '../utils/planLimits';
 import { fail, requireWorkspace, route } from '../services/marketing/http';
 import { probe } from '../services/ffmpeg-runner.js';
 import { getUploadPath } from '../services/manual-edit.service.js';
-import { jobs, runEditJob, runStyleJob, STALE_AFTER_MS } from '../services/ai-edit/jobs.js';
+import { jobs } from '../services/ai-edit/jobs.js';
+import { enqueueAiEdit } from '../services/jobs/ai-edit-queue';
 import { PRESETS, sanitizeProfile } from '../services/ai-edit/profile.js';
 
 /**
@@ -110,28 +111,15 @@ router.post(
             createdAt: stamp,
             updatedAt: stamp,
         });
-        res.status(202).json({ jobId: ref.id });
-
-        let videoPath = file?.path || '';
-        const source: any = file ? { type: 'upload', title: path.parse(file.originalname || 'Reference').name.slice(0, 80) } : { type: 'link', url };
-        if (!file) {
-            try {
-                const { data } = await axios.post(`${PYTHON_URL}/process/download-reference`, { url, outputDir: IMPORT_DIR }, { timeout: 20 * 60 * 1000 });
-                videoPath = data.path;
-                source.title = String(data.title || '').slice(0, 80);
-                source.platform = data.platform || null;
-            } catch (error: any) {
-                const detail = error.response?.data?.detail?.message || (error.code === 'ECONNREFUSED' ? 'The video service is not running.' : error.message);
-                const blocked = /login|log in|sign in|not a bot|cookies|private|429|403|blocked/i.test(detail);
-                const message = blocked
-                    ? 'That platform blocked the download from our server. Upload the video instead (any clip up to 10 minutes that shows the style).'
-                    : `Could not get the reference video: ${detail}`;
-                await refundUsage(workspaceId, plan, 'aiCalls', 5);
-                await ref.update({ status: 'failed', stage: 'Failed', error: message, ...(blocked ? { errorCode: 'LINK_BLOCKED' } : {}), updatedAt: new Date().toISOString() }).catch(() => {});
-                return;
-            }
+        const source = file ? { type: 'upload', title: path.parse(file.originalname || 'Reference').name.slice(0, 80) } : { type: 'link', url };
+        try {
+            await enqueueAiEdit(ref.id, 'style', { videoPath: file?.path || '', outputDir: IMPORT_DIR, source, workspaceId, uid: (req as any).uid, plan });
+        } catch {
+            await ref.update({ status: 'failed', stage: 'Queue unavailable' });
+            await refundUsage(workspaceId, plan, 'aiCalls', 5);
+            throw fail(503, 'Processing queue is unavailable. Please retry shortly.');
         }
-        runStyleJob(ref, { videoPath, removeAfter: true, source, workspaceId, uid: (req as any).uid, plan });
+        res.status(202).json({ jobId: ref.id });
     })
 );
 
@@ -233,8 +221,15 @@ router.post(
             createdAt: stamp,
             updatedAt: stamp,
         });
+        try {
+            await enqueueAiEdit(ref.id, 'edit', { videoPath, profile, options, workspaceId, plan });
+        } catch {
+            await ref.update({ status: 'failed', stage: 'Queue unavailable' });
+            await refundUsage(workspaceId, plan, 'renders', 1);
+            await refundUsage(workspaceId, plan, 'transcribeHrs', Math.max(1, Math.ceil(seconds / 3600)));
+            throw fail(503, 'Processing queue is unavailable. Please retry shortly.');
+        }
         res.status(202).json({ jobId: ref.id });
-        runEditJob(ref, { videoPath, profile, options, workspaceId, plan });
     })
 );
 
@@ -244,11 +239,6 @@ router.get(
         const doc = await jobs().doc(String(req.params.id)).get();
         const job: any = doc.data();
         if (!doc.exists || job.workspaceId !== (req as any).workspaceId) throw fail(404, 'Job not found.');
-        if (job.status === 'processing' && Date.now() - Date.parse(job.updatedAt) > STALE_AFTER_MS) {
-            job.status = 'failed';
-            job.error = 'Processing stopped before it finished (the server restarted). Start it again.';
-            await doc.ref.update({ status: job.status, error: job.error }).catch(() => {});
-        }
         res.json({ job });
     })
 );

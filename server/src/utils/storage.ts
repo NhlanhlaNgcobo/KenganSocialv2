@@ -1,4 +1,4 @@
-import admin from 'firebase-admin';
+import { getStorage as firebaseStorage } from 'firebase-admin/storage';
 import { getStorageDriver, getPrefixSizeBytes } from '../services/storage.service.js';
 
 function getCandidateBuckets() {
@@ -31,7 +31,7 @@ export async function calculateWorkspaceStorage(workspaceId: string): Promise<nu
 
     for (const bucketName of getCandidateBuckets()) {
         try {
-            const bucket = admin.storage().bucket(bucketName);
+            const bucket = firebaseStorage().bucket(bucketName);
             const [files] = await bucket.getFiles({ prefix: `workspaces/${workspaceId}/` });
 
             const totalBytes = files.reduce((acc, file) => {

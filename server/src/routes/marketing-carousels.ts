@@ -1,5 +1,5 @@
 import express, { Request } from 'express';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { checkLimit, consumeUsage, planRateLimit } from '../middleware/planGate';
@@ -74,7 +74,7 @@ async function referenceDataUrls(req: Request, count = 3) {
     const snap = await workspaceRef(req).collection('brandReferences').orderBy('createdAt', 'desc').limit(count).get();
     const out: string[] = [];
     for (const d of snap.docs) {
-        const url = await storedFileAsDataUrl(d.data().previewUrl, { maxWidth: 768, jpeg: true });
+        const url = await storedFileAsDataUrl(d.data().previewUrl, { maxWidth: 768, jpeg: true, workspaceId: (req as any).workspaceId });
         if (url) out.push(url);
     }
     return out;
@@ -90,14 +90,14 @@ async function makeImage(req: Request, kit: any, prompt: string, tier: string, f
     return { url, dataUrl: `data:image/jpeg;base64,${fitted.toString('base64')}`, provider: img.provider, model: img.model, cost: img.cost };
 }
 
-async function logoDataUrls(kit: any) {
-    const [logo, logoOnDark] = await Promise.all([storedFileAsDataUrl(kit.logo?.primary, { maxWidth: 600 }), storedFileAsDataUrl(kit.logo?.onDark, { maxWidth: 600 })]);
+async function logoDataUrls(kit: any, workspaceId: string) {
+    const [logo, logoOnDark] = await Promise.all([storedFileAsDataUrl(kit.logo?.primary, { maxWidth: 600, workspaceId }), storedFileAsDataUrl(kit.logo?.onDark, { maxWidth: 600, workspaceId })]);
     return { logo, logoOnDark };
 }
 
 /** Renders the given slide indexes and uploads them; returns updated slides. */
 async function renderAndStore(req: Request, id: string, kit: any, format: string, slides: any[], imageData: (string | null)[], only?: number[]) {
-    const logos = await logoDataUrls(kit);
+    const logos = await logoDataUrls(kit, (req as any).workspaceId);
     const rendered = await inChromeQueue(() => renderSlides(slides, { kit, format, images: imageData, ...logos }, only));
     const next = [...slides];
     for (const r of rendered) {
@@ -113,7 +113,7 @@ async function renderAndStore(req: Request, id: string, kit: any, format: string
 router.get('/options', route(async (_req, res) => {
     const providers = imageProviders();
     res.json({
-        formats: Object.entries(FORMATS).map(([id, f]) => ({ id, label: f.label, width: f.width, height: f.height })),
+        formats: Object.entries(FORMATS as Record<string, { label: string; width: number; height: number }>).map(([id, f]) => ({ id, label: f.label, width: f.width, height: f.height })),
         goals: Object.entries(GOALS).map(([id, description]) => ({ id, description })),
         layouts: Object.entries(LAYOUTS).map(([id, description]) => ({ id, description })),
         imagery: {
@@ -161,10 +161,10 @@ router.post('/', requireEditor, planRateLimit(), checkLimit('aiCalls', carouselC
 
     const id = uuidv4();
     const ref = carousels(req).doc(id);
-    await ref.set({ status: 'running', stage: 'Writing your slides', progress: 5, settings, title: '', slides: [], createdBy: (req as any).uid, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    await ref.set({ status: 'running', stage: 'Writing your slides', progress: 5, settings, title: '', slides: [], createdBy: (req as any).uid, createdAt: FieldValue.serverTimestamp() });
     res.status(202).json({ id });
 
-    const update = (data: Record<string, unknown>) => ref.update({ ...data, updatedAt: admin.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+    const update = (data: Record<string, unknown>) => ref.update({ ...data, updatedAt: FieldValue.serverTimestamp() }).catch(() => {});
     const notes: string[] = [];
     try {
         const kit: any = (await kitDoc(req).get()).data() || {};
@@ -244,13 +244,13 @@ router.patch('/:id', requireEditor, route(async (req, res) => {
     if (typeof b.title === 'string') updates.title = b.title.slice(0, 80);
     if (Array.isArray(b.hashtags)) updates.hashtags = b.hashtags.map((h: unknown) => String(h).replace(/^#/, '').replace(/\s+/g, '').slice(0, 40)).filter(Boolean).slice(0, 15);
     if (!Object.keys(updates).length) throw fail(400, 'Nothing to save.');
-    await ref.update({ ...updates, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    await ref.update({ ...updates, updatedAt: FieldValue.serverTimestamp() });
     res.json({ carousel: publicCarousel(String(req.params.id), (await ref.get()).data()) });
 }));
 
 /** Images already on a carousel, as data URLs, so a single slide can be re-rendered. */
-async function existingImages(slides: any[], only: number) {
-    return Promise.all(slides.map((s, i) => (i === only && s.imageUrl ? storedFileAsDataUrl(s.imageUrl) : Promise.resolve(null))));
+async function existingImages(slides: any[], only: number, workspaceId: string) {
+    return Promise.all(slides.map((s, i) => (i === only && s.imageUrl ? storedFileAsDataUrl(s.imageUrl, { workspaceId }) : Promise.resolve(null))));
 }
 
 router.patch('/:id/slides/:index', requireEditor, route(async (req, res) => {
@@ -263,9 +263,9 @@ router.patch('/:id/slides/:index', requireEditor, route(async (req, res) => {
     const slides = [...data.slides];
     slides[index] = { ...current, ...edited, imageUrl: current.imageUrl || null };
     const kit: any = (await kitDoc(req).get()).data() || {};
-    const images = await existingImages(slides, index);
+    const images = await existingImages(slides, index, (req as any).workspaceId);
     const next = await renderAndStore(req, String(req.params.id), kit, data.settings.format, slides, images, [index]);
-    await ref.update({ slides: next, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    await ref.update({ slides: next, updatedAt: FieldValue.serverTimestamp() });
     res.json({ carousel: publicCarousel(String(req.params.id), { ...data, slides: next }) });
 }));
 
@@ -290,7 +290,7 @@ router.post('/:id/slides/:index/image', requireEditor, planRateLimit(), route(as
     slides[index] = { ...current, imagePrompt: prompt, imageUrl: img.url, imageModel: `${img.provider}:${img.model}`, layout: current.layout === 'cover' ? 'cover' : 'image' };
     const images = slides.map((_, i) => (i === index ? img.dataUrl : null));
     const next = await renderAndStore(req, String(req.params.id), kit, data.settings.format, slides, images, [index]);
-    await ref.update({ slides: next, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    await ref.update({ slides: next, updatedAt: FieldValue.serverTimestamp() });
     res.json({ carousel: publicCarousel(String(req.params.id), { ...data, slides: next }) });
 }));
 

@@ -37,8 +37,10 @@ export function activeTrial(ws: any, now = Date.now()): { plan: Plan; endsAt: st
 }
 
 /** The plan a workspace gets: its paid plan, or a running trial's plan when that is higher. */
-export function effectivePlan(ws: any): Plan {
-    const paid = ((ws?.plan as Plan) in PLAN_LIMITS ? ws.plan : 'starter') as Plan;
-    const trial = activeTrial(ws);
+export function effectivePlan(ws: any, now = Date.now()): Plan {
+    let paid = ((ws?.plan as Plan) in PLAN_LIMITS ? ws.plan : 'starter') as Plan;
+    // Provider-managed access must have a valid paid-through date. Manual pilot grants remain explicit.
+    if (ws?.paymentProvider && (!Number.isFinite(Date.parse(ws.currentPeriodEnd)) || Date.parse(ws.currentPeriodEnd) <= now)) paid = 'starter';
+    const trial = activeTrial(ws, now);
     return trial && RANK[trial.plan] > RANK[paid] ? trial.plan : paid;
 }

@@ -1,6 +1,6 @@
 # KenganSocial API (Express + TypeScript via tsx)
 # Runs FFmpeg jobs, and headless Chrome for Remotion launch videos and website capture.
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 
 # FFmpeg (with libass for burned-in captions) and the libraries Chrome Headless Shell needs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY package*.json ./
-# tsx runs the TypeScript routes in production, so dev dependencies are installed too.
-RUN npm ci
+# tsx is a production dependency.
+RUN npm ci --omit=dev
 
 COPY . .
 
@@ -23,4 +23,4 @@ RUN node -e "require('@remotion/renderer').ensureBrowser().then(() => console.lo
 ENV NODE_ENV=production
 EXPOSE 5000
 
-CMD ["npx", "tsx", "server.js"]
+CMD ["npm", "start"]

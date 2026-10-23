@@ -6,6 +6,8 @@ import {
     serveManualEditFile,
 } from '../controllers/manual-edit.controller.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
+import { withWorkspace } from '../middleware/withWorkspace.ts';
+import { checkLimit } from '../middleware/planGate.ts';
 import multer from 'multer';
 import os from 'os';
 
@@ -20,13 +22,13 @@ const upload = multer({
 const router = express.Router();
 
 // All manual edit routes require authentication
-router.use(requireAuth);
+router.use(requireAuth, withWorkspace);
 
 // Upload a source video file — returns uploadId
 router.post('/upload', upload.single('video'), uploadSourceVideo);
 
 // Submit an edit config for processing — returns jobId
-router.post('/', processManualEdit);
+router.post('/', checkLimit('exports'), processManualEdit);
 
 // Poll for processing status
 router.get('/status/:jobId', getManualEditStatus);

@@ -1,3 +1,6 @@
+import { assertProductionConfig } from './src/config/production.js';
+import privateMediaRoutes from './src/routes/private-media.js';
+import { signMediaResponse } from './src/services/media-links.js';
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -61,6 +64,7 @@ logDevPlanOverride();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+assertProductionConfig();
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Behind a reverse proxy (Caddy on the VM): use the client's address from X-Forwarded-For, so
@@ -120,7 +124,8 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: true }));
 
 // Logging
-app.use(morgan(isProduction ? 'combined' : 'dev'));
+// Signed media URLs are credentials: never include their query strings in logs.
+app.use(morgan(':method :url :status :response-time ms', { skip: req => req.path.startsWith('/api/private-media/') }));
 
 // ---------------------
 // Routes
@@ -137,9 +142,10 @@ app.get(/^\/tiktok[A-Za-z0-9_-]+\.txt$/, (req, res) => {
 for (const slug of ['terms', 'privacy', 'data-deletion']) {
     app.get(`/${slug}`, (_req, res) => res.sendFile(path.join(process.cwd(), 'public', 'legal', `${slug}.html`)));
 }
-if (getStorageDriver() === 'local') {
-    app.use('/uploads', express.static(LOCAL_UPLOAD_DIR));
-}
+// Raw storage paths are never exposed anonymously.
+app.use('/uploads', (_req, res) => res.status(403).json({ error: 'Use an authorized media link.' }));
+app.use(signMediaResponse);
+app.use('/api/private-media', privateMediaRoutes);
 app.use('/api/health', healthRoutes);
 // Feature switches the app needs before sign-in (e.g. whether YouTube link import is on).
 app.get('/api/features', (_req, res) => res.json({ youtubeLinkImport: features.youtubeLinkImport() }));

@@ -1,4 +1,4 @@
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { CHAT_MODEL, chatClient } from '../llm-client.js';
 import { processLeadScore } from '../leads/scoreService';
 import { workspaceRef, type MetaChannel } from './messaging';
@@ -31,7 +31,7 @@ export async function matchingRules(workspaceId: string, triggerType: TriggerTyp
 }
 
 export async function countRun(rule: Rule) {
-    await rule.ref.update({ runCount: admin.firestore.FieldValue.increment(1), lastRunAt: admin.firestore.FieldValue.serverTimestamp() });
+    await rule.ref.update({ runCount: FieldValue.increment(1), lastRunAt: FieldValue.serverTimestamp() });
 }
 
 /** Adds the person to Leads once per platform account. */
@@ -50,7 +50,7 @@ export async function addLead(workspaceId: string, platform: MetaChannel, person
             tags: ['automation'],
             source,
             signals: { totalLikes: 0, totalComments: 0, storyReply: false } as any,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
         } as any)
     );
     return true;

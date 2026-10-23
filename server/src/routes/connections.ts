@@ -100,6 +100,7 @@ const PLATFORMS = Object.keys(OAUTH_CONFIG) as Platform[];
 
 // ─── Middleware: extract workspaceId from Firebase token ──────────────────────
 import { withWorkspace } from '../middleware/withWorkspace';
+import { requireWorkspaceRole } from '../middleware/workspaceAccess';
 
 // ─── Helper: save connection doc ──────────────────────────────────────────────
 async function saveConnection(
@@ -299,7 +300,7 @@ async function youtubeApiRequest<T = any>(
 // ─────────────────────────────────────────────────────────────────────────────
 //   OAUTH INITIATION  GET /api/connections/:platform/auth
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/:platform/auth', withWorkspace, (req: Request, res: Response) => {
+router.get('/:platform/auth', withWorkspace, requireWorkspaceRole('owner', 'admin'), (req: Request, res: Response) => {
     const platform = req.params.platform as Platform;
     if (!OAUTH_CONFIG[platform]) return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
 
@@ -311,7 +312,7 @@ router.get('/:platform/auth', withWorkspace, (req: Request, res: Response) => {
     }
 });
 
-router.get('/:platform/auth-url', withWorkspace, (req: Request, res: Response) => {
+router.get('/:platform/auth-url', withWorkspace, requireWorkspaceRole('owner', 'admin'), (req: Request, res: Response) => {
     const platform = req.params.platform as Platform;
     if (!OAUTH_CONFIG[platform]) {
         return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
@@ -611,7 +612,7 @@ router.get('/:platform/candidates', withWorkspace, async (req: Request, res: Res
     });
 });
 
-router.post('/:platform/select', withWorkspace, async (req: Request, res: Response) => {
+router.post('/:platform/select', withWorkspace, requireWorkspaceRole('owner', 'admin'), async (req: Request, res: Response) => {
     const platform = req.params.platform as MetaPlatform;
     const workspaceId = (req as any).workspaceId;
     if (!META_PICK_PLATFORMS.includes(platform)) return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
@@ -865,7 +866,7 @@ router.delete('/youtube/videos/:videoId', withWorkspace, async (req: Request, re
 // ─────────────────────────────────────────────────────────────────────────────
 //   DELETE /api/connections/:platform  — revoke with the platform, delete token and fetched data
 // ─────────────────────────────────────────────────────────────────────────────
-router.delete('/:platform', withWorkspace, async (req: Request, res: Response) => {
+router.delete('/:platform', withWorkspace, requireWorkspaceRole('owner', 'admin'), async (req: Request, res: Response) => {
     const platform = String(req.params.platform);
     const workspaceId = (req as any).workspaceId;
     if (!workspaceId) return res.status(403).json({ error: 'NO_WORKSPACE' });
@@ -922,7 +923,7 @@ router.get('/tiktok/creator-info', withWorkspace, async (req: Request, res: Resp
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/:platform/refresh', withWorkspace, async (req: Request, res: Response) => {
+router.post('/:platform/refresh', withWorkspace, requireWorkspaceRole('owner', 'admin'), async (req: Request, res: Response) => {
     const { platform } = req.params as { platform: Platform };
     const workspaceId = (req as any).workspaceId;
 

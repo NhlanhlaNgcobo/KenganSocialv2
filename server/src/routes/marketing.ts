@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import axios from 'axios';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
@@ -133,8 +133,8 @@ router.put('/brand', requireEditor, route(async (req, res) => {
 
     const ref = kitRef(req);
     // update() needs an existing doc; create it with the empty shape first.
-    if (!(await ref.get()).exists) await ref.set({ ...EMPTY_KIT, createdAt: admin.firestore.FieldValue.serverTimestamp() });
-    await ref.update({ ...updates, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: (req as any).uid });
+    if (!(await ref.get()).exists) await ref.set({ ...EMPTY_KIT, createdAt: FieldValue.serverTimestamp() });
+    await ref.update({ ...updates, updatedAt: FieldValue.serverTimestamp(), updatedBy: (req as any).uid });
     res.json(await loadKit(req));
 }));
 
@@ -172,8 +172,8 @@ async function storeLogo(req: Request, buffer: Buffer, mime: string, variant: 'p
     const url = await uploadFile(png, brandPath(req, 'logos'), 'image/png');
     const ref = kitRef(req);
     const before = (await ref.get()).data();
-    if (!before) await ref.set({ ...EMPTY_KIT, createdAt: admin.firestore.FieldValue.serverTimestamp() });
-    await ref.update({ [`logo.${variant}`]: url, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: (req as any).uid });
+    if (!before) await ref.set({ ...EMPTY_KIT, createdAt: FieldValue.serverTimestamp() });
+    await ref.update({ [`logo.${variant}`]: url, updatedAt: FieldValue.serverTimestamp(), updatedBy: (req as any).uid });
     const old = before?.logo?.[variant];
     if (old) deleteFile(old).catch(() => {});
     return url;
@@ -197,7 +197,7 @@ router.delete('/brand/logo/:variant', requireEditor, route(async (req, res) => {
     const ref = kitRef(req);
     const old = (await ref.get()).data()?.logo?.[variant];
     if (old) {
-        await ref.update({ [`logo.${variant}`]: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        await ref.update({ [`logo.${variant}`]: null, updatedAt: FieldValue.serverTimestamp() });
         deleteFile(old).catch(() => {});
     }
     res.json(await loadKit(req));
@@ -252,7 +252,7 @@ router.post('/references', requireEditor, upload.array('files', 10), route(async
                 tags: [] as string[],
                 status: aiConfigured() ? 'tagging' : 'ready',
                 uploadedBy: (req as any).uid,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                createdAt: FieldValue.serverTimestamp(),
             };
             await ref.set(doc);
             created.push({ id: ref.id, ...doc, createdAt: new Date().toISOString(), buffer: preview });
@@ -304,8 +304,8 @@ router.post('/references/style', requireEditor, planRateLimit(), checkLimit('aiC
     if (buffers.length < 3) throw fail(502, 'The reference images could not be read back from storage.');
     const style = await analyzeStyle(buffers);
     const ref = kitRef(req);
-    if (!(await ref.get()).exists) await ref.set({ ...EMPTY_KIT, createdAt: admin.firestore.FieldValue.serverTimestamp() });
-    await ref.update({ style, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: (req as any).uid });
+    if (!(await ref.get()).exists) await ref.set({ ...EMPTY_KIT, createdAt: FieldValue.serverTimestamp() });
+    await ref.update({ style, updatedAt: FieldValue.serverTimestamp(), updatedBy: (req as any).uid });
     res.json(await loadKit(req));
 }));
 
@@ -319,8 +319,8 @@ router.post('/setup/website', requireEditor, planRateLimit(), route(async (req, 
     if (!url) throw fail(400, 'Paste your website address.');
     const job = jobsCol(req).doc(uuidv4());
     const stage = (stageName: string, progress: number, extra: Record<string, unknown> = {}) =>
-        job.set({ stage: stageName, progress, ...extra, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
-    await job.set({ type: 'website-setup', url, status: 'running', stage: 'Reading your website', progress: 5, createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy: (req as any).uid });
+        job.set({ stage: stageName, progress, ...extra, updatedAt: FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
+    await job.set({ type: 'website-setup', url, status: 'running', stage: 'Reading your website', progress: 5, createdAt: FieldValue.serverTimestamp(), createdBy: (req as any).uid });
     res.status(202).json({ jobId: job.id });
 
     const plan = (req as any).plan;
@@ -357,7 +357,7 @@ router.post('/setup/website', requireEditor, planRateLimit(), route(async (req, 
         await stage('Saving your brand', 85);
         const ref = kitRef(req);
         const current: any = (await ref.get()).data() || { ...EMPTY_KIT };
-        if (!(await ref.get()).exists) await ref.set({ ...EMPTY_KIT, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+        if (!(await ref.get()).exists) await ref.set({ ...EMPTY_KIT, createdAt: FieldValue.serverTimestamp() });
         const updates: Record<string, unknown> = {};
         const applied: string[] = [];
         const kept: string[] = [];
@@ -384,7 +384,7 @@ router.post('/setup/website', requireEditor, planRateLimit(), route(async (req, 
         }
         // What carousels "from your website" are made from, so they don't re-read the site each time.
         updates.site = { url: site.url, readAt: new Date().toISOString(), source: sourceFromSite(site).slice(0, 12000), socials: site.socials || [] };
-        await ref.update({ ...updates, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: (req as any).uid });
+        await ref.update({ ...updates, updatedAt: FieldValue.serverTimestamp(), updatedBy: (req as any).uid });
 
         if (!current.logo?.primary && site.logos?.length) {
             const logo = dataUrlParts(site.logos[0].dataUrl);
@@ -404,13 +404,13 @@ router.post('/setup/website', requireEditor, planRateLimit(), route(async (req, 
                 stage: 'Done',
                 progress: 100,
                 result: { applied, kept, notes, socials: site.socials || [], business: business || null, logos: site.logos.length },
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true }
         );
     } catch (error: any) {
         console.error('[Marketing] Website setup failed:', error.message);
-        await job.set({ status: 'failed', stage: 'Failed', error: error.status ? error.message : 'Something went wrong reading your website.', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
+        await job.set({ status: 'failed', stage: 'Failed', error: error.status ? error.message : 'Something went wrong reading your website.', updatedAt: FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
     }
 }));
 

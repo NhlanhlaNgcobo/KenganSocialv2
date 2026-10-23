@@ -1,8 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
-import admin from 'firebase-admin';
+import { getAuth as firebaseAuth } from 'firebase-admin/auth';
 import { db } from '../utils/firestore';
 import { applyDevPlanOverride } from '../utils/devPlan';
 import { effectivePlan } from '../utils/trial';
+import { enforceWorkspaceAccess, workspaceRole } from './workspaceAccess';
 
 async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: string) {
     if (requestedWorkspaceId) {
@@ -13,7 +14,7 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
 
         const workspaceData = workspaceDoc.data() as any;
         if (workspaceData.ownerId === uid) {
-            return { id: workspaceDoc.id, plan: effectivePlan(workspaceData) };
+            return { id: workspaceDoc.id, plan: effectivePlan(workspaceData), role: 'owner' };
         }
 
         const memberDoc = await db
@@ -23,11 +24,11 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
             .doc(uid)
             .get();
 
-        if (!memberDoc.exists) {
+        if (!memberDoc.exists || !workspaceRole(memberDoc.data()?.role)) {
             return null;
         }
 
-        return { id: workspaceDoc.id, plan: effectivePlan(workspaceData) };
+        return { id: workspaceDoc.id, plan: effectivePlan(workspaceData), role: memberDoc.data()!.role };
     }
 
     const ownedWorkspace = await db
@@ -39,7 +40,7 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
     if (!ownedWorkspace.empty) {
         const workspaceDoc = ownedWorkspace.docs[0];
         const workspaceData = workspaceDoc.data() as any;
-        return { id: workspaceDoc.id, plan: effectivePlan(workspaceData) };
+        return { id: workspaceDoc.id, plan: effectivePlan(workspaceData), role: 'owner' };
     }
 
     // Member of someone else's workspace: workspaces keep a `members` uid array (see workspace.controller.js).
@@ -48,9 +49,8 @@ async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: strin
         return null;
     }
 
-    const workspaceDoc = memberOf.docs[0];
-    const workspaceData = workspaceDoc.data() as any;
-    return { id: workspaceDoc.id, plan: effectivePlan(workspaceData) };
+    // The array is only an index; the member document remains authoritative.
+    return resolveWorkspaceForUser(uid, memberOf.docs[0].id);
 }
 
 export async function withWorkspace(req: Request, res: Response, next: NextFunction) {
@@ -60,15 +60,19 @@ export async function withWorkspace(req: Request, res: Response, next: NextFunct
     }
 
     try {
-        const decoded = await admin.auth().verifyIdToken(header.split('Bearer ')[1]);
+        const decoded = await firebaseAuth().verifyIdToken(header.split('Bearer ')[1]);
         const uid = decoded.uid;
-        const headerWorkspaceId = req.headers['x-workspace-id'] as string | undefined;
+        const headerWorkspaceId = req.headers['x-workspace-id'];
         const urlWorkspaceId = req.params.workspaceId;
+        if ((headerWorkspaceId !== undefined && typeof headerWorkspaceId !== 'string') ||
+            (urlWorkspaceId !== undefined && typeof urlWorkspaceId !== 'string')) {
+            return res.status(400).json({ error: 'INVALID_WORKSPACE_ID' });
+        }
         // A request naming two different workspaces is refused rather than silently using one.
         if (headerWorkspaceId && urlWorkspaceId && headerWorkspaceId !== urlWorkspaceId) {
             return res.status(403).json({ error: 'WORKSPACE_MISMATCH' });
         }
-        const requestedWorkspaceId = urlWorkspaceId || headerWorkspaceId;
+        const requestedWorkspaceId = typeof urlWorkspaceId === 'string' ? urlWorkspaceId : typeof headerWorkspaceId === 'string' ? headerWorkspaceId : undefined;
         const resolvedWorkspace = await resolveWorkspaceForUser(uid, requestedWorkspaceId);
 
         (req as any).uid = uid;
@@ -81,12 +85,13 @@ export async function withWorkspace(req: Request, res: Response, next: NextFunct
                 return res.status(403).json({ error: 'WORKSPACE_ACCESS_DENIED' });
             }
 
-            return next();
+            return res.status(403).json({ error: 'WORKSPACE_REQUIRED' });
         }
 
         (req as any).workspaceId = resolvedWorkspace.id;
         (req as any).plan = applyDevPlanOverride(resolvedWorkspace.plan);
-        return next();
+        (req as any).workspaceRole = resolvedWorkspace.role;
+        return enforceWorkspaceAccess(req, res, next);
     } catch (err: any) {
         console.error('[withWorkspace] Token/workspace error:', err.message);
         return res.status(403).json({ error: 'INVALID_TOKEN' });

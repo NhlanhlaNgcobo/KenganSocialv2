@@ -1,5 +1,5 @@
 import axios from 'axios';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../../utils/firestore';
 import { decrypt } from '../../utils/tokenEncryption';
 import { graphUrl, graphErrorMessage } from '../../config/meta';
@@ -118,7 +118,7 @@ async function ownCampaign(adAccountId: string, token: string, campaignId: strin
 async function logActivity(workspaceId: string, entry: Record<string, unknown>) {
     await wsRef(workspaceId)
         .collection('adsActivity')
-        .add({ platform: 'meta_ads', ...entry, at: admin.firestore.FieldValue.serverTimestamp() });
+        .add({ platform: 'meta_ads', ...entry, at: FieldValue.serverTimestamp() });
 }
 
 export async function setCampaignStatus(workspaceId: string, uid: string, campaignId: string, status: 'ACTIVE' | 'PAUSED') {

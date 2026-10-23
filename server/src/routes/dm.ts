@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { DmError, PRIVATE_REPLY_WINDOW_MS, isMetaChannel, replyWindowEndsAt, sendDM } from '../services/meta/messaging';
@@ -44,7 +44,7 @@ router.post('/automations', ...guard, route(async (req, res) => {
         replyTemplate: String(replyTemplate).trim().slice(0, 1000),
         isActive: true,
         sentCount: 0,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
     };
     const ref = ws(req).collection('dmAutomations').doc();
     await ref.set(data);
@@ -103,7 +103,7 @@ async function sendQueued(req: Request, res: Response, text?: string) {
     const reply = String(text ?? data.aiSuggestedReply ?? '').trim();
     const platform = isMetaChannel(data.platform) ? data.platform : 'instagram';
     await sendDM((req as any).workspaceId, platform, data.senderId, reply);
-    await ref.update({ status: 'sent', aiSuggestedReply: reply, sentBy: (req as any).uid || null, sentAt: admin.firestore.FieldValue.serverTimestamp() });
+    await ref.update({ status: 'sent', aiSuggestedReply: reply, sentBy: (req as any).uid || null, sentAt: FieldValue.serverTimestamp() });
     res.json({ success: true });
 }
 

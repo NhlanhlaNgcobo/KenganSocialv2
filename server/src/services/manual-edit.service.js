@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
+import { UploadRegistry } from './upload-registry.js';
 
 const RENDER_DIR = path.join(os.tmpdir(), 'kengan-renders');
 if (!fs.existsSync(RENDER_DIR)) fs.mkdirSync(RENDER_DIR, { recursive: true });
@@ -10,10 +11,10 @@ if (!fs.existsSync(RENDER_DIR)) fs.mkdirSync(RENDER_DIR, { recursive: true });
 // -------------------------------------------------------
 // Upload Storage — keeps source files accessible by uploadId
 // -------------------------------------------------------
-const uploadStore = new Map(); // uploadId -> { filePath, ownerId }
+const uploadStore = new UploadRegistry(path.join(os.tmpdir(), 'kengan-upload-registry'), os.tmpdir());
 
 export function storeUpload(uploadId, filePath, ownerId = null) {
-    uploadStore.set(uploadId, { filePath, ownerId });
+    uploadStore.store(uploadId, filePath, ownerId);
 }
 
 /**
@@ -21,10 +22,7 @@ export function storeUpload(uploadId, filePath, ownerId = null) {
  * another user resolve to null so upload IDs cannot be reused across accounts.
  */
 export function getUploadPath(uploadId, ownerId = null) {
-    const entry = uploadStore.get(uploadId);
-    if (!entry) return null;
-    if (ownerId && entry.ownerId && entry.ownerId !== ownerId) return null;
-    return entry.filePath;
+    return uploadStore.get(uploadId, ownerId);
 }
 
 // -------------------------------------------------------

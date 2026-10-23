@@ -466,8 +466,8 @@ function ClipCard({ clip, ratio, platform, sourceUploadId }) {
                         <span className="clip-card__play">{busy === 'play' ? <Loader2 size={20} className="spin" /> : <Play size={20} />}</span>
                     </button>
                 )}
-                <span className={`clip-card__score ${scoreTier(clip.score)}`} title="Predicted performance, out of 100">
-                    {clip.score}
+                <span className={`clip-card__score ${scoreTier(clip.score)}`} title="Editorial estimate, not a prediction of views or retention">
+                    {Number.isFinite(clip.score) ? clip.score : 'Review'}
                 </span>
             </div>
 
@@ -484,7 +484,7 @@ function ClipCard({ clip, ratio, platform, sourceUploadId }) {
 
                 {clip.scores ? (
                     <div className="clip-card__scores">
-                        {SCORE_PARTS.map((part) => (
+                        {SCORE_PARTS.filter(part => Number.isFinite(clip.scores[part.id])).map((part) => (
                             <div key={part.id} className="clip-card__bar">
                                 <span>{part.label}</span>
                                 <div>

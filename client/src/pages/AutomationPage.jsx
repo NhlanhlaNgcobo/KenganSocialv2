@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     Zap,
     Play,
@@ -52,13 +52,7 @@ export default function AutomationPage() {
     const [availableConnections, setAvailableConnections] = useState([]);
     const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
-    useEffect(() => {
-        if (currentWorkspace?.id) {
-            fetchAutomations();
-        }
-    }, [currentWorkspace]);
-
-    const fetchAutomations = async () => {
+    const fetchAutomations = useCallback(async () => {
         try {
             setLoading(true);
             setLoadError('');
@@ -76,7 +70,13 @@ export default function AutomationPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentWorkspace]);
+
+    useEffect(() => {
+        if (currentWorkspace?.id) {
+            fetchAutomations();
+        }
+    }, [currentWorkspace, fetchAutomations]);
 
     const parsedKeywords = form.keywords.split(',').map(k => k.trim()).filter(Boolean);
     const isComment = form.triggerType === 'comment_keyword';

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { db } from '../../utils/firestore';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { decrypt } from '../../utils/tokenEncryption';
 import { META_GRAPH_VERSION } from '../../config/meta';
 
@@ -318,7 +318,7 @@ export async function syncWorkspaceAnalytics(workspaceId: string, plan: string) 
         date: todayStr,
         platforms: {},
         summary: { totalReach: 0, totalImpressions: 0, totalFollowers: 0 },
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: FieldValue.serverTimestamp()
     };
 
     await Promise.all(connsSnap.docs.map(async (doc) => {
@@ -366,7 +366,7 @@ export async function purgePlatformAnalytics(workspaceId: string, platform: stri
     let changed = 0;
     for (const doc of snaps.docs) {
         if (!doc.data()?.platforms?.[platform]) continue;
-        await doc.ref.update({ [`platforms.${platform}`]: admin.firestore.FieldValue.delete() });
+        await doc.ref.update({ [`platforms.${platform}`]: FieldValue.delete() });
         changed += 1;
     }
     return changed;

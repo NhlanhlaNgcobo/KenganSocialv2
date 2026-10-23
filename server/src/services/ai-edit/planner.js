@@ -1,3 +1,4 @@
+import { footageSignals } from '../clips/quality.js';
 import { generateJson } from '../gemini-json.js';
 import { findClips } from '../clips/find-clips.js';
 import { buildSentences, transcriptForPrompt } from '../clips/transcript.js';
@@ -232,7 +233,7 @@ export function captionStyle(captions, canvas) {
  * @param {object} input.profile                  editing style (profile.js)
  * @param {object} input.options                  user choices
  */
-export async function planEdit({ words, footage, profile, options }) {
+export async function planEdit({ words, footage, profile, options, trendContext = [] }) {
     const duration = footage.durationSec;
     const ratio = options.ratio === 'auto' ? profile.format.ratio : options.ratio;
     const canvas = CANVAS[ratio] || CANVAS['9:16'];
@@ -248,10 +249,10 @@ export async function planEdit({ words, footage, profile, options }) {
         // Pause cuts shorten the moment, so ask for a slightly longer window than the target.
         const pauseShare = profile.pacing.maxPauseSec < 0.3 ? 1.3 : 1.15;
         const range = { min: Math.round(options.targetSeconds * 0.95 * pauseShare), max: Math.round(options.targetSeconds * 1.25 * pauseShare) };
-        const found = await findClips({ words, duration, signalClips: [], count: 1, length: 'medium', prompt: options.focus || '', range });
+        const found = await findClips({ words, duration, signalClips: footageSignals(footage), trendContext, count: 1, length: 'medium', prompt: options.focus || '', range });
         const best = found.clips[0];
         if (best) {
-            highlight = { start: best.start, end: best.end, title: best.title, hook: best.hook, finder: found.finder };
+            highlight = { start: best.start, end: best.end, title: best.title, hook: best.hook, finder: found.finder, note: found.note, score: best.score };
             segments = intersect(segments, highlight);
         }
     }

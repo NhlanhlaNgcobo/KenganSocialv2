@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../utils/firestore';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 // Plan thresholds (mock layout representing monthly limits)
 export const PlanLimits: Record<string, Record<string, number>> = {
@@ -44,7 +44,7 @@ export function checkLimit(featureName: string) {
 
             // Valid -> increment atomically
             await usageRef.set({
-                [featureName]: admin.firestore.FieldValue.increment(1)
+                [featureName]: FieldValue.increment(1)
             }, { merge: true });
 
             next();

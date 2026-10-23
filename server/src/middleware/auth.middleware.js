@@ -68,6 +68,7 @@ export function requireRole(...allowedRoles) {
             // Fallback: check if user is the workspace owner
             const workspaceDoc = await db.collection('workspaces').doc(workspaceId).get();
             if (workspaceDoc.exists && workspaceDoc.data().ownerId === req.user.uid) {
+                if (!allowedRoles.includes('owner')) return res.status(403).json({ error: 'Insufficient permissions' });
                 req.workspace = { id: workspaceId, role: 'owner' };
                 return next();
             }

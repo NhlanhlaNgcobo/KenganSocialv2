@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import axios from 'axios';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../../utils/firestore';
 import { redis } from '../../utils/redis';
 import { decrypt } from '../../utils/tokenEncryption';
@@ -56,7 +56,7 @@ const threadRef = (workspaceId: string, platform: MetaChannel, senderId: string)
 
 /** Records a message from a person, which opens (or extends) the 24-hour reply window. */
 export async function recordInbound(workspaceId: string, platform: MetaChannel, senderId: string, at = Date.now()) {
-    await threadRef(workspaceId, platform, senderId).set({ platform, senderId, lastInboundAt: at, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await threadRef(workspaceId, platform, senderId).set({ platform, senderId, lastInboundAt: at, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 }
 
 /** When the reply window to this person closes (0 if they never messaged). */
@@ -74,7 +74,7 @@ export async function isOptedOut(workspaceId: string, platform: MetaChannel, sen
 }
 
 export async function optOut(workspaceId: string, platform: MetaChannel, senderId: string) {
-    await workspaceRef(workspaceId).collection('dmOptOuts').doc(`${platform}_${senderId}`).set({ platform, senderId, addedAt: admin.firestore.FieldValue.serverTimestamp() });
+    await workspaceRef(workspaceId).collection('dmOptOuts').doc(`${platform}_${senderId}`).set({ platform, senderId, addedAt: FieldValue.serverTimestamp() });
 }
 
 /**

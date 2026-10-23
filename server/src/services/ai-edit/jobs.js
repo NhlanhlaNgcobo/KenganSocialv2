@@ -1,6 +1,7 @@
+import { recentTrendContext } from '../clips/trend-context.js';
 import fs from 'fs';
 import axios from 'axios';
-import admin from 'firebase-admin';
+import { getFirestore as firebaseFirestore } from 'firebase-admin/firestore';
 import { normalizeWords } from '../clips/transcript.js';
 import { planEdit } from './planner.js';
 import { enrichProfile, profileFromMetrics, sanitizeProfile } from './profile.js';
@@ -14,16 +15,9 @@ import { enrichProfile, profileFromMetrics, sanitizeProfile } from './profile.js
  */
 
 const PYTHON_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
-const db = () => admin.firestore();
+const db = () => firebaseFirestore();
 export const jobs = () => db().collection('ai_edit_jobs');
 export const STALE_AFTER_MS = 30 * 60 * 1000;
-
-let chain = Promise.resolve();
-function enqueue(task) {
-    const run = chain.then(task, task);
-    chain = run.catch(() => {});
-    return run;
-}
 
 const now = () => new Date().toISOString();
 
@@ -53,11 +47,17 @@ async function transcribe(videoPath, jobKey, workspaceId, plan) {
  * @param {FirebaseFirestore.DocumentReference} ref job document
  * @param {{ videoPath: string, removeAfter: boolean, source: object, workspaceId: string, uid: string, plan: string }} ctx
  */
-export function runStyleJob(ref, ctx) {
+export async function runStyleJob(ref, ctx) {
     const stop = heartbeat(ref);
-    return enqueue(async () => {
-        const { videoPath, removeAfter, source, workspaceId, uid, plan } = ctx;
+    {
+        let { videoPath, source, workspaceId, uid, plan } = ctx;
         try {
+            if (!videoPath && source.url) {
+                await stage(ref, 'Downloading the reference', 5);
+                const { data } = await axios.post(`${PYTHON_URL}/process/download-reference`, { url: source.url, outputDir: ctx.outputDir }, { timeout: 20 * 60 * 1000 });
+                videoPath = data.path;
+                source = { ...source, title: String(data.title || '').slice(0, 80), platform: data.platform || null };
+            }
             await stage(ref, 'Measuring cuts, colour and captions', 15);
             const { data: metrics } = await axios
                 .post(`${PYTHON_URL}/process/analyze-style`, { videoPath }, { timeout: 30 * 60 * 1000 })
@@ -80,7 +80,7 @@ export function runStyleJob(ref, ctx) {
             const named = await enrichProfile(measured, { keyframes, transcript: opening, title: source.title || '' });
             const profile = sanitizeProfile({ ...named, source });
 
-            const styleRef = db().collection('workspaces').doc(workspaceId).collection('edit_styles').doc();
+            const styleRef = db().collection('workspaces').doc(workspaceId).collection('edit_styles').doc(ref.id);
             await styleRef.set({
                 id: styleRef.id,
                 ...profile,
@@ -91,21 +91,21 @@ export function runStyleJob(ref, ctx) {
             await ref.update({ status: 'completed', stage: 'Done', progress: 100, styleId: styleRef.id, updatedAt: now() });
         } catch (error) {
             console.error(`[AI Edit] Style job ${ref.id} failed:`, error.message);
-            await ref.update({ status: 'failed', stage: 'Failed', error: error.message, updatedAt: now() }).catch(() => {});
+            throw error;
         } finally {
             stop();
-            if (removeAfter) fs.rm(videoPath, { force: true }, () => {});
+            // Shared-volume retention removes reference files after retry/recovery is possible.
         }
-    });
+    }
 }
 
 /**
  * @param {FirebaseFirestore.DocumentReference} ref job document
  * @param {{ videoPath: string, profile: object, options: object, workspaceId: string, plan: string }} ctx
  */
-export function runEditJob(ref, ctx) {
+export async function runEditJob(ref, ctx) {
     const stop = heartbeat(ref);
-    return enqueue(async () => {
+    {
         const { videoPath, profile, options, workspaceId, plan } = ctx;
         try {
             await stage(ref, 'Transcribing your footage', 8);
@@ -125,13 +125,13 @@ export function runEditJob(ref, ctx) {
                 });
 
             await stage(ref, 'Editing: cuts, zooms, captions and titles', 75);
-            const editPlan = await planEdit({ words, footage, profile, options });
+            const editPlan = await planEdit({ words, footage, profile, options, trendContext: await recentTrendContext(workspaceId) });
             await ref.update({ status: 'completed', stage: 'Done', progress: 100, plan: editPlan, updatedAt: now() });
         } catch (error) {
             console.error(`[AI Edit] Edit job ${ref.id} failed:`, error.message);
-            await ref.update({ status: 'failed', stage: 'Failed', error: error.message, updatedAt: now() }).catch(() => {});
+            throw error;
         } finally {
             stop();
         }
-    });
+    }
 }

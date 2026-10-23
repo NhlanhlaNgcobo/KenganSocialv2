@@ -1,3 +1,4 @@
+import { signMediaUrl, parseMediaUrl, mediaWorkspace } from '../media-links.js';
 import type { Request, Response, NextFunction } from 'express';
 import axios from 'axios';
 import sharp from 'sharp';
@@ -42,10 +43,12 @@ export const workspaceRef = (req: Request) => db.collection('workspaces').doc((r
  * Reads one of OUR stored files (URLs written by this server into our storage) as a data URL.
  * Never call this with a user-supplied URL: it does not apply SSRF checks.
  */
-export async function storedFileAsDataUrl(url: string | null | undefined, opts: { maxWidth?: number; jpeg?: boolean } = {}) {
+export async function storedFileAsDataUrl(url: string | null | undefined, opts: { maxWidth?: number; jpeg?: boolean; workspaceId?: string } = {}) {
     if (!url) return null;
+    const ref = parseMediaUrl(url);
+    if (ref && mediaWorkspace(ref.key) !== opts.workspaceId) return null;
     try {
-        const { data, headers } = await axios.get(url, { responseType: 'arraybuffer', timeout: 20000, maxContentLength: 20 * 1024 * 1024 });
+        const { data, headers } = await axios.get(signMediaUrl(url), { responseType: 'arraybuffer', timeout: 20000, maxContentLength: 20 * 1024 * 1024 });
         let buffer = Buffer.from(data);
         let mime = String(headers['content-type'] || 'image/png').split(';')[0];
         if (opts.maxWidth || opts.jpeg) {

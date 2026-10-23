@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { apiClient } from '../lib/api';
 
@@ -12,18 +12,7 @@ export function WorkspaceProvider({ children }) {
     // Why the workspaces couldn't be loaded (e.g. the API can't be reached); '' when they could.
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        if (profile) {
-            fetchWorkspaces();
-        } else {
-            setWorkspaces([]);
-            setCurrentWorkspace(null);
-            localStorage.removeItem('kengan_current_workspace_id');
-            setLoading(false);
-        }
-    }, [profile]);
-
-    const fetchWorkspaces = async () => {
+    const fetchWorkspaces = useCallback(async () => {
         try {
             setLoading(true);
             setError('');
@@ -52,7 +41,18 @@ export function WorkspaceProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    };
+    }, [profile]);
+
+    useEffect(() => {
+        if (profile) {
+            fetchWorkspaces();
+        } else {
+            setWorkspaces([]);
+            setCurrentWorkspace(null);
+            localStorage.removeItem('kengan_current_workspace_id');
+            setLoading(false);
+        }
+    }, [profile, fetchWorkspaces]);
 
     const switchWorkspace = (workspaceId) => {
         const ws = workspaces.find(w => w.id === workspaceId);

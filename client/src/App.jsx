@@ -1,12 +1,13 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { WorkspaceProvider } from './context/WorkspaceContext';
 import { ThemeProvider } from './context/ThemeContext';
 import AuthGuard from './components/auth/AuthGuard';
 import DashboardLayout from './components/layout/DashboardLayout';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import DashboardPage from './pages/DashboardPage';
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 
 import {
   Link2,
@@ -23,32 +24,32 @@ import {
 import './index.css';
 
 import LandingPage from './pages/LandingPage';
-import PricingPage from './pages/PricingPage';
-import AboutPage from './pages/AboutPage';
-import HelpCenterPage from './pages/HelpCenterPage';
-import DeletionStatusPage from './pages/DeletionStatusPage';
-import ConsentPage from './pages/ConsentPage';
-import ConnectionsPage from './pages/ConnectionsPage';
-import ContentStudioPage from './pages/ContentStudioPage';
-import CalendarPage from './pages/Calendar/CalendarPage';
-import AiToolsPage from './pages/AiToolsPage';
-import AnalyticsDashboard from './pages/Analytics/AnalyticsDashboard';
-import AutomationPage from './pages/AutomationPage';
-import LeadsBoard from './pages/Leads/LeadsBoard';
-import BillingPage from './pages/BillingPage';
-import SettingsPage from './pages/SettingsPage';
-import VideoEditorPage from './pages/VideoEditorPage';
-import LegalPage from './pages/LegalPage';
-import OnboardingPage from './pages/OnboardingPage';
-import TrendingFeed from './pages/Trending/TrendingFeed';
-import DMManager from './pages/DM/DMManager';
-import AdsPage from './pages/AdsPage';
-import LaunchPage from './pages/Launch/LaunchPage';
-import ClipsPage from './pages/Clips/ClipsPage';
-import RepurposePage from './pages/Repurpose/RepurposePage';
-import MarketingPage from './pages/Marketing/MarketingPage';
-import ClientsPage from './pages/Clients/ClientsPage';
-import ReviewPage from './pages/Review/ReviewPage';
+const PricingPage = lazy(() => import('./pages/PricingPage'));
+const AboutPage = lazy(() => import('./pages/AboutPage'));
+const HelpCenterPage = lazy(() => import('./pages/HelpCenterPage'));
+const DeletionStatusPage = lazy(() => import('./pages/DeletionStatusPage'));
+const ConsentPage = lazy(() => import('./pages/ConsentPage'));
+const ConnectionsPage = lazy(() => import('./pages/ConnectionsPage'));
+const ContentStudioPage = lazy(() => import('./pages/ContentStudioPage'));
+const CalendarPage = lazy(() => import('./pages/Calendar/CalendarPage'));
+const AiToolsPage = lazy(() => import('./pages/AiToolsPage'));
+const AnalyticsDashboard = lazy(() => import('./pages/Analytics/AnalyticsDashboard'));
+const AutomationPage = lazy(() => import('./pages/AutomationPage'));
+const LeadsBoard = lazy(() => import('./pages/Leads/LeadsBoard'));
+const BillingPage = lazy(() => import('./pages/BillingPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const VideoEditorPage = lazy(() => import('./pages/VideoEditorPage'));
+const LegalPage = lazy(() => import('./pages/LegalPage'));
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
+const TrendingFeed = lazy(() => import('./pages/Trending/TrendingFeed'));
+const DMManager = lazy(() => import('./pages/DM/DMManager'));
+const AdsPage = lazy(() => import('./pages/AdsPage'));
+const LaunchPage = lazy(() => import('./pages/Launch/LaunchPage'));
+const ClipsPage = lazy(() => import('./pages/Clips/ClipsPage'));
+const RepurposePage = lazy(() => import('./pages/Repurpose/RepurposePage'));
+const MarketingPage = lazy(() => import('./pages/Marketing/MarketingPage'));
+const ClientsPage = lazy(() => import('./pages/Clients/ClientsPage'));
+const ReviewPage = lazy(() => import('./pages/Review/ReviewPage'));
 
 function App() {
   return (
@@ -56,6 +57,7 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <WorkspaceProvider>
+            <Suspense fallback={<div role="status" aria-live="polite" style={{ padding: '2rem' }}>Loading page...</div>}>
             <Routes>
               {/* Public routes */}
               <Route path="/" element={<LandingPage />} />
@@ -126,6 +128,7 @@ function App() {
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </Suspense>
           </WorkspaceProvider>
         </AuthProvider>
       </ThemeProvider>

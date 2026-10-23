@@ -1,4 +1,4 @@
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { findConnections } from '../connection-lookup';
 import {
     OPT_OUT_WORDS,
@@ -60,7 +60,7 @@ export async function handleMetaMessage(platform: MetaChannel, accountId: string
         platform,
         status: 'pending',
         windowEndsAt: receivedAt + REPLY_WINDOW_MS,
-        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        receivedAt: FieldValue.serverTimestamp(),
     });
     return workspaceId;
 }
@@ -96,7 +96,7 @@ async function runInboxAutoReply(workspaceId: string, platform: MetaChannel, sen
         if (!auto.keyword || !auto.replyTemplate || !text.includes(String(auto.keyword).toLowerCase())) continue;
         try {
             await sendDM(workspaceId, platform, senderId, fillPlaceholders(auto.replyTemplate, profile));
-            await doc.ref.update({ sentCount: admin.firestore.FieldValue.increment(1) });
+            await doc.ref.update({ sentCount: FieldValue.increment(1) });
             return true;
         } catch (error) {
             console.error('[Inbox] Auto-reply failed:', (error as Error).message);

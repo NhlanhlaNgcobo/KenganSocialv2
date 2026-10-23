@@ -1,3 +1,4 @@
+import { signMediaUrl, parseMediaUrl, mediaWorkspace } from '../media-links.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -13,8 +14,10 @@ import { getStorageDriver, LOCAL_UPLOAD_DIR } from '../storage.service.js';
 const HEX = /^#[0-9a-f]{6}$/i;
 const CACHE_DIR = path.join(os.tmpdir(), 'kengan-renders');
 
-async function logoFile(url) {
+async function logoFile(url, workspaceId) {
     if (!url) return null;
+    const ref = parseMediaUrl(url);
+    if (ref && mediaWorkspace(ref.key) !== workspaceId) return null;
     fs.mkdirSync(CACHE_DIR, { recursive: true });
     const file = path.join(CACHE_DIR, `brandlogo_${crypto.createHash('sha1').update(url).digest('hex').slice(0, 16)}.png`);
     if (fs.existsSync(file)) return file;
@@ -22,12 +25,12 @@ async function logoFile(url) {
     const local = getStorageDriver() === 'local' ? /\/uploads\/(.+)$/.exec(new URL(url, 'http://local').pathname) : null;
     if (local) {
         const source = path.resolve(LOCAL_UPLOAD_DIR, decodeURIComponent(local[1]));
-        if (!source.startsWith(path.resolve(LOCAL_UPLOAD_DIR))) return null;
+        if (!source.startsWith(path.resolve(LOCAL_UPLOAD_DIR) + path.sep)) return null;
         if (!fs.existsSync(source)) return null;
         fs.copyFileSync(source, file);
         return file;
     }
-    const { data } = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000, maxContentLength: 6 * 1024 * 1024 });
+    const { data } = await axios.get(signMediaUrl(url), { responseType: 'arraybuffer', timeout: 15000, maxContentLength: 6 * 1024 * 1024 });
     fs.writeFileSync(file, Buffer.from(data));
     return file;
 }
@@ -39,7 +42,7 @@ export async function loadClipBrand(db, workspaceId) {
     const accent = [kit.colors?.accent, kit.colors?.primary, kit.colors?.secondary].find((c) => HEX.test(String(c || ''))) || null;
     let logoPath = null;
     try {
-        logoPath = await logoFile(kit.logo?.primary || null);
+        logoPath = await logoFile(kit.logo?.primary || null, workspaceId);
     } catch (error) {
         console.warn('[Clips] Brand logo unavailable:', error.message);
     }

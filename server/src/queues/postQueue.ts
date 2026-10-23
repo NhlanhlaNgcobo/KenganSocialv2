@@ -1,7 +1,7 @@
 import { Queue, Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import { db } from '../utils/firestore';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 // Import publishers
 import { publishToYouTube } from '../services/publishers/youtube';
@@ -49,7 +49,7 @@ async function processJob(job: Job<PublishPayload>) {
     // Process platforms concurrently
     const results = await Promise.allSettled(
         // Platforms download the file themselves, so they get the public address (e.g. the tunnel).
-        platforms.map(p => publishMultiplexer(p, workspaceId, { mediaUrl: publicMediaUrl(mediaUrl), caption, ...platformOptions[p] }))
+        platforms.map(p => publishMultiplexer(p, workspaceId, { mediaUrl: publicMediaUrl(mediaUrl, workspaceId), caption, ...platformOptions[p] }))
     );
 
     const published: { platform: string, postId: string }[] = [];
@@ -66,7 +66,7 @@ async function processJob(job: Job<PublishPayload>) {
     // Update Firestore with final result
     await db.collection('scheduled_posts').doc(postId).update({
         status: failed.length === 0 ? 'published' : (published.length > 0 ? 'partial' : 'failed'),
-        publishedAt: admin.firestore.FieldValue.serverTimestamp(),
+        publishedAt: FieldValue.serverTimestamp(),
         platformPostIds: Object.fromEntries(published.map(p => [p.platform, p.postId])),
         errors: failed
     });
@@ -154,7 +154,7 @@ worker.on('failed', async (job, err) => {
             message: `One of your posts failed to publish after 3 attempts. Errors: ${err.message}`,
             type: 'error',
             postId: job.data.postId,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: FieldValue.serverTimestamp()
         });
     }
 });

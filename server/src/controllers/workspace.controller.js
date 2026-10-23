@@ -1,4 +1,5 @@
-import admin, { getAuth, getFirestore } from '../config/firebase.js';
+import { getAuth, getFirestore } from '../config/firebase.js';
+import { FieldValue } from 'firebase-admin/firestore';
 
 /**
  * Get every workspace the authenticated user can open: the ones they own plus the ones they
@@ -187,7 +188,7 @@ export async function addMember(req, res) {
         const now = new Date().toISOString();
         await workspace.ref.collection('members').doc(invitee.uid).set({ uid: invitee.uid, role, joinedAt: now, addedBy: req.user.uid }, { merge: true });
         // Firestore security rules read the `members` array, so keep it in step.
-        await workspace.ref.update({ members: admin.firestore.FieldValue.arrayUnion(invitee.uid), updatedAt: now });
+        await workspace.ref.update({ members: FieldValue.arrayUnion(invitee.uid), updatedAt: now });
 
         res.status(201).json({ member: { ...(await describeUser(db, invitee.uid)), role, joinedAt: now } });
     } catch (error) {
@@ -209,7 +210,7 @@ export async function removeMember(req, res) {
         if (memberId === workspace.data().ownerId) return res.status(400).json({ error: 'The owner cannot be removed.' });
 
         await workspace.ref.collection('members').doc(memberId).delete();
-        await workspace.ref.update({ members: admin.firestore.FieldValue.arrayRemove(memberId), updatedAt: new Date().toISOString() });
+        await workspace.ref.update({ members: FieldValue.arrayRemove(memberId), updatedAt: new Date().toISOString() });
         res.json({ success: true });
     } catch (error) {
         console.error('[Workspace Controller] Remove member error:', error);

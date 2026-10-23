@@ -81,7 +81,25 @@ export default function BillingPage() {
         if (workspaceId) loadBilling();
     }, [workspaceId, loadBilling]);
 
-    // Returning from Paystack: /dashboard/billing?reference=...&trxref=...
+    // Returning from the payment provider: /dashboard/billing?reference=...&trxref=...
+    const manageSubscription = async () => {
+        setCheckoutError('');
+        try {
+            const result = await apiClient('/billing/portal', { method: 'POST' });
+            window.location.assign(result.url);
+        } catch (error) { setCheckoutError(error.message || 'Could not open subscription management.'); }
+    };
+
+    const cancelSubscription = async () => {
+        if (!window.confirm('Cancel automatic renewal? You keep access until the end of your paid period.')) return;
+        setCheckoutError('');
+        try {
+            const result = await apiClient('/billing/cancel-subscription', { method: 'POST' });
+            setVerifyState({ kind: 'success', message: result.message });
+            await loadBilling();
+        } catch (error) { setCheckoutError(error.message); }
+    };
+
     const reference = searchParams.get('reference') || searchParams.get('trxref');
     useEffect(() => {
         if (!reference || !workspaceId || verifiedRef.current === reference) return;
@@ -117,7 +135,18 @@ export default function BillingPage() {
                 body: { planName: planId, interval: billingInterval },
             });
             if (!data.url) throw new Error('Checkout could not be started. Try again.');
-            window.location.assign(data.url);
+            if (data.method === 'POST' && data.provider === 'payfast') {
+                const url = new URL(data.url);
+                if (!['www.payfast.co.za', 'sandbox.payfast.co.za'].includes(url.hostname) || url.protocol !== 'https:') throw new Error('Invalid payment destination.');
+                const form = document.createElement('form');
+                form.method = 'POST'; form.action = url.href;
+                for (const [name, value] of Object.entries(data.fields || {})) {
+                    const field = document.createElement('input');
+                    field.type = 'hidden'; field.name = name; field.value = String(value);
+                    form.appendChild(field);
+                }
+                document.body.appendChild(form); form.submit();
+            } else window.location.assign(data.url);
         } catch (error) {
             setCheckoutError(error.message || 'Checkout could not be started. Try again.');
             setUpgrading(null);
@@ -181,7 +210,7 @@ export default function BillingPage() {
             <button
                 className="btn btn-primary full-width"
                 onClick={() => handleCheckout(plan.id)}
-                disabled={Boolean(upgrading) || !status}
+                disabled={Boolean(upgrading) || !status || !['owner', 'admin'].includes(currentWorkspace?.role)}
             >
                 {busy ? <><Loader2 size={16} className="spin" /> Opening checkout…</> : rank === currentRank ? 'Switch' : 'Upgrade'}
             </button>
@@ -193,7 +222,7 @@ export default function BillingPage() {
             <div className="page-header">
                 <div>
                     <h1>Plans & Billing</h1>
-                    <p className="page-subtitle">Your plan, this month's usage, and upgrades. Prices are in rand and include payment via Paystack.</p>
+                    <p className="page-subtitle">Subscriptions renew automatically each month or year through Paystack. Manage or cancel renewal below. Prices are in rand.</p>
                 </div>
             </div>
 
@@ -341,12 +370,13 @@ export default function BillingPage() {
 
             <section className="payment-methods card">
                 <h3>Manage billing</h3>
+                {status?.canCancelSubscription && ['owner', 'admin'].includes(currentWorkspace?.role) && <button className="btn btn-secondary" onClick={cancelSubscription}>Cancel renewal</button>}
                 <p className="billing-manage-copy">
-                    To cancel, change plan, or get an invoice, email {supportEmail}. Paid plans run until the end of the period you paid for.
+                    Manage your payment card or cancel automatic renewal below. Access continues until the paid period ends. For plan changes or invoices, email {supportEmail}.
                 </p>
-                <a className="btn btn-secondary" href={mailto(supportEmail, 'Manage my KenganSocial billing')}>
-                    <Mail size={16} /> Manage billing / cancel
-                </a>
+                <button className="btn btn-secondary" onClick={manageSubscription} disabled={!['owner', 'admin'].includes(currentWorkspace?.role)}>
+                    Manage subscription / cancel
+                </button>
             </section>
         </div>
     );

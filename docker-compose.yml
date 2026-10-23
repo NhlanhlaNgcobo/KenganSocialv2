@@ -44,14 +44,38 @@ services:
       - uploads:/app/uploads
       - cache:/app/.cache
     depends_on:
-      - video
-      - redis
+      video:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 60s
+
+  ai-worker:
+    build: ./server
+    command: ["npm", "run", "worker:ai-edit"]
+    restart: unless-stopped
+    stop_grace_period: 2h
+    env_file: ./server/.env
+    environment:
+      NODE_ENV: production
+      PYTHON_API_URL: http://video:8000
+      REDIS_URL: redis://redis:6379
+      TMPDIR: /shared
+    volumes:
+      - renders:/shared
+      - uploads:/app/uploads
+      - cache:/app/.cache
+    depends_on:
+      video:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   video:
     build: ./python-service
@@ -67,6 +91,12 @@ services:
     volumes:
       - renders:/shared
       - whisper-models:/root/.cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
 
   redis:
     image: redis:7.4.1-alpine
@@ -77,6 +107,11 @@ services:
       - "6379"
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
 volumes:
   renders:

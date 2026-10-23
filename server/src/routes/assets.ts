@@ -178,7 +178,7 @@ router.get('/file/:provider/:id', async (req: Request, res: Response) => {
             upstream.data.destroy();
             return res.status(413).json({ error: 'This file is too large to import.' });
         }
-        res.setHeader('Content-Type', upstream.headers['content-type'] || 'application/octet-stream');
+        res.setHeader('Content-Type', String(upstream.headers['content-type'] || 'application/octet-stream'));
         if (length) res.setHeader('Content-Length', String(length));
         let sent = 0;
         upstream.data.on('data', (chunk: Buffer) => {

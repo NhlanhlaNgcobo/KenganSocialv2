@@ -1,5 +1,6 @@
+import { recentTrendContext } from './trend-context.js';
 import axios from 'axios';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { probe } from '../ffmpeg-runner.js';
 import { CLIP_LENGTHS, findClips } from './find-clips.js';
 import { capLength, PLATFORMS } from './platforms.js';
@@ -72,7 +73,7 @@ export async function createClips(request, ctx, { onStage = () => {}, onClip = (
         type: 'clips',
         status: 'transcribing',
         progress: 0,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
     });
 
     let transcription = { words: [] };
@@ -106,7 +107,7 @@ export async function createClips(request, ctx, { onStage = () => {}, onClip = (
         console.warn('[Clips] Signal analysis unavailable:', pythonError(error, 'Analysis').message);
     }
 
-    const { clips, finder, note } = await findClips({ words, duration, signalClips, count: request.count, length: request.length, prompt: request.prompt });
+    const { clips, finder, note } = await findClips({ words, duration, signalClips, count: request.count, length: request.length, prompt: request.prompt, trendContext: await recentTrendContext(workspaceId) });
     if (!clips.length) throw new Error(note || 'No clips could be found in this video.');
     onStage(`Rendering clip 1 of ${clips.length}`, 40, { finder, note, planned: clips.length });
 

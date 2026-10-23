@@ -1,6 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { CHAT_MODEL, chatClient } from '../services/llm-client.js';
-import admin from 'firebase-admin';
+
 
 const openai = chatClient;
 

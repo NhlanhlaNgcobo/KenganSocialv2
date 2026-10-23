@@ -1,5 +1,8 @@
 import 'dotenv/config';
-import admin from 'firebase-admin';
+import { getApps, cert, applicationDefault, initializeApp } from 'firebase-admin/app';
+import { getFirestore as firebaseFirestore } from 'firebase-admin/firestore';
+import { getAuth as firebaseAuth } from 'firebase-admin/auth';
+import { getStorage as firebaseStorage } from 'firebase-admin/storage';
 import { readFileSync } from 'fs';
 
 let db;
@@ -9,16 +12,16 @@ let storage;
 initializeFirebaseAdmin();
 
 export function initializeFirebaseAdmin() {
-    if (admin.apps.length > 0) return;
+    if (getApps().length > 0) return;
 
     let credential;
 
     if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-        credential = admin.credential.cert(JSON.parse(
+        credential = cert(JSON.parse(
             readFileSync(process.env.FIREBASE_SERVICE_ACCOUNT_PATH, 'utf8')
         ));
     } else if (process.env.FIREBASE_PRIVATE_KEY) {
-        credential = admin.credential.cert({
+        credential = cert({
             projectId: process.env.FIREBASE_PROJECT_ID,
             clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
             privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -26,16 +29,16 @@ export function initializeFirebaseAdmin() {
     } else {
         // No key configured: fall back to Application Default Credentials
         // (e.g. `gcloud auth application-default login` for local dev).
-        credential = admin.credential.applicationDefault();
+        credential = applicationDefault();
     }
 
-    admin.initializeApp({
+    initializeApp({
         credential,
         projectId: process.env.FIREBASE_PROJECT_ID,
         storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
     });
 
-    db = admin.firestore();
+    db = firebaseFirestore();
     // Drop undefined fields instead of failing the whole write (optional values such as an
     // auto-frame summary field are often undefined). Must run before the first Firestore call.
     try {
@@ -43,22 +46,20 @@ export function initializeFirebaseAdmin() {
     } catch (error) {
         console.warn('[Firebase] Could not set ignoreUndefinedProperties:', error.message);
     }
-    auth = admin.auth();
-    storage = admin.storage();
+    auth = firebaseAuth();
+    storage = firebaseStorage();
 
     console.log('✅ Firebase Admin initialized');
 }
 
 export function getFirestore() {
-    return db || admin.firestore();
+    return db || firebaseFirestore();
 }
 
 export function getAuth() {
-    return auth || admin.auth();
+    return auth || firebaseAuth();
 }
 
 export function getStorage() {
-    return storage || admin.storage();
+    return storage || firebaseStorage();
 }
-
-export default admin;

@@ -1,4 +1,4 @@
-import admin from 'firebase-admin';
+import { getFirestore } from '../config/firebase.js';
+import type { Firestore } from 'firebase-admin/firestore';
 
-// Firestore database instance — shared across all server modules
-export const db = admin.firestore();
+export const db: Firestore = getFirestore();

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CAPTION_TEMPLATES } from '../../components/clips/shorts-options';
 import '../../components/clips/caption-fonts.css';
 import LoopVideo from './LoopVideo';
+import { useVisibleAnimation } from '../../components/performance/useVisibleAnimation';
 
 /** Cycles through the real caption templates, lighting up one word at a time like the render does. */
 
@@ -10,18 +11,20 @@ const TEMPLATES = CAPTION_TEMPLATES.filter((t) => t.id !== 'none');
 const WORD_MS = 520;
 
 export default function CaptionShowcase() {
+    const root = useRef(null);
+    const active = useVisibleAnimation(root);
     const [tick, setTick] = useState(0);
     const [paused, setPaused] = useState(false);
 
     useEffect(() => {
-        if (paused) return undefined;
+        if (paused || !active) return undefined;
         const timer = setInterval(() => setTick((t) => t + 1), WORD_MS);
         return () => clearInterval(timer);
-    }, [paused]);
+    }, [paused, active]);
 
     const template = TEMPLATES[Math.floor(tick / WORDS.length) % TEMPLATES.length];
-    const active = tick % WORDS.length;
-    const words = template.single ? [WORDS[active]] : WORDS;
+    const activeWord = tick % WORDS.length;
+    const words = template.single ? [WORDS[activeWord]] : WORDS;
 
     const style = {
         fontFamily: template.font,
@@ -35,13 +38,13 @@ export default function CaptionShowcase() {
     };
 
     return (
-        <div className="lp-captions" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+        <div ref={root} className="lp-captions" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
             <div className="lp-captions__stage">
                 <LoopVideo name="captions-bg" className="lp-captions__video" />
                 <span className={`lp-captions__text ${template.box ? 'has-box' : ''}`} style={style} key={template.id}>
                     {words.map((w, i) => {
-                        const on = template.single || i === active;
-                        const color = on && template.active ? template.active : template.fill && i < active ? template.active : undefined;
+                        const on = template.single || i === activeWord;
+                        const color = on && template.active ? template.active : template.fill && i < activeWord ? template.active : undefined;
                         return (
                             <span key={`${w}-${i}`} className={on ? 'is-on' : ''} style={color ? { color } : undefined}>
                                 {w}

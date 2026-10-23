@@ -1,6 +1,6 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import admin from 'firebase-admin';
+import { getAuth as firebaseAuth } from 'firebase-admin/auth';
 import { metaAppSecret } from '../config/meta';
 import { parseSignedRequest } from '../services/meta/signed-request';
 import { deleteUserAccount, getDeletionStatus, removeMetaUser } from '../services/data-deletion.service';
@@ -71,7 +71,7 @@ router.delete('/account', async (req: Request, res: Response) => {
     let uid: string;
     try {
         // checkRevoked: a stolen, revoked session can't delete the account.
-        uid = (await admin.auth().verifyIdToken(header.slice(7), true)).uid;
+        uid = (await firebaseAuth().verifyIdToken(header.slice(7), true)).uid;
     } catch {
         return res.status(401).json({ error: 'INVALID_TOKEN' });
     }
