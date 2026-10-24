@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CREDIT_COSTS, MAX_SOURCE_MINUTES, PLAN_LIMITS, TRIAL_LIMITS, transcriptionMinutes, videoUnits } from '../../src/utils/planLimits';
+import { CREDIT_COSTS, MAX_SOURCE_MINUTES, PLAN_LIMITS, TRIAL_LIMITS, TRIAL_MEDIA_PLAN, transcriptionMinutes, videoUnits } from '../../src/utils/planLimits';
 import { PLAN_CATALOG } from '../../src/config/plan-catalog';
-import { noteTrial, usageLimit } from '../../src/middleware/planGate';
+import { mediaPlan, noteTrial, usageLimit } from '../../src/middleware/planGate';
 // @ts-ignore -- plain ES module shared with docs/pricing
 import { CREDIT_PRICES, ECON, PLANS, costPlan } from '../../../scripts/pricing-model.mjs';
 
@@ -25,6 +25,19 @@ test('the cost model uses exactly the limits, prices and credit costs the app en
     }
     const trial = tierOf('trial').limits;
     for (const key of Object.keys(trial)) assert.equal(trial[key], (TRIAL_LIMITS as any)[key], `trial ${key}`);
+    assert.equal(tierOf('trial').maxSourceMin, MAX_SOURCE_MINUTES[TRIAL_MEDIA_PLAN], 'trial max source minutes');
+    assert.equal(tierOf('trial').whisper, tierOf('creator_starter').whisper, 'trial speech model');
+});
+
+test('a running trial uses Creator Starter video length and speech model; paid plans keep their own', () => {
+    const ws = `trial-media-${Date.now()}`;
+    assert.equal(mediaPlan(ws, 'agency'), 'agency');
+    noteTrial(ws, new Date(Date.now() + 86400000).toISOString());
+    assert.equal(mediaPlan(ws, 'agency'), TRIAL_MEDIA_PLAN);
+    assert.equal(mediaPlan(ws, 'nano'), 'nano');
+    assert.equal(mediaPlan(ws, 'starter'), 'starter'); // no clips on Free, trial or not
+    noteTrial(ws, new Date(Date.now() - 1000).toISOString());
+    assert.equal(mediaPlan(ws, 'agency'), 'agency');
 });
 
 test('every paid plan keeps a 60% gross margin at 100% use, monthly and annual', () => {

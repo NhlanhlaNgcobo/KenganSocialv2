@@ -60,7 +60,9 @@ log = logging.getLogger("kengansocial.video")
 # overridable with VIDEO_TMP_DIR. A hard-coded "/tmp" breaks on Windows (it means C:\tmp).
 TMP = Path(os.getenv("VIDEO_TMP_DIR") or tempfile.gettempdir())
 TMP.mkdir(parents=True, exist_ok=True)
-MAX_CONCURRENT_JOBS = 3
+# Heavy jobs (transcription, analysis) run at once. On a dedicated 4-vCPU worker use 1, so each job
+# gets the whole machine; on the all-in-one VM the default 3 keeps short jobs moving.
+MAX_CONCURRENT_JOBS = max(1, int(os.getenv("MAX_CONCURRENT_JOBS", "3")))
 TRANSCRIBE_TIMEOUT_SEC = 600
 ANALYZE_TIMEOUT_SEC = 900
 ASSEMBLYAI_POLL_INTERVAL = 15

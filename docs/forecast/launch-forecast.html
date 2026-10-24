@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>KenganSocial: South African launch forecast</title>
+<style>
+@page { size: A4; margin: 16mm 14mm 18mm; }
+:root { --ink:#16161a; --muted:#5d5d66; --line:#dcdce2; --accent:#c4512c; --good:#1f7a4d; --bad:#b42318; --soft:#f5f4f1; }
+* { box-sizing: border-box; }
+body { font: 10pt/1.5 "Segoe UI", Inter, Arial, sans-serif; color: var(--ink); margin: 0; }
+h1 { font-size: 24pt; line-height: 1.1; margin: 0 0 6pt; letter-spacing: -0.02em; }
+h2 { font-size: 15pt; margin: 22pt 0 8pt; padding-top: 6pt; border-top: 2px solid var(--ink); break-after: avoid; }
+h3 { font-size: 11.5pt; margin: 14pt 0 5pt; break-after: avoid; }
+p { margin: 0 0 7pt; }
+small { display: block; color: var(--muted); font-size: 8pt; font-weight: 400; }
+a { color: var(--ink); }
+.kicker { text-transform: uppercase; letter-spacing: .12em; font-size: 8pt; color: var(--accent); font-weight: 700; }
+.cover { padding: 8mm 0 4mm; border-bottom: 1px solid var(--line); margin-bottom: 10pt; }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8pt; margin: 12pt 0; }
+.kpis div { border: 1px solid var(--line); border-radius: 6pt; padding: 8pt 10pt; }
+.kpis .label { font-size: 8pt; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+.kpis b { display: block; font-size: 15pt; line-height: 1.25; margin: 2pt 0; }
+.kpis .base { border-color: var(--ink); border-width: 1.5px; }
+table.data { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt; font-size: 8.4pt; break-inside: avoid; }
+table.data th, table.data td { border-bottom: 1px solid var(--line); padding: 4pt 5pt; text-align: right; vertical-align: top; }
+table.data thead th { font-size: 7.6pt; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-bottom: 1.5px solid var(--ink); }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+table.data tbody th { font-weight: 600; }
+table.data.narrow { width: 64%; }
+table.data tr.total th, table.data tr.total td { border-top: 1.5px solid var(--ink); font-weight: 700; }
+td.pos { color: var(--good); font-weight: 600; } td.neg { color: var(--bad); font-weight: 600; }
+.note { background: var(--soft); border-left: 3px solid var(--accent); padding: 7pt 10pt; margin: 8pt 0; break-inside: avoid; }
+ul.findings { padding-left: 14pt; margin: 4pt 0 8pt; } ul.findings li { margin-bottom: 4pt; }
+code { font-family: Consolas, monospace; font-size: 8.4pt; background: var(--soft); padding: 0 2pt; border-radius: 2pt; }
+.pagebreak { break-before: page; }
+footer { margin-top: 18pt; font-size: 8pt; color: var(--muted); border-top: 1px solid var(--line); padding-top: 6pt; }
+</style></head><body>
+
+<section class="cover">
+  <div class="kicker">KenganSocial · MiraiStack · Launch forecast</div>
+  <h1>South Africa: launch on 30 November, first three months</h1>
+  <p>How many South African customers KenganSocial can reach, how they split across the plans, and the profit month by month from December 2026 to February 2027 in three scenarios. Costs per month come from the capacity model (servers sized for that month’s users, AI, voice, music, storage, Payfast, fixed costs) plus marketing.</p>
+  <div class="kpis">
+    <div class=""><span class="label">Conservative</span><b>138 paying</b>3 172 accounts by 28 Feb · MRR R103 662<br>3-month profit <b style="display:inline;font-size:11pt" class="neg">−R41 548</b><small>First profitable month: February 2027. Launch costs paid back: after February.</small></div><div class="base"><span class="label">Base</span><b>499 paying</b>7 786 accounts by 28 Feb · MRR R381 501<br>3-month profit <b style="display:inline;font-size:11pt" class="pos">R106 199</b><small>First profitable month: January 2027. Launch costs paid back: February 2027.</small></div><div class=""><span class="label">Optimistic</span><b>1 926 paying</b>20 185 accounts by 28 Feb · MRR R1 462 075<br>3-month profit <b style="display:inline;font-size:11pt" class="pos">R904 587</b><small>First profitable month: January 2027. Launch costs paid back: January 2027.</small></div>
+  </div>
+  <p><b>In short:</b> the base case (paid ads, a handful of creator partnerships, R35 000 a month on marketing) reaches about 499 paying customers and R381 501 in monthly subscriptions by the end of February, turns a monthly profit in January despite the festive shutdown, and has paid back its launch costs by February. Trial clip projects are now limited to 30-minute videos (changed 24 October); with the old 2-hour trial limit the base 3-month profit would be R42 765. Salaries are not included.</p>
+</section>
+
+<h2>1. How big is the South African market?</h2>
+<table class="data">
+<thead><tr><th>Segment</th><th>Serviceable customers</th><th>Plans they buy</th><th>Realistic 3-year share</th><th>Customers</th></tr></thead>
+<tbody><tr><th>Creators, podcasters, streamers</th><td>150 000</td><td>Free, Creator Starter, Creator Pro</td><td>2%</td><td>3 000</td></tr><tr><th>Small businesses that market on social</th><td>540 000</td><td>Free, Creator Starter, Creator Pro</td><td>1%</td><td>5 400</td></tr><tr><th>Agencies and social media managers</th><td>10 850</td><td>Creator Pro, Agency, Enterprise</td><td>4%</td><td>434</td></tr>
+<tr class="total"><th>Total</th><td>700 850</td><td></td><td></td><td>8 834</td></tr></tbody></table>
+<ul class="findings">
+<li><b>Small businesses:</b> about 2 700 000 SMMEs, roughly a third formal (SEDA, Absa Small Business Growth Index 2025). We count the 60% of formal businesses assumed to market on social media.</li>
+<li><b>Creators:</b> one South African creator network alone counts over 500 000 creators (theSalt); we count the 30% assumed to post weekly and want to grow or earn.</li>
+<li><b>Agencies:</b> 31 000–37 000 registered advertising and marketing firms (CIPC data via CompanyData and InfobelPRO); we count the 35% assumed to run clients’ social media.</li>
+<li><b>Audience:</b> almost 41 million South Africans are active on social media (Ornico / World Wide Worx 2026), so the people these customers market to are there.</li>
+</ul>
+<p class="note">The serviceable market is about 700 850 potential customers. Even the optimistic scenario ends February with 0.27% of it paying, so the forecast is limited by marketing reach and conversion, not by market size. Long-term, a 8 834-customer base at today’s plan mix is the 3-year ceiling these shares imply.</p>
+
+<h2>2. How the launch is simulated</h2>
+<table class="data">
+<thead><tr><th>Assumption</th><th>Conservative</th><th>Base</th><th>Optimistic</th></tr></thead>
+<tbody>
+<tr><th>What happens</th><td style="text-align:left">Organic only: founders’ networks, posts, a few creator shout-outs. R10 000/month marketing.</td><td style="text-align:left">Paid social ads, 5–10 local creator partnerships, launch PR. R35 000/month marketing.</td><td style="text-align:left">Strong ads, a viral creator moment, agency outreach. R90 000/month marketing.</td></tr>
+<tr><th>Sign-ups a month before seasonality</th><td>900</td><td>2 000</td><td>4 500</td></tr>
+<tr><th>Growth per month (word of mouth)</th><td>25%</td><td>35%</td><td>50%</td></tr>
+<tr><th>Trial → paid (7-day trial, no card)</th><td>4%</td><td>6%</td><td>9%</td></tr>
+<tr><th>Free → paid per month</th><td>1.5%</td><td>2%</td><td>3%</td></tr>
+<tr><th>Enterprise deals (Dec / Jan / Feb)</th><td>0 / 0 / 0</td><td>0 / 0 / 1</td><td>0 / 1 / 2</td></tr>
+<tr><th>Marketing per month</th><td>R10 000</td><td>R35 000</td><td>R90 000</td></tr>
+</tbody></table>
+<ul class="findings">
+<li><b>Festive season:</b> sign-ups at 75% in December, 85% in January, 110% in February of a normal month. Many businesses close from mid-December to mid-January; creators keep posting, which softens the dip.</li>
+<li><b>Everyone starts with the 7-day trial.</b> Those who don’t buy drop to the Free plan; 50% of free accounts stay active and some upgrade later.</li>
+<li><b>New paying customers split</b> 58% Creator Starter, 32% Creator Pro, 10% Agency; 6% of paying customers cancel each month; customers use 35% of their allowances.</li>
+<li><b>Benchmarks:</b> no-card trials convert 4–6% (good) to 9% (strong); self-serve freemium 3–8% overall. Prices are the current monthly list prices (R299, R699, R3 499, R8 999 incl. VAT).</li>
+<li><b>Pre-launch spend in November:</b> Launch video, brand and creator seeding R15 000; Legal review of Terms and Privacy Policy R8 000; Information Officer registration and admin R1 000.</li>
+</ul>
+
+<h2 class="pagebreak">3. Month by month</h2>
+<h3>Conservative</h3><table class="data"><thead><tr><th>Month</th><th>Sign-ups</th><th>Paying<small>Starter / Pro / Agency / Ent.</small></th><th>Accounts<small>free + paying</small></th><th>MRR<small>incl. VAT</small></th><th>Revenue<small>ex VAT</small></th><th>Running costs</th><th>Marketing</th><th>Profit</th><th>Cumulative<small>after pre-launch</small></th></tr></thead>
+    <tbody><tr><th>December 2026</th><td>675</td><td>27<small>16 / 9 / 3 / 0</small></td><td>675</td><td>R21 572</td><td>R18 758</td><td>R33 058</td><td>R10 000</td><td class="neg">−R24 300</td><td class="neg">−R48 300</td></tr><tr><th>January 2027</th><td>956</td><td>68<small>40 / 22 / 7 / 0</small></td><td>1 629</td><td>R51 831</td><td>R45 070</td><td>R43 747</td><td>R10 000</td><td class="neg">−R8 677</td><td class="neg">−R56 977</td></tr><tr><th>February 2027</th><td>1 547</td><td>138<small>80 / 44 / 14 / 0</small></td><td>3 172</td><td>R103 662</td><td>R90 141</td><td>R64 711</td><td>R10 000</td><td class="pos">R15 430</td><td class="neg">−R41 548</td></tr><tr class="total"><th>3 months</th><td>3 178</td><td>138</td><td>3 172</td><td>R103 662</td><td>R153 970</td><td colspan="2">R195 517 incl. pre-launch</td><td class="neg" colspan="2">−R41 548</td></tr></tbody></table><h3>Base</h3><table class="data"><thead><tr><th>Month</th><th>Sign-ups</th><th>Paying<small>Starter / Pro / Agency / Ent.</small></th><th>Accounts<small>free + paying</small></th><th>MRR<small>incl. VAT</small></th><th>Revenue<small>ex VAT</small></th><th>Running costs</th><th>Marketing</th><th>Profit</th><th>Cumulative<small>after pre-launch</small></th></tr></thead>
+    <tbody><tr><th>December 2026</th><td>1 500</td><td>90<small>52 / 29 / 9 / 0</small></td><td>1 500</td><td>R67 310</td><td>R58 530</td><td>R58 679</td><td>R35 000</td><td class="neg">−R35 148</td><td class="neg">−R59 148</td></tr><tr><th>January 2027</th><td>2 295</td><td>236<small>137 / 76 / 24 / 0</small></td><td>3 790</td><td>R178 063</td><td>R154 837</td><td>R90 992</td><td>R35 000</td><td class="pos">R28 845</td><td class="neg">−R30 303</td></tr><tr><th>February 2027</th><td>4 010</td><td>499<small>289 / 159 / 50 / 1</small></td><td>7 786</td><td>R381 501</td><td>R331 740</td><td>R160 238</td><td>R35 000</td><td class="pos">R136 502</td><td class="pos">R106 199</td></tr><tr class="total"><th>3 months</th><td>7 805</td><td>499</td><td>7 786</td><td>R381 501</td><td>R545 108</td><td colspan="2">R438 909 incl. pre-launch</td><td class="pos" colspan="2">R106 199</td></tr></tbody></table><h3>Optimistic</h3><table class="data"><thead><tr><th>Month</th><th>Sign-ups</th><th>Paying<small>Starter / Pro / Agency / Ent.</small></th><th>Accounts<small>free + paying</small></th><th>MRR<small>incl. VAT</small></th><th>Revenue<small>ex VAT</small></th><th>Running costs</th><th>Marketing</th><th>Profit</th><th>Cumulative<small>after pre-launch</small></th></tr></thead>
+    <tbody><tr><th>December 2026</th><td>3 375</td><td>304<small>176 / 97 / 30 / 0</small></td><td>3 375</td><td>R225 397</td><td>R195 997</td><td>R123 726</td><td>R90 000</td><td class="neg">−R17 728</td><td class="neg">−R41 728</td></tr><tr><th>January 2027</th><td>5 738</td><td>849<small>492 / 271 / 85 / 1</small></td><td>9 096</td><td>R642 951</td><td>R559 088</td><td>R233 977</td><td>R90 000</td><td class="pos">R235 110</td><td class="pos">R193 382</td></tr><tr><th>February 2027</th><td>11 138</td><td>1 926<small>1115 / 615 / 192 / 3</small></td><td>20 185</td><td>R1 462 075</td><td>R1 271 370</td><td>R470 164</td><td>R90 000</td><td class="pos">R711 205</td><td class="pos">R904 587</td></tr><tr class="total"><th>3 months</th><td>20 251</td><td>1 926</td><td>20 185</td><td>R1 462 075</td><td>R2 026 455</td><td colspan="2">R1 121 867 incl. pre-launch</td><td class="pos" colspan="2">R904 587</td></tr></tbody></table>
+<p class="note"><b>Running costs</b> include Payfast fees, AI, voice, music, transcription, storage, Firestore, the worker fleet and API server, hosting, backups, licences and the provider minimum plans. <b>MRR</b> is monthly subscriptions at list price including VAT; revenue is after VAT.</p>
+
+<h2>4. Customers on each plan by 28 February</h2>
+<table class="data"><thead><tr><th>Scenario</th><th>Free (active + inactive)</th><th>Creator Starter</th><th>Creator Pro</th><th>Agency</th><th>Enterprise</th><th>All accounts</th><th>Paying share of market</th></tr></thead><tbody><tr><th>Conservative</th><td>3 034</td><td>80</td><td>44</td><td>14</td><td>0</td><td>3 172</td><td>0.02%</td></tr><tr><th>Base</th><td>7 287</td><td>289</td><td>159</td><td>50</td><td>1</td><td>7 786</td><td>0.07%</td></tr><tr><th>Optimistic</th><td>18 259</td><td>1 115</td><td>615</td><td>192</td><td>3</td><td>20 185</td><td>0.27%</td></tr></tbody></table>
+
+<h2>5. Where the money goes: base case, February</h2>
+<table class="data narrow"><tbody><tr><th>Payfast fees</th><td>R15 187</td></tr><tr><th>AI credits</th><td>R37 953</td></tr><tr><th>Clip AI (transcript ranking)</th><td>R7 140</td></tr><tr><th>Voice, music, render licence</th><td>R19 988</td></tr><tr><th>Post delivery (egress)</th><td>R11 782</td></tr><tr><th>Storage (GB-month + download)</th><td>R13 129</td></tr><tr><th>Firestore and sync</th><td>R37 391</td></tr><tr><th>Worker VMs (autoscaled)</th><td>R8 947</td></tr><tr><th>API VM (with Redis, Caddy)</th><td>R2 450</td></tr><tr><th>Web hosting</th><td>R350</td></tr><tr><th>Remotion licence minimum ($100, render fees count towards it)</th><td>R2 012</td></tr><tr><th>Backups, snapshots, domain, email, monitoring</th><td>R600</td></tr><tr><th>Provider minimum plans</th><td>R3 308</td></tr><tr><th>Marketing</th><td>R35 000</td></tr><tr class="total"><th>Total cost</th><td>R195 238</td></tr><tr><th>Revenue (ex VAT)</th><td>R331 740</td></tr><tr class="total"><th>Profit</th><td class="pos">R136 502</td></tr></tbody></table>
+
+<h2 class="pagebreak">6. What this means</h2>
+<ul class="findings">
+<li><b>Marketing drives everything.</b> Organic-only (conservative) loses about R41 548 over the three months and reaches only 138 paying customers. Spending R35 000 a month (base) is profitable from January.</li>
+<li><b>December will lose money in every scenario</b> (launch costs plus the festive slowdown). Plan cash for about R59 148 before revenue catches up.</li>
+<li><b>Trial clip projects are limited (done).</b> Since 24 October a trial turns videos of up to 30 minutes into clips with the fast speech model, like Creator Starter, instead of Agency’s 2 hours. With the old limit the 3-month result would have been −R59 687 (conservative), R42 765 (base), R733 732 (optimistic), and clip work at the busiest hour about five times higher.</li>
+<li><b>The servers must scale before launch.</b> At the busiest hour in December the base case already sends 2.1× more render work and 2× more clip work than today’s one-at-a-time queues can finish (16× with the old 2-hour trial). The worker pool in the readiness report (<code>docs/capacity/KenganSocial_1000_Users_Readiness.pdf</code>) is a launch requirement, not a later improvement. By February the base case needs about 20 workers at peak (already included in the costs above).</li>
+<li><b>Agency customers carry the profit.</b> In the base case Agency is ~10% of new paying customers but about 46% of February’s MRR. Direct outreach to agencies is the highest-value marketing.</li>
+<li><b>Not included:</b> salaries and contractors, office costs, income tax, annual-plan cash paid upfront (it would improve cash flow), and any price changes. Exchange rate R17.50/US$.</li>
+</ul>
+
+<h3>Launch timeline</h3>
+<table class="data"><thead><tr><th>When</th><th>What</th></tr></thead><tbody>
+<tr><th>1–15 November</th><td style="text-align:left">Worker pool and Cloud Storage live; trial clip limit; Payfast live tested; Meta, TikTok and YouTube approvals submitted; staging load test (readiness report checklist).</td></tr>
+<tr><th>16–29 November</th><td style="text-align:left">Creator partners signed and briefed; launch video and ads ready; agency outreach list; support inbox staffed.</td></tr>
+<tr><th>30 November</th><td style="text-align:left">Launch. Watch queue wait times, sign-ups, trial conversions and AI/voice/music spend daily.</td></tr>
+<tr><th>December</th><td style="text-align:left">Lean into creators (festive content), keep ads running at a lower budget during the shutdown weeks.</td></tr>
+<tr><th>January</th><td style="text-align:left">Back-to-work campaign from the second week; agency outreach; first annual-plan offer.</td></tr>
+<tr><th>February</th><td style="text-align:left">Scale what converted; review churn and plan mix; update this forecast with real numbers.</td></tr>
+</tbody></table>
+
+<h2>7. Sources</h2>
+<ul class="findings">
+<li>Social media users: <a href="https://www.citizen.co.za/news-south-africa/which-social-media-platforms-most-used-south-africa/">The Citizen, citing Ornico / World Wide Worx 2026</a></li>
+<li>SMMEs: <a href="https://www.absa.co.za/business/absa-small-business-growth-index-2025/">Absa Small Business Growth Index 2025</a>; <a href="https://businessreport.co.za/economy/2024-06-27-smmes-need-enabling-economic-environment-to-thrive">Business Report, citing SEDA</a></li>
+<li>Creators: <a href="https://thesalt.co.za/showcase/insights/half-a-million-creators-strong">theSalt: half a million creators</a></li>
+<li>Agencies: <a href="https://companydata.com/south-africa/marketing-companies/">CompanyData</a>; <a href="https://www.infobelpro.com/companies/south-africa/advertising-and-marketing-agencies">InfobelPRO</a></li>
+<li>Conversion benchmarks: <a href="https://www.crazyegg.com/blog/free-to-paid-conversion-rate/">CrazyEgg</a>; <a href="https://userpilot.com/blog/freemium-saas/">Userpilot</a></li>
+<li>Festive shutdown: <a href="https://businesstech.co.za/news/business/289578/the-cost-of-the-december-shutdown-to-business-in-south-africa/">BusinessTech</a>; <a href="https://www.yoco.com/za/blog/seasonal-spend-report-part-3/">Yoco seasonal spend report</a></li>
+<li>Costs: <code>scripts/capacity-model.mjs</code> and <code>scripts/pricing-model.mjs</code>. Re-run with <code>node scripts/launch-forecast.mjs</code> and <code>node scripts/build-forecast-doc.mjs</code>.</li>
+</ul>
+<footer>KenganSocial is operated by MiraiStack (registration K2025971590). A forecast built on stated assumptions and public estimates, not a promise of results; update it with real sign-up and conversion data after launch.</footer>
+</body></html>

@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { readyUsageRedis } from '../utils/usageRedis';
 import { RESERVE_USAGE, REFUND_USAGE } from '../services/usage-reservation';
-import { PLAN_LIMITS, PlanFeature, TRIAL_LIMITS } from '../utils/planLimits';
+import { MAX_SOURCE_MINUTES, PLAN_LIMITS, PlanFeature, TRIAL_LIMITS, TRIAL_MEDIA_PLAN } from '../utils/planLimits';
 import { getMonth, endOfMonth } from '../utils/dateUtils';
 
 export type UsageResult = { ok: boolean; status: number; body: Record<string, any> };
@@ -28,6 +28,17 @@ export function usageLimit(workspaceId: string, plan: string, feature: PlanFeatu
     const cap = (TRIAL_LIMITS as any)[feature] ?? limit;
     if (limit === 0) return 0;
     return limit === -1 ? cap : Math.min(limit, cap);
+}
+
+/**
+ * The plan whose video length limit and speech model apply: Creator Starter's while a trial runs
+ * (TRIAL_MEDIA_PLAN), otherwise the workspace's own plan.
+ */
+export function mediaPlan(workspaceId: string, plan: string): string {
+    const trialEnd = trials.get(workspaceId);
+    if (!trialEnd || trialEnd <= Date.now()) return plan;
+    const limit = (MAX_SOURCE_MINUTES as any)[plan] ?? 0;
+    return limit > MAX_SOURCE_MINUTES[TRIAL_MEDIA_PLAN] ? TRIAL_MEDIA_PLAN : plan;
 }
 
 /**

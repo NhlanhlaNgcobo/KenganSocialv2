@@ -470,3 +470,21 @@
     margin: 2px 0 0;
     font-size: 13px;
 }
+
+.clips-rights {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.clips-rights input {
+    margin-top: 3px;
+    accent-color: var(--accent-primary);
+}
+
+.clips-field-error {
+    color: var(--error, #e5484d);
+}

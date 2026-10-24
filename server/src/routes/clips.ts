@@ -8,7 +8,7 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { checkLimit, consumeUsage, planRateLimit, refundUsage } from '../middleware/planGate';
+import { checkLimit, consumeUsage, mediaPlan, planRateLimit, refundUsage } from '../middleware/planGate';
 import { MAX_SOURCE_MINUTES, transcriptionMinutes } from '../utils/planLimits';
 import { effectivePlan } from '../utils/trial';
 import { probe } from '../services/ffmpeg-runner.js';
@@ -89,7 +89,8 @@ async function runProject(
         const result: any = await enqueue(() =>
             createClips(
                 request,
-                { sourcePath, uid, workspaceId, plan, jobId: `clips_${id}`, db },
+                // The video service picks its speech model by plan; trials use Creator Starter's.
+                { sourcePath, uid, workspaceId, plan: mediaPlan(workspaceId, plan), jobId: `clips_${id}`, db },
                 {
                     onStage: (stage: string, progress: number, extra: Record<string, unknown> = {}) => {
                         const nowMs = Date.now();
@@ -175,13 +176,15 @@ async function chargeSource(sourcePath: string, workspaceId: string, plan: strin
     } catch {
         return { status: 400, body: { error: 'This file could not be read as a video. Try exporting it again as MP4.' } };
     }
-    const maxMinutes = (MAX_SOURCE_MINUTES as any)[plan] ?? 0;
+    const limitPlan = mediaPlan(workspaceId, plan);
+    const maxMinutes = (MAX_SOURCE_MINUTES as any)[limitPlan] ?? 0;
     if (seconds / 60 > maxMinutes) {
+        const who = limitPlan === plan ? 'Your plan turns' : 'During your free trial, KenganSocial turns';
         return {
             status: 402,
             body: {
                 error: 'VIDEO_TOO_LONG',
-                message: `This video is ${Math.round(seconds / 60)} minutes long. Your plan turns videos of up to ${maxMinutes} minutes into clips. Trim it or upgrade.`,
+                message: `This video is ${Math.round(seconds / 60)} minutes long. ${who} videos of up to ${maxMinutes} minutes into clips. Trim it or upgrade.`,
                 upgradeUrl: '/settings/billing',
             },
         };

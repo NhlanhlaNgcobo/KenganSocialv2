@@ -7,7 +7,7 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { consumeUsage, planRateLimit, refundUsage } from '../middleware/planGate';
+import { consumeUsage, mediaPlan, planRateLimit, refundUsage } from '../middleware/planGate';
 import { MAX_SOURCE_MINUTES, transcriptionMinutes, videoUnits } from '../utils/planLimits';
 import { fail, requireWorkspace, route } from '../services/marketing/http';
 import { probe } from '../services/ffmpeg-runner.js';
@@ -113,7 +113,7 @@ router.post(
         });
         const source = file ? { type: 'upload', title: path.parse(file.originalname || 'Reference').name.slice(0, 80) } : { type: 'link', url };
         try {
-            await enqueueAiEdit(ref.id, 'style', { videoPath: file?.path || '', outputDir: IMPORT_DIR, source, workspaceId, uid: (req as any).uid, plan });
+            await enqueueAiEdit(ref.id, 'style', { videoPath: file?.path || '', outputDir: IMPORT_DIR, source, workspaceId, uid: (req as any).uid, plan: mediaPlan(workspaceId, plan) });
         } catch {
             await ref.update({ status: 'failed', stage: 'Queue unavailable' });
             await refundUsage(workspaceId, plan, 'aiCalls', 5);
@@ -190,7 +190,7 @@ router.post(
         } catch {
             throw fail(400, 'This file could not be read as a video. Try exporting it again as MP4.');
         }
-        const maxMinutes = (MAX_SOURCE_MINUTES as any)[plan] ?? 0;
+        const maxMinutes = (MAX_SOURCE_MINUTES as any)[mediaPlan(workspaceId, plan)] ?? 0;
         if (seconds / 60 > maxMinutes) {
             return res.status(402).json({
                 error: 'VIDEO_TOO_LONG',
@@ -225,7 +225,7 @@ router.post(
             updatedAt: stamp,
         });
         try {
-            await enqueueAiEdit(ref.id, 'edit', { videoPath, profile, options, workspaceId, plan });
+            await enqueueAiEdit(ref.id, 'edit', { videoPath, profile, options, workspaceId, plan: mediaPlan(workspaceId, plan) });
         } catch {
             await ref.update({ status: 'failed', stage: 'Queue unavailable' });
             await refundUsage(workspaceId, plan, 'renders', renderUnits);

@@ -2,7 +2,7 @@ import { features, YOUTUBE_LINK_IMPORT_OFF } from '../utils/features';
 import express from 'express';
 import type { Request, Response } from 'express';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { checkLimit, consumeUsage, planRateLimit } from '../middleware/planGate';
+import { checkLimit, consumeUsage, mediaPlan, planRateLimit } from '../middleware/planGate';
 import { MAX_SOURCE_MINUTES, transcriptionMinutes } from '../utils/planLimits';
 import { probe } from '../services/ffmpeg-runner.js';
 import { getUploadPath } from '../services/manual-edit.service.js';
@@ -44,7 +44,7 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('aiCalls'), async (r
             if (body.rightsConfirmed !== true) {
                 return res.status(400).json({ error: 'Confirm that you own this video or have permission to repurpose it.' });
             }
-            const video = await fetchYouTubeText(text(source.url, 600), (req as any).plan);
+            const video = await fetchYouTubeText(text(source.url, 600), mediaPlan((req as any).workspaceId, (req as any).plan));
             title = video.title || title;
             content = [video.description ? `Video description: ${String(video.description).slice(0, 600)}` : '', video.text].filter(Boolean).join('\n\n');
             origin = { url: text(source.url, 600), siteName: video.channel || 'YouTube', kind: 'youtube', textSource: video.source };
@@ -53,13 +53,14 @@ router.post('/', withWorkspace, planRateLimit(), checkLimit('aiCalls'), async (r
             if (!filePath) return res.status(400).json({ error: 'Upload the video first. If you already did, upload it again.' });
             const plan = (req as any).plan;
             const seconds = (await probe(filePath).catch(() => ({ duration: 0 }))).duration || 0;
-            const maxMinutes = (MAX_SOURCE_MINUTES as any)[plan] ?? 0;
+            const limitPlan = mediaPlan((req as any).workspaceId, plan);
+            const maxMinutes = (MAX_SOURCE_MINUTES as any)[limitPlan] ?? 0;
             if (seconds / 60 > Math.max(maxMinutes, 10)) {
                 return res.status(402).json({ error: `This video is ${Math.round(seconds / 60)} minutes long. Your plan transcribes videos of up to ${Math.max(maxMinutes, 10)} minutes here.` });
             }
             const usage = await consumeUsage((req as any).workspaceId, plan, 'transcribeMinutes', transcriptionMinutes(seconds));
             if (!usage.ok) return res.status(usage.status).json(usage.body);
-            content = await transcribeUpload(filePath, { plan, workspaceId: (req as any).workspaceId });
+            content = await transcribeUpload(filePath, { plan: limitPlan, workspaceId: (req as any).workspaceId });
             title = title || text(source.name, 150) || 'Video';
             origin = { url: '', siteName: 'Uploaded video', kind: 'upload', textSource: 'transcription' };
         } else if (source.type === 'url') {

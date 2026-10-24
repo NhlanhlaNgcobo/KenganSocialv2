@@ -130,8 +130,9 @@ export const PLANS = [
     { id: 'agency', tier: 'agency', name: 'Agency', price: 3499, whisper: 'medium', maxSourceMin: 120, limits: { posts: 1000, exports: 80, transcribeMinutes: 1200, clipAnalysis: 15, aiCalls: 500, renders: 25, storageGB: 20 } },
     // Enterprise runs on the Agency tier in the app; custom extras are quoted from the unit costs.
     { id: 'enterprise', tier: 'agency', name: 'Enterprise', price: 8999, whisper: 'medium', maxSourceMin: 120, limits: { posts: 1000, exports: 80, transcribeMinutes: 1200, clipAnalysis: 15, aiCalls: 500, renders: 25, storageGB: 20 } },
-    // The 7-day trial unlocks every Agency feature but with Creator Starter quantities.
-    { id: 'trial', tier: 'agency', name: 'Trial (7 days)', price: 0, whisper: 'medium', maxSourceMin: 120, limits: { posts: 30, exports: 8, transcribeMinutes: 120, clipAnalysis: 3, aiCalls: 60, renders: 3, storageGB: 2 } },
+    // The 7-day trial unlocks every Agency feature but with Creator Starter quantities, video length
+    // and speech model (TRIAL_MEDIA_PLAN in server/src/utils/planLimits.ts).
+    { id: 'trial', tier: 'agency', name: 'Trial (7 days)', price: 0, whisper: 'base', maxSourceMin: 30, limits: { posts: 30, exports: 8, transcribeMinutes: 120, clipAnalysis: 3, aiCalls: 60, renders: 3, storageGB: 2 } },
 ];
 
 // ---------------------------------------------------------------------------------------------

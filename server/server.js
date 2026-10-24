@@ -6,7 +6,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
+import { apiRateLimits } from './src/middleware/rateLimits.js';
 import path from 'path';
 import { initializeFirebaseAdmin } from './src/config/firebase.js';
 import { getStorageDriver, LOCAL_UPLOAD_DIR } from './src/services/storage.service.js';
@@ -103,16 +103,8 @@ app.use(cors({
     credentials: true,
 }));
 
-// Rate limiting - Global baseline
-const globalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: process.env.NODE_ENV === 'production' ? 1000 : 5000,
-    message: { error: 'Too many requests from this IP.' },
-    // Platform webhooks are signature-verified and arrive in bursts from a few platform IPs;
-    // a 429 would make Meta/TikTok back off or disable the subscription.
-    skip: (req) => req.path.startsWith('/api/webhooks/'),
-});
-app.use(globalLimiter);
+// Rate limiting - baseline per signed-in user (plus a higher per-IP ceiling), counted in Redis
+app.use(...apiRateLimits());
 
 // Body parsing
 app.use(express.json({

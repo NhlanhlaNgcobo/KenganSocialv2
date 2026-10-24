@@ -72,6 +72,13 @@ export function transcriptionMinutes(seconds: number): number {
 /** Longest source video (minutes) a plan can turn into clips. Kept out of PLAN_LIMITS: it is not a monthly counter. */
 export const MAX_SOURCE_MINUTES = { starter: 0, nano: 30, creator: 60, agency: 120 } as const
 
+/**
+ * During the 7-day trial, video length and the speech model follow this plan (Creator Starter:
+ * 30 minutes, fast model). The trial keeps every Agency feature, but a 2-hour source on the
+ * slowest model costs about ten times as much to process (docs/forecast).
+ */
+export const TRIAL_MEDIA_PLAN = 'nano' as const
+
 /** Client brands a workspace can manage in Clients & approvals (-1 = unlimited, 0 = not on this plan).
  *  Approvals are for Creator Pro, Agency and Enterprise (Enterprise uses the agency tier). */
 export const MAX_CLIENTS = { starter: 0, nano: 0, creator: 5, agency: -1 } as const

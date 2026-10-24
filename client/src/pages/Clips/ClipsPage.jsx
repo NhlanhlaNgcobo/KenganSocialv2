@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CalendarPlus, Check, Copy, Download, Film, ImagePlus, Loader2, Lock, Play, RotateCcw, Scissors, Trash2, Upload, Wand2 } from 'lucide-react'
+import { ArrowLeft, CalendarPlus, Check, Copy, Download, Film, ImagePlus, Loader2, Lock, Play, RotateCcw, Scissors, Trash2, Upload, Wand2, Youtube } from 'lucide-react'
 import ThumbnailStudio from '../../components/thumbnails/ThumbnailStudio';
 import { useAuth } from '../../context/AuthContext';
 import ShortsSettings from '../../components/clips/ShortsSettings';
 import SaveToLibraryButton from '../../components/clients/SaveToLibraryButton';
 import { DEFAULT_SHORTS_OPTIONS, LAYOUTS, SHORT_PLATFORMS, shortsRequest } from '../../components/clips/shorts-options';
+import { apiClient } from '../../lib/api';
 import { clipsApi, formatTime, uploadVideo } from '../../lib/clips-api';
 import { useEditorStore } from '../../stores/editorStore';
 import { PLAN_DISPLAY_NAMES, PLAN_LIMITS } from '../../utils/planLimits';
@@ -67,6 +68,11 @@ function NewProject({ onCreated, onOpen }) {
     const [error, setError] = useState('');
     const [recent, setRecent] = useState(null);
     const [dragging, setDragging] = useState(false);
+    // Source: a file from this device, or a YouTube link when the server allows link imports.
+    const [from, setFrom] = useState('upload');
+    const [ytLinks, setYtLinks] = useState(false);
+    const [ytUrl, setYtUrl] = useState('');
+    const [ytRights, setYtRights] = useState(false);
     const inputRef = useRef(null);
     const set = (patch) => setOptions((o) => ({ ...o, ...patch }));
     // Checked before uploading so nobody uploads a 2 GB video only to be told their plan has no clips.
@@ -83,6 +89,12 @@ function NewProject({ onCreated, onOpen }) {
             navigate(location.pathname, { replace: true, state: null });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        apiClient('/features')
+            .then((f) => setYtLinks(!!f?.youtubeLinkImport))
+            .catch(() => setYtLinks(false));
     }, []);
 
     useEffect(() => {
@@ -112,13 +124,24 @@ function NewProject({ onCreated, onOpen }) {
         probe.src = url;
     };
 
+    const isYoutube = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch|shorts|live)|youtu\.be\/)/i.test(ytUrl.trim());
+    const fromLink = ytLinks && from === 'link';
+    const ready = fromLink ? isYoutube && ytRights : Boolean(file);
+
     const start = async () => {
-        if (!file || locked) return;
+        if (!ready || locked) return;
         setError('');
         setUpload(0);
         try {
-            const sourceUploadId = await uploadVideo(file, setUpload);
-            const { id } = await clipsApi.create({ ...shortsRequest(options), prompt: options.prompt, sourceUploadId, sourceName: file.name });
+            let id;
+            if (fromLink) {
+                const url = /^https?:\/\//i.test(ytUrl.trim()) ? ytUrl.trim() : `https://${ytUrl.trim()}`;
+                setUpload(100);
+                ({ id } = await clipsApi.fromUrl({ ...shortsRequest(options), prompt: options.prompt, url, rightsConfirmed: ytRights }));
+            } else {
+                const sourceUploadId = await uploadVideo(file, setUpload);
+                ({ id } = await clipsApi.create({ ...shortsRequest(options), prompt: options.prompt, sourceUploadId, sourceName: file.name }));
+            }
             onCreated(id);
         } catch (err) {
             setError(err.message || 'Could not start the clip project. Try again.');
@@ -134,7 +157,10 @@ function NewProject({ onCreated, onOpen }) {
             <header className="page-head">
                 <div>
                     <h1>Clips</h1>
-                    <p>Upload a long video (a podcast, interview, talk or vlog) and get short clips ranked by how likely they are to perform, reframed and captioned.</p>
+                    <p>
+                        Upload a long video{ytLinks ? ' or paste a YouTube link' : ''} (a podcast, interview, talk or vlog) and get short clips ranked by how likely they are to
+                        perform, reframed and captioned.
+                    </p>
                 </div>
             </header>
 
@@ -153,6 +179,36 @@ function NewProject({ onCreated, onOpen }) {
 
             <div className="clips-layout">
                 <section className="surface clips-form">
+                    {ytLinks ? (
+                        <div className="segmented" role="tablist" aria-label="Video source">
+                            <button role="tab" aria-selected={!fromLink} className={!fromLink ? 'is-active' : ''} onClick={() => setFrom('upload')} disabled={busy}>
+                                <Upload size={15} /> Upload from device
+                            </button>
+                            <button role="tab" aria-selected={fromLink} className={fromLink ? 'is-active' : ''} onClick={() => setFrom('link')} disabled={busy}>
+                                <Youtube size={15} /> YouTube link
+                            </button>
+                        </div>
+                    ) : null}
+
+                    {fromLink ? (
+                        <>
+                            <label className="field">
+                                <span>YouTube video link</span>
+                                <input
+                                    className="input"
+                                    placeholder="https://www.youtube.com/watch?v=…"
+                                    value={ytUrl}
+                                    onChange={(e) => setYtUrl(e.target.value)}
+                                    disabled={busy}
+                                />
+                                {ytUrl.trim() && !isYoutube ? <small className="clips-field-error">Paste a youtube.com/watch, youtu.be or /shorts link.</small> : null}
+                            </label>
+                            <label className="clips-rights">
+                                <input type="checkbox" checked={ytRights} onChange={(e) => setYtRights(e.target.checked)} disabled={busy} />
+                                <span>I own this video or have permission to repurpose it.</span>
+                            </label>
+                        </>
+                    ) : (
                     <div
                         className={`clips-drop ${dragging ? 'is-dragging' : ''} ${file ? 'has-file' : ''}`}
                         onDragOver={(e) => {
@@ -188,6 +244,7 @@ function NewProject({ onCreated, onOpen }) {
                             </>
                         )}
                     </div>
+                    )}
 
                     <ShortsSettings value={options} onChange={set} disabled={busy} />
 
@@ -207,14 +264,14 @@ function NewProject({ onCreated, onOpen }) {
                         <small>Leave empty to get the strongest clips overall.</small>
                     </label>
 
-                    {tooShort ? <div className="clips-warning">This video is under 20 seconds. Clips work best from videos a few minutes or longer.</div> : null}
+                    {!fromLink && tooShort ? <div className="clips-warning">This video is under 20 seconds. Clips work best from videos a few minutes or longer.</div> : null}
                     {error ? <div className="error-banner">{error}</div> : null}
 
                     {busy ? (
                         <div className="clips-upload">
                             <div className="clips-upload__row">
                                 <Loader2 size={15} className="spin" />
-                                <span>{upload < 100 ? `Uploading… ${upload}%` : 'Starting…'}</span>
+                                <span>{fromLink ? 'Fetching the video from YouTube…' : upload < 100 ? `Uploading… ${upload}%` : 'Starting…'}</span>
                             </div>
                             <div className="progress">
                                 <div style={{ width: `${upload}%` }} />
@@ -224,10 +281,10 @@ function NewProject({ onCreated, onOpen }) {
                         <button
                             className="btn btn-primary btn-block"
                             onClick={start}
-                            disabled={!file || locked || !options.platform}
+                            disabled={!ready || locked || !options.platform}
                             title={locked ? 'Upgrade your plan to use Clips' : !options.platform ? 'Choose where the shorts are going first' : undefined}
                         >
-                            {locked ? <Lock size={16} /> : <Wand2 size={16} />} {file && !options.platform ? 'Choose a platform above' : 'Find clips'}
+                            {locked ? <Lock size={16} /> : <Wand2 size={16} />} {ready && !options.platform ? 'Choose a platform above' : 'Find clips'}
                         </button>
                     )}
                 </section>
