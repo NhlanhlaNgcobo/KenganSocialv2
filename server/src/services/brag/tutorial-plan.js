@@ -1,4 +1,5 @@
 import { generateJson } from '../gemini-json.js';
+import { aiFeature } from '../../config/ai-features.ts';
 import { headline as headlineText, shortLine } from './text.js';
 
 /**
@@ -238,6 +239,7 @@ export async function planTutorial(app, { focus = '' } = {}) {
     let planner = 'fallback';
     let built = null;
     try {
+        if (!aiFeature('storyboardAi')) throw new Error('AI storyboards are switched off');
         const parts = [{ text: promptFor(app) + (focus ? `\nThe user wants the tutorial to focus on: ${focus}` : '') }];
         built = fromModel(await generateJson(parts), app);
         if (built) planner = 'ai';

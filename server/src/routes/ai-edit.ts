@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
 import os from 'os';
 import path from 'path';
@@ -15,6 +15,7 @@ import { getUploadPath } from '../services/manual-edit.service.js';
 import { jobs } from '../services/ai-edit/jobs.js';
 import { enqueueAiEdit } from '../services/jobs/ai-edit-queue';
 import { PRESETS, sanitizeProfile } from '../services/ai-edit/profile.js';
+import { COMING_SOON, aiFeature } from '../config/ai-features';
 
 /**
  * AI Edit: edit raw footage in the style of a reference video.
@@ -73,6 +74,7 @@ router.get(
 
 router.post(
     '/styles/analyze',
+    (_req: Request, res: Response, next: NextFunction) => (aiFeature('styleLearning') ? next() : res.status(403).json({ error: 'FEATURE_COMING_SOON', message: COMING_SOON })),
     planRateLimit(),
     (req, res, next) => {
         fs.mkdirSync(IMPORT_DIR, { recursive: true });

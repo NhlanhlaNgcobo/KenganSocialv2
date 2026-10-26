@@ -16,6 +16,7 @@ import { getMonth } from '../utils/dateUtils.ts';
 import { effectivePlan, trialEndsAt } from '../utils/trial.ts';
 import { applyDevPlanOverride } from '../utils/devPlan.ts';
 import { CREDIT_COSTS } from '../utils/planLimits.ts';
+import { aiFeatureStatus } from '../config/ai-features.ts';
 
 /**
  * These AI Writer endpoints charge the workspace's monthly plan AI credits (the same allowance as
@@ -176,7 +177,8 @@ export async function generateMediaRequest(req, res) {
  * Which optional AI features are configured on this server.
  */
 export function getAiStatus(_req, res) {
-    res.json({ imageGeneration: mediaGenerationAvailable() });
+    // aiFeatures: which optional AI features are switched on (LAUNCH_AI_FEATURES), so the app can say "coming soon".
+    res.json({ imageGeneration: mediaGenerationAvailable(), aiFeatures: aiFeatureStatus() });
 }
 
 // -------------------------------------------------------

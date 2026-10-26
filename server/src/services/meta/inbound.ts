@@ -35,6 +35,7 @@ import {
     suggestReply,
     type RunClaim,
 } from './rules';
+import { aiFeature } from '../../config/ai-features';
 
 /**
  * One incoming Instagram DM or Facebook Messenger message (webhook events instagram.message and
@@ -95,7 +96,7 @@ export async function handleMetaMessage(platform: MetaChannel, accountId: string
     const queued = workspaceRef(workspaceId).collection('dmQueue').doc(`evt_${eventKey}`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 200));
     if ((await queued.get()).exists) return workspaceId; // added by an earlier attempt of this event
     // The AI draft costs a credit; out of credits, the message is still queued for a manual reply.
-    const paid = (await consumeUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.text)).ok;
+    const paid = aiFeature('dmDrafts') && (await consumeUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.text)).ok;
     const draft = paid ? await suggestReply(original, platform) : '';
     try {
         await queued.create({

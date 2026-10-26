@@ -1,6 +1,7 @@
 import { generateJson } from '../gemini-json.js';
 import { cleanText, featureBeats, findCta, findHook, findStat, isNoise, listItems, matchParagraph } from './story.js';
 import { headline as headlineText, shortLine, sublineText } from './text.js';
+import { aiFeature } from '../../config/ai-features.ts';
 
 /**
  * Step 2 of the launch-video pipeline: the storyboard.
@@ -288,6 +289,7 @@ export async function planVideo(source, { tone, format, duration, focus }) {
     for (const shot of (source.screenshots || []).slice(0, 4)) {
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: shot.split(',')[1] } });
     }
+    if (!aiFeature('storyboardAi')) return { plan: fallbackPlan(source, tone, duration), planner: 'fallback' };
     try {
         return { plan: normalizePlan(await generateJson(parts), source, tone, duration), planner: 'ai' };
     } catch (error) {

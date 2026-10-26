@@ -27,6 +27,7 @@ import schedulerRoutes from './src/routes/scheduler.routes.js';
 import webhooksRoutes from './src/routes/webhooks.routes.js';
 import manualEditRoutes from './src/routes/manual-edit.routes.js';
 import { startPostRecovery, stopPostQueue } from './src/queues/postQueue.ts';
+import { aiFeatureStatus } from './src/config/ai-features.ts';
 import connectionsRouter, { startTokenRefreshCron } from './src/routes/connections.ts';
 import privacyRoutes from './src/routes/privacy.ts';
 import { features } from './src/utils/features.ts';
@@ -220,6 +221,8 @@ app.use((err, req, res, next) => {
 let inlineAiWorker = null;
 const server = app.listen(PORT, () => {
     console.log(`🚀 KenganSocial API running on http://localhost:${PORT}`);
+    const aiOn = Object.entries(aiFeatureStatus()).filter(([, on]) => on).map(([id]) => id);
+    console.log(`[AI] Optional AI features on: ${aiOn.length ? aiOn.join(', ') : 'none (launch mode: core AI only)'}`);
 
     // Scheduled posts publish through the BullMQ queue (src/queues/postQueue.ts); this re-queues
     // any pending post that is missing from it (e.g. saved while Redis was unreachable).

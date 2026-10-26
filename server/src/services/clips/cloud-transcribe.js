@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { FFMPEG, run } from '../ffmpeg-runner.js';
 import { whisperProviders, whisperTranscribe } from '../speech/whisper-api.js';
+import { aiFeature } from '../../config/ai-features.ts';
 
 /**
  * Cloud transcription for clip projects. A long video on CPU Whisper takes about as long as the
@@ -19,7 +20,7 @@ const CONCURRENCY = 3;
 
 export function useCloudTranscription(durationSeconds) {
     const mode = String(process.env.CLIP_TRANSCRIBE || 'auto').toLowerCase();
-    if (mode === 'local' || !whisperProviders().length) return false;
+    if (mode === 'local' || !whisperProviders().length || !aiFeature('cloudTranscription')) return false;
     if (mode === 'cloud') return true;
     const threshold = Number(process.env.CLOUD_TRANSCRIBE_MIN_MINUTES || 10);
     return durationSeconds >= (Number.isFinite(threshold) && threshold > 0 ? threshold : 10) * 60;

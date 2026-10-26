@@ -4,6 +4,7 @@ import { withWorkspace } from '../middleware/withWorkspace';
 import { analyzeLyrics, syncLyrics } from '../services/lyrics/analyze.js';
 import { consumeUsage, planRateLimit, refundUsage } from '../middleware/planGate';
 import { CREDIT_COSTS } from '../utils/planLimits';
+import { COMING_SOON, aiFeature } from '../config/ai-features';
 
 /**
  * POST /api/lyrics/analyze (multipart)
@@ -42,11 +43,18 @@ router.post('/analyze', withWorkspace, planRateLimit(), handleUpload, async (req
     // Speech-to-text plus a large model structuring the song: the costliest AI action, in credits.
     const workspaceId = (req as any).workspaceId;
     const plan = (req as any).plan || 'starter';
-    const usage = await consumeUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.lyrics);
-    if (!usage.ok) return res.status(usage.status).json(usage.body);
+    const pasted = typeof req.body.lyrics === 'string' && req.body.lyrics.trim().length > 0;
+    // With lyrics AI switched off, pasted lyrics get the built-in analysis (free); audio alone can't be read.
+    const ai = aiFeature('lyricsAi');
+    if (!ai && !pasted) return res.status(403).json({ error: 'FEATURE_COMING_SOON', message: `${COMING_SOON} Paste the lyrics instead.` });
+    if (ai) {
+        const usage = await consumeUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.lyrics);
+        if (!usage.ok) return res.status(usage.status).json(usage.body);
+    }
     try {
         const energy = Number(req.body.energy);
         const analysis = await analyzeLyrics({
+            ai,
             audio: req.file ?? null,
             lyrics: typeof req.body.lyrics === 'string' ? req.body.lyrics.slice(0, 20_000) : '',
             duration: Number(req.body.duration),
@@ -54,7 +62,7 @@ router.post('/analyze', withWorkspace, planRateLimit(), handleUpload, async (req
         });
         res.json(analysis);
     } catch (error: any) {
-        await refundUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.lyrics);
+        if (ai) await refundUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.lyrics);
         if (error.status === 400) return res.status(400).json({ error: error.message });
         console.error('[Lyrics] Analyze failed:', error.message);
         res.status(502).json({ error: 'Lyric analysis failed. Try again, or paste the lyrics.' });
@@ -69,6 +77,7 @@ router.post('/analyze', withWorkspace, planRateLimit(), handleUpload, async (req
  * → LyricAnalysis with the user's exact lines, timed to the sung words
  */
 router.post('/sync', withWorkspace, planRateLimit(), handleUpload, async (req: Request, res: Response) => {
+    if (!aiFeature('lyricsAi')) return res.status(403).json({ error: 'FEATURE_COMING_SOON', message: `${COMING_SOON} Use Place automatically or Tap along instead.` });
     const workspaceId = (req as any).workspaceId;
     const plan = (req as any).plan || 'starter';
     let lines: unknown = [];

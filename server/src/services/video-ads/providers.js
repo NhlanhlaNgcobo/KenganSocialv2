@@ -2,12 +2,13 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { safeGet } from '../../utils/safe-fetch.js';
 import { problem } from './validation.js';
 import { AD_MOODS } from './catalog.js';
+import { COMING_SOON, aiFeature } from '../../config/ai-features.ts';
 
 const ELEVEN = 'https://api.elevenlabs.io/v1';
 const TREBLO = 'https://api.treblo.com/v1';
 
 export function providerStatus() {
-    return { voice: !!process.env.ELEVENLABS_API_KEY, music: !!process.env.TREBLO_API_KEY };
+    return { voice: !!process.env.ELEVENLABS_API_KEY && aiFeature('voiceover'), music: !!process.env.TREBLO_API_KEY && aiFeature('aiMusic') };
 }
 async function request(url, init, provider, fetcher = fetch) {
     let response;
@@ -23,6 +24,7 @@ async function request(url, init, provider, fetcher = fetch) {
     return response.json();
 }
 function key(name) {
+    if (!aiFeature(name === 'ELEVENLABS_API_KEY' ? 'voiceover' : 'aiMusic')) throw problem(503, COMING_SOON);
     if (!process.env[name]) throw problem(503, `${name === 'ELEVENLABS_API_KEY' ? 'Voiceover' : 'Music'} generation is not configured on the server.`);
     return process.env[name];
 }

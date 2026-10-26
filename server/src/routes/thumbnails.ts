@@ -10,6 +10,7 @@ import { getUploadPath } from '../services/manual-edit.service.js';
 import { loadClipBrand } from '../services/clips/brand.js';
 import { background, backgroundsAvailable, candidate, candidates, headlines } from '../services/thumbnails/index.js';
 import { FORMATS, STYLES, frameImage, renderThumbnail } from '../services/thumbnails/render.js';
+import { aiFeature } from '../config/ai-features';
 
 /**
  * Thumbnails for TikTok covers and YouTube (Clips and the video editor).
@@ -45,7 +46,7 @@ router.post('/candidates', planRateLimit(), async (req: Request, res: Response) 
 router.post('/headlines', planRateLimit(), async (req: Request, res: Response) => {
     const s = (v: unknown, n: number) => String(v || '').slice(0, n);
     // AI headline ideas cost a credit; without credits (or AI) they are built from the clip's own words.
-    const ai = aiConfigured() && (await consumeUsage((req as any).workspaceId, (req as any).plan || 'starter', 'aiCalls', CREDIT_COSTS.headlines)).ok;
+    const ai = aiFeature('thumbnailHeadlines') && aiConfigured() && (await consumeUsage((req as any).workspaceId, (req as any).plan || 'starter', 'aiCalls', CREDIT_COSTS.headlines)).ok;
     res.json(await headlines({ title: s(req.body?.title, 200), hook: s(req.body?.hook, 300), caption: s(req.body?.caption, 600), transcript: s(req.body?.transcript, 4000), allowAi: ai }));
 });
 

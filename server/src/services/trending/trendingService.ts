@@ -2,6 +2,7 @@ import axios from 'axios';
 import { db } from '../../utils/firestore';
 import { FieldValue } from 'firebase-admin/firestore';
 import { CHAT_MODEL, chatClient, parseJsonReply } from '../llm-client.js';
+import { aiFeature } from '../../config/ai-features';
 
 const openai = chatClient;
 
@@ -162,7 +163,7 @@ export async function fetchTrendingResult(
     })());
 
     // Source C: Perplexity (online search) — only for nano, creator, agency plans
-    if (plan !== 'starter' && PERPLEXITY_API_KEY) sources.push((async () => {
+    if (plan !== 'starter' && PERPLEXITY_API_KEY && aiFeature('trendingSearch')) sources.push((async () => {
         try {
             const pxRes = await axios.post('https://api.perplexity.ai/chat/completions', {
                 model: PERPLEXITY_MODEL,

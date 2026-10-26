@@ -6,6 +6,7 @@ import { CHAT_MODEL, chatClient } from '../services/llm-client.js';
 import { withWorkspace } from '../middleware/withWorkspace';
 import { requirePlan } from '../middleware/planGate';
 import { csvCell, sanitizeImport, sanitizeLeadUpdate, sanitizeNewLead } from '../services/leads/sanitize';
+import { aiFeature } from '../config/ai-features';
 
 // mergeParams: the workspace comes from /api/workspaces/:workspaceId/leads.
 const router = express.Router({ mergeParams: true });
@@ -132,7 +133,8 @@ router.post('/:id/dm', ...guard, route(async (req, res) => {
         });
     }
 
-    const aiRes = await openai.chat.completions.create({
+    const template = `Hey ${lead.displayName || lead.username || 'there'}, thanks for reaching out! We'd love to work with you. Can we tell you more?`;
+    const aiRes = !aiFeature('dmDrafts') ? null : await openai.chat.completions.create({
         model: CHAT_MODEL,
         messages: [
             {
@@ -145,7 +147,7 @@ router.post('/:id/dm', ...guard, route(async (req, res) => {
             },
         ],
     });
-    const reply = aiRes.choices[0]?.message?.content?.trim() || `Hey ${lead.username}, would love to collaborate!`;
+    const reply = aiRes?.choices[0]?.message?.content?.trim() || template;
 
     await db.collection('workspaces').doc((req as any).workspaceId).collection('dmQueue').add({
         leadId: docSnap.id,

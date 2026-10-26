@@ -17,6 +17,7 @@ import { inChromeQueue } from '../services/marketing/chrome-queue.js';
 import { fail, requireEditor, requireWorkspace, route } from '../services/marketing/http';
 import carouselRoutes from './marketing-carousels';
 import videoAdRoutes from './marketing-video-ads';
+import { aiFeature } from '../config/ai-features';
 
 /**
  * Marketing tab, phase 1: brand kit, brand voice and the reference image library.
@@ -312,7 +313,7 @@ router.post('/references/style', requireEditor, planRateLimit(), checkLimit('aiC
 // ─── Set up from website (launch-video style: read → understand → apply) ─────
 
 const jobsCol = (req: Request) => db.collection('workspaces').doc((req as any).workspaceId).collection('marketingJobs');
-const aiAllowed = (plan: string) => aiConfigured() && ((PLAN_LIMITS as any)[plan]?.aiCalls ?? 0) !== 0;
+const aiAllowed = (plan: string) => aiFeature('websiteAi') && aiConfigured() && ((PLAN_LIMITS as any)[plan]?.aiCalls ?? 0) !== 0;
 
 router.post('/setup/website', requireEditor, planRateLimit(), route(async (req, res) => {
     const url = text(req.body?.url, 500);

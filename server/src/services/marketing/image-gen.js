@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { aiFeature } from '../../config/ai-features.ts';
 
 /**
  * AI image generation behind one adapter.
@@ -31,7 +32,8 @@ const MODELS = {
 
 export function imageProviders() {
     return {
-        openrouter: !!process.env.OPENROUTER_API_KEY,
+        // Paid AI images only when switched on (LAUNCH_AI_FEATURES); free Pollinations images stay.
+        openrouter: !!process.env.OPENROUTER_API_KEY && aiFeature('aiImages'),
         pollinations: !!process.env.POLLINATIONS_API_KEY,
     };
 }

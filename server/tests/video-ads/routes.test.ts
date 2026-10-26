@@ -5,6 +5,10 @@ import express from 'express';
 import { db } from '../../src/utils/firestore';
 import { redis } from '../../src/utils/redis';
 
+// These tests exercise the voice and music adapters themselves, which the launch default
+// (LAUNCH_AI_FEATURES) switches off: switch the optional AI features on for them.
+process.env.LAUNCH_AI_FEATURES = 'all';
+
 test('HTTP routes enforce tenant/role boundaries and idempotent render submission', async () => {
     const id = '22222222-2222-4222-8222-222222222222';
     const records = new Map<string, any>([[id, { workspaceId: 'mine', userId: 'owner', name: 'Bottle', duration: 20, format: 'vertical', script: 'Meet the bottle.', status: 'draft', createdAt: 1, scenes: [] }]]);

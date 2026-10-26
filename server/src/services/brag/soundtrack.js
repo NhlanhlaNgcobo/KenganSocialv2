@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { FFMPEG, run } from '../ffmpeg-runner.js';
 import { getSong, getSongFile, searchInstrumentals } from '../songs-library.js';
 import { startMusic, waitForMusic } from '../video-ads/providers.js';
+import { aiFeature } from '../../config/ai-features.ts';
 
 /**
  * Soundtracks for launch and tutorial videos.
@@ -259,7 +260,7 @@ async function candidates(mood, minSeconds, exclude) {
  * Null when Treblo isn't configured or fails, so the caller falls back to the library.
  */
 async function composedTrack(mood, length, purpose) {
-    if (!process.env.TREBLO_API_KEY) return null;
+    if (!process.env.TREBLO_API_KEY || !aiFeature('aiMusic')) return null;
     fs.mkdirSync(WORK_DIR, { recursive: true });
     const file = path.join(WORK_DIR, `treblo_${uuidv4()}.mp3`);
     try {

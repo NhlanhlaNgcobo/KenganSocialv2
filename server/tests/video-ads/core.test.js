@@ -6,6 +6,10 @@ import { resolveMood } from '../../src/services/video-ads/catalog.js';
 import { jobDirectory } from '../../src/services/video-ads/media.js';
 import { createSpeech, startMusic, waitForMusic, musicPrompt } from '../../src/services/video-ads/providers.js';
 
+// These tests exercise the voice and music adapters themselves, which the launch default
+// (LAUNCH_AI_FEATURES) switches off: switch the optional AI features on for them.
+process.env.LAUNCH_AI_FEATURES = 'all';
+
 test('product ad details need photos and a name, and only offer supported choices', () => {
     assert.throws(() => normalizeSource({ name: 'Bottle' }, 0), /photo/);
     assert.throws(() => normalizeSource({}, 1), /name/);

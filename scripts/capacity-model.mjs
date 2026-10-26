@@ -34,6 +34,25 @@ export const MEASURED = {
 };
 const vmSeconds = ({ wall, cpu }) => Math.max(wall, (cpu * 1.2) / 4);
 
+/**
+ * Optional AI features (server/src/config/ai-features.ts, LAUNCH_AI_FEATURES).
+ *  all:    every optional feature on; long clip videos (>= 10 min) use cloud transcription (CLIP_TRANSCRIBE=auto)
+ *  launch: core AI only; voiceover, AI music, AI storyboards, paid images, lyrics AI, trending search,
+ *          DM drafts, style learning and cloud transcription off (their non-AI versions run instead)
+ * Typical provider cost of one AI credit actually spent (US$), from what credits are spent on:
+ *  text call ~2k tokens in + 800 out on Haiku 4.5 = $0.006 per credit
+ *  fast image $0.067 for 5 credits = $0.0134; lyrics ~$0.25 for 17 = $0.0147; website/style ~$0.01
+ *  all:    60% text, 20% images, 10% lyrics, 10% website/style = $0.0088 per credit
+ *  launch: text only = $0.006 per credit
+ * At 100% use the worst case (CREDIT_COST, $0.015 per credit) is used for both.
+ */
+export const AI_MODES = {
+    all: { label: 'All AI features on', typicalCreditUsd: 0.6 * 0.006 + 0.2 * 0.0134 + 0.1 * 0.0147 + 0.1 * 0.01, cloudSttFromMin: 10, voice: true, music: true, storyboardAi: true },
+    launch: { label: 'Launch: core AI only', typicalCreditUsd: 0.006, cloudSttFromMin: Infinity, voice: false, music: false, storyboardAi: false },
+    // Recommended: launch set plus cloud transcription for long videos (keeps clip waits short).
+    launchStt: { label: 'Launch + cloud transcription', typicalCreditUsd: 0.006, cloudSttFromMin: 10, voice: false, music: false, storyboardAi: false },
+};
+
 /** Service time (seconds on one 4-vCPU worker) per job. */
 export const SERVICE = {
     render: { typical: vmSeconds(MEASURED.productAd25), full: 30 * COMPUTE.remotion + COMPUTE.capture }, // ad/launch/tutorial or 5 min AI edit
@@ -81,10 +100,11 @@ export function serversFor(lambdaPerSec, serviceSec, { seconds, probability }) {
 }
 
 /** Monthly work for `users` customers of one plan at utilisation `u`. */
-function workload(plan, users, u, cloudStt = false) {
+function workload(plan, users, u, cloudStt = false, ai = null) {
     const L = plan.limits;
     const typical = u < 1;
     const sourceMin = typical ? plan.maxSourceMin / 2 : plan.maxSourceMin;
+    if (ai) cloudStt = sourceMin >= AI_MODES[ai].cloudSttFromMin;
     const clipJob = plan.maxSourceMin ? SERVICE.clipProject(sourceMin, plan.whisper || 'base', typical ? 5 : 10, typical ? 25 : 60, cloudStt) : 0;
     const jobs = {
         clips: users * L.clipAnalysis * u,
@@ -97,16 +117,21 @@ function workload(plan, users, u, cloudStt = false) {
 }
 
 /** Provider (third-party) costs for one plan, in rand per month. */
-function providerCosts(plan, users, u, sourceMin, cloudStt = false) {
+function providerCosts(plan, users, u, sourceMin, cloudStt = false, ai = null) {
     const L = plan.limits;
     const chunk = 8500 * PROVIDER.haikuIn + 8000 * PROVIDER.haikuOut;
+    const mode = ai ? AI_MODES[ai] : AI_MODES.all;
+    if (ai) cloudStt = sourceMin >= mode.cloudSttFromMin;
+    const music = mode.music ? PROVIDER.trebloTrack : 0;
     const renderProvider = Math.max(
-        8000 * PROVIDER.haikuOut + 8000 * PROVIDER.haikuIn + PROVIDER.trebloTrack + PROVIDER.remotionRender,
-        60 * 6 * PROVIDER.elevenPerChar + PROVIDER.trebloTrack + PROVIDER.remotionRender
+        (mode.storyboardAi ? 8000 * PROVIDER.haikuOut + 8000 * PROVIDER.haikuIn : 0) + music + PROVIDER.remotionRender,
+        (mode.voice ? 60 * 6 * PROVIDER.elevenPerChar : 0) + music + PROVIDER.remotionRender
     );
     const units = unitCosts();
+    // Per credit: the worst case at full use; at typical use what credits are really spent on (by AI mode).
+    const perCredit = ai && u < 1 ? usdToCost(mode.typicalCreditUsd) : CREDIT_COST;
     return {
-        'AI credits': users * L.aiCalls * u * CREDIT_COST,
+        'AI credits': users * L.aiCalls * u * perCredit,
         'Clip AI (transcript ranking)': users * L.clipAnalysis * u * usdToCost(Math.max(1, Math.ceil(sourceMin / 20)) * chunk),
         'Voice, music, render licence': users * L.renders * u * usdToCost(renderProvider),
         'Post delivery (egress)': users * L.posts * u * usdToCost(0.05 * 0.12),
@@ -126,7 +151,7 @@ function revenue(plan, users) {
 }
 
 /** Fleet, costs and profit for a population: [{ plan, users }]. */
-export function evaluate(population, u, { spot = false, cloudStt = false } = {}) {
+export function evaluate(population, u, { spot = false, cloudStt = false, ai = null } = {}) {
     let lambda = { short: 0, clips: 0 };
     let weighted = { short: 0, clips: 0 };
     let vmSecondsMonth = 0;
@@ -136,7 +161,7 @@ export function evaluate(population, u, { spot = false, cloudStt = false } = {})
     let storageGb = 0;
     for (const { plan, users } of population) {
         if (!users) continue;
-        const w = workload(plan, users, u, cloudStt);
+        const w = workload(plan, users, u, cloudStt, ai);
         vmSecondsMonth += w.vmSecondsMonth;
         for (const k of Object.keys(jobs)) jobs[k] += w.jobs[k];
         const peak = (n) => (n * PEAK_SHARE) / 3600; // arrivals per second at the busiest hour
@@ -144,7 +169,7 @@ export function evaluate(population, u, { spot = false, cloudStt = false } = {})
         weighted.short += peak(w.jobs.renders) * w.service.renders + peak(w.jobs.exports) * w.service.exports;
         lambda.clips += peak(w.jobs.clips);
         weighted.clips += peak(w.jobs.clips) * w.service.clips;
-        for (const [k, v] of Object.entries(providerCosts(plan, users, u, w.sourceMin, cloudStt))) providers[k] = (providers[k] || 0) + v;
+        for (const [k, v] of Object.entries(providerCosts(plan, users, u, w.sourceMin, cloudStt, ai))) providers[k] = (providers[k] || 0) + v;
         const r = revenue(plan, users);
         rev = { gross: rev.gross + r.gross, net: rev.net + r.net, fees: rev.fees + r.fees };
         storageGb += users * plan.limits.storageGB * u;
@@ -211,13 +236,23 @@ export function run() {
         mix[`${s}Spot`] = evaluate(mixPop, u, { spot: true });
         mix[`${s}CloudStt`] = evaluate(mixPop, u, { cloudStt: true });
     }
+    // Optional AI features: all on versus the launch set, for the mix and for each plan.
+    const aiModes = { mix: {}, perPlan: {} };
+    for (const ai of Object.keys(AI_MODES)) {
+        aiModes.mix[ai] = {};
+        for (const [s, u] of Object.entries(SCENARIOS)) aiModes.mix[ai][s] = evaluate(mixPop, u, { ai });
+        for (const plan of paidAndFree) {
+            aiModes.perPlan[plan.id] ||= { name: plan.name, price: plan.price };
+            aiModes.perPlan[plan.id][ai] = evaluate([{ plan, users: USERS }], SCENARIOS.typical, { ai });
+        }
+    }
     // Break-even: paying users (in the mix's paid proportions) needed to cover fixed + base infrastructure.
     const paid = mixPop.filter(({ plan }) => plan.price > 0);
     const paidShare = paid.reduce((a, p) => a + p.users, 0);
     const perPaidUser = evaluate(paid.map(({ plan, users }) => ({ plan, users: users / paidShare })), SCENARIOS.typical);
     const fixedBase = Object.values(FIXED_MONTHLY).reduce((a, b) => a + b, 0) + zar(INFRA.vmUsd * INFRA.apiVms + INFRA.webHostingUsd + INFRA.vmUsd * 2);
     const contribution = perPaidUser.revenue.net - perPaidUser.revenue.fees - Object.values(perPaidUser.providers).reduce((a, b) => a + b, 0) - perPaidUser.workerVariable;
-    return { USERS, MIX, SCENARIOS, MEASURED, SERVICE: { render: SERVICE.render, exportUnit: SERVICE.exportUnit }, CLIP_CALIBRATION, PEAK_SHARE, TARGETS, INFRA, ECON, perPlan, mix, breakEven: { fixedBase, contributionPerPaidUser: contribution, paidUsers: Math.ceil(fixedBase / contribution) } };
+    return { AI_MODES, aiModes, USERS, MIX, SCENARIOS, MEASURED, SERVICE: { render: SERVICE.render, exportUnit: SERVICE.exportUnit }, CLIP_CALIBRATION, PEAK_SHARE, TARGETS, INFRA, ECON, perPlan, mix, breakEven: { fixedBase, contributionPerPaidUser: contribution, paidUsers: Math.ceil(fixedBase / contribution) } };
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop());
@@ -237,6 +272,10 @@ if (isMain) {
             console.log(line('Mix (spot workers)', r.mix[`${s}Spot`]));
             console.log(line('Mix (cloud STT)', r.mix[`${s}CloudStt`]));
             console.log(line('Agency (cloud STT)', r.perPlan.agency[`${s}CloudStt`]));
+        }
+        for (const ai of Object.keys(AI_MODES)) {
+            console.log(`\n== ${AI_MODES[ai].label}: realistic mix of 1,000 users ==`);
+            for (const s of Object.keys(SCENARIOS)) console.log(line(`${s} use`, r.aiModes.mix[ai][s]));
         }
         console.log(`\nbreak-even: ~${r.breakEven.paidUsers} paying users cover ${R(r.breakEven.fixedBase)}/month of fixed and base costs`);
     }

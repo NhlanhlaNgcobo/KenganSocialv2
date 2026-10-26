@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>1,000 users at launch with fewer AI features</title>
+<style>
+@page { size: A4; margin: 15mm 14mm 16mm; }
+* { box-sizing: border-box; }
+body { font-family: "Segoe UI", Arial, sans-serif; color: #15171c; font-size: 9.8pt; line-height: 1.45; margin: 0; }
+h1 { font-size: 20pt; margin: 0 0 1mm; }
+h2 { font-size: 13pt; margin: 7mm 0 2mm; padding-bottom: 1mm; border-bottom: 1px solid #d4d7dd; break-after: avoid; }
+p { margin: 0 0 2.2mm; }
+.sub { color: #555b66; margin-bottom: 5mm; }
+.box { background: #f3f4f6; border-left: 3px solid #15171c; padding: 3mm 4mm; margin: 2mm 0 3mm; }
+table { width: 100%; border-collapse: collapse; margin: 1.5mm 0 3mm; break-inside: avoid; font-size: 9pt; }
+th, td { padding: 1.4mm 2mm; border-bottom: 1px solid #e4e6ea; text-align: right; vertical-align: top; }
+th:first-child, td:first-child, .l { text-align: left; }
+th { background: #f6f7f9; font-weight: 600; }
+.good { color: #116b3a; font-weight: 600; } .warn { color: #a3221b; font-weight: 600; }
+code { font-family: Consolas, monospace; font-size: 8.6pt; background: #f1f2f4; padding: 0 1mm; border-radius: 1mm; }
+ul { margin: 0 0 2.5mm; padding-left: 5mm; } li { margin-bottom: 1mm; }
+.small { font-size: 8.4pt; color: #555b66; }
+</style></head><body>
+<h1>1,000 users at launch with fewer AI features</h1>
+<p class="sub">KenganSocial · 26 October 2026 · from <code>scripts/capacity-model.mjs</code> (prices and limits from <code>scripts/pricing-model.mjs</code>). Re-run <code>node scripts/build-launch-ai-doc.mjs</code> after changes.</p>
+
+<div class="box"><b>Recommendation: launch with the core AI plus cloud transcription</b> (<code>LAUNCH_AI_FEATURES=cloudTranscription</code>, also the default when the setting is left out). For 1,000 users at typical use this cuts AI API spend from <b>R21 004</b> to <b>R14 141</b> a month (33% less), keeps clips arriving in about 6 min, and needs no extra servers. Switching cloud transcription off too saves a further R6 732 but makes long-video clips take ~37 min at the busiest hour and needs 10 clip servers instead of 3.</div>
+
+<h2>1. The 1,000 users</h2>
+<table><tr><th>Plan</th><th>Users</th><th>Price</th></tr>
+<tr><td>Free</td><td>500</td><td>Free</td></tr><tr><td>Creator Starter</td><td>250</td><td>R299</td></tr><tr><td>Creator Pro</td><td>150</td><td>R699</td></tr><tr><td>Agency</td><td>80</td><td>R3 499</td></tr><tr><td>Enterprise</td><td>20</td><td>R8 999</td></tr>
+</table>
+<p class="small">"Typical use" = customers use 35% of their allowances; "full use" = 100% of every allowance (the worst case). Busiest hour = 2× the average working-hour load.</p>
+
+<h2>2. AI modes compared (realistic mix, per month)</h2>
+<table>
+<tr><th>Mode</th><th>Use</th><th>AI API spend</th><th>All costs</th><th>Profit</th><th>Margin</th><th>Clip servers at peak</th><th>Clips ready in</th></tr>
+<tr><td class="l">All AI features on</td><td>typical</td><td>R21 004</td><td>R68 352</td><td>R487 735</td><td>87.7%</td><td>3</td><td class="">6 min</td></tr><tr><td class="l">All AI features on</td><td>full</td><td>R98 702</td><td>R180 439</td><td>R375 648</td><td>67.6%</td><td>14</td><td class="warn">22 min</td></tr><tr><td class="l">Launch: core AI only</td><td>typical</td><td>R7 408</td><td>R54 950</td><td>R501 137</td><td>90.1%</td><td>10</td><td class="warn">37 min</td></tr><tr><td class="l">Launch: core AI only</td><td>full</td><td>R45 934</td><td>R146 714</td><td>R409 373</td><td>73.6%</td><td>49</td><td class="warn">84 min</td></tr><tr><td class="l">Launch + cloud transcription</td><td>typical</td><td>R14 141</td><td>R61 489</td><td>R494 598</td><td>88.9%</td><td>3</td><td class="">6 min</td></tr><tr><td class="l">Launch + cloud transcription</td><td>full</td><td>R84 405</td><td>R166 142</td><td>R389 945</td><td>70.1%</td><td>14</td><td class="warn">22 min</td></tr>
+</table>
+<p class="small">Revenue is the same in every mode (R556 087 a month net of VAT): switched-off features have non-AI versions, so plans and prices don't change. "Clips ready in" is processing plus the average wait at the busiest hour.</p>
+
+<h2>3. Where the AI money goes (typical use)</h2>
+<table>
+<tr><th>Cost line</th><th>All AI features on</th><th>Launch: core AI only</th><th>Launch + cloud transcription</th></tr>
+<tr><td class="l">AI credits <span class="small">(AI)</span></td><td>R5 917</td><td>R4 057</td><td>R4 057</td></tr><tr><td class="l">Clip AI (transcript ranking) <span class="small">(AI)</span></td><td>R3 013</td><td>R3 013</td><td>R3 013</td></tr><tr><td class="l">Voice, music, render licence <span class="small">(AI)</span></td><td>R5 342</td><td>R338</td><td>R338</td></tr><tr><td class="l">Post delivery (egress)</td><td>R6 466</td><td>R6 466</td><td>R6 466</td></tr><tr><td class="l">Storage (GB-month + download)</td><td>R3 756</td><td>R3 756</td><td>R3 756</td></tr><tr><td class="l">Firestore and sync</td><td>R2 130</td><td>R2 130</td><td>R2 130</td></tr><tr><td class="l">Cloud transcription <span class="small">(AI)</span></td><td>R6 732</td><td>R0</td><td>R6 732</td></tr>
+<tr><td class="l">Servers (workers, API, web)</td><td>R7 700</td><td>R7 894</td><td>R7 700</td></tr>
+<tr><td class="l">Payfast fees</td><td>R24 684</td><td>R24 684</td><td>R24 684</td></tr>
+<tr><td class="l">Fixed (licence, backups, domain)</td><td>R2 613</td><td>R2 613</td><td>R2 613</td></tr>
+<tr><td class="l"><b>Total</b></td><td><b>R68 352</b></td><td><b>R54 950</b></td><td><b>R61 489</b></td></tr>
+</table>
+<ul>
+<li><b>AI credits</b> cost less per credit in launch mode because credits can only buy text (~$0.006 a credit) instead of images, lyrics and website analysis (~$0.009 a credit on average).</li>
+<li><b>Voice, music and render licence</b> drops to the Remotion licence fee alone: no ElevenLabs voice, no Treblo track, no AI storyboard.</li>
+<li><b>Clip AI</b> (ranking moments in the transcript) is the core product and stays the same in every mode.</li>
+<li><b>Cloud transcription</b> is the one optional feature worth keeping: without it, long videos are transcribed on our own servers, which costs little in money but a lot in waiting time at busy hours.</li>
+</ul>
+
+<h2>4. Worst case: every customer uses 100% of their allowance</h2>
+<table>
+<tr><th>Mode</th><th>AI API spend</th><th>All costs</th><th>Margin</th><th>Servers at peak (short jobs + clips)</th><th>Clips ready in</th></tr>
+<tr><td class="l">All AI features on</td><td>R98 702</td><td>R180 439</td><td>67.6%</td><td>27 + 14</td><td>22 min</td></tr><tr><td class="l">Launch: core AI only</td><td>R45 934</td><td>R146 714</td><td>73.6%</td><td>27 + 49</td><td>84 min</td></tr><tr><td class="l">Launch + cloud transcription</td><td>R84 405</td><td>R166 142</td><td>70.1%</td><td>27 + 14</td><td>22 min</td></tr>
+</table>
+<p class="small">At 100% use the AI credits line is the same in every mode: a full allowance can be spent on text alone, and each credit is costed at its worst case. The saving then comes from voice, music, storyboards and cloud transcription.</p>
+
+<h2>5. Per plan: 1,000 users on one plan (typical use)</h2>
+<table>
+<tr><th>Plan</th><th>All AI features on<br><span class="small">AI spend · margin</span></th><th>Launch: core AI only<br><span class="small">AI spend · margin</span></th><th>Launch + cloud transcription<br><span class="small">AI spend · margin</span></th></tr>
+<tr><td>Free</td><td>R0 · —</td><td>R0 · —</td><td>R0 · —</td></tr><tr><td>Creator Starter</td><td>R11 956 · 84.2%</td><td>R4 526 · 87.1%</td><td>R6 808 · 86.2%</td></tr><tr><td>Creator Pro</td><td>R30 463 · 86.4%</td><td>R11 233 · 89.5%</td><td>R21 884 · 87.8%</td></tr><tr><td>Agency</td><td>R134 458 · 88.1%</td><td>R45 918 · 90.1%</td><td>R91 562 · 89.5%</td></tr><tr><td>Enterprise</td><td>R134 458 · 92.8%</td><td>R45 918 · 93.5%</td><td>R91 562 · 93.3%</td></tr>
+</table>
+
+<h2>6. What is switched off at launch, and what users get instead</h2>
+<table>
+<tr><th>Feature</th><th class="l">Setting name</th><th class="l">Instead</th></tr>
+<tr><td>Lyrics: syncing to the vocals and AI song structure</td><td class="l"><code>lyricsAi</code></td><td class="l">Paste lyrics: built-in timing and structure; Place automatically / Tap along</td></tr><tr><td>Paid AI images (carousels, thumbnail backgrounds, AI Writer)</td><td class="l"><code>aiImages</code></td><td class="l">Free images (Pollinations) and real video frames</td></tr><tr><td>AI voiceover in video ads (ElevenLabs)</td><td class="l"><code>voiceover</code></td><td class="l">Ads with music and sound effects, no voice</td></tr><tr><td>AI-composed music (Treblo)</td><td class="l"><code>aiMusic</code></td><td class="l">Free music library, matched to the mood</td></tr><tr><td>Cloud transcription for long clip videos</td><td class="l"><code>cloudTranscription</code></td><td class="l">Kept ON at launch (see section 3)</td></tr><tr><td>Live web search for trending (Perplexity)</td><td class="l"><code>trendingSearch</code></td><td class="l">Trending from YouTube and TikTok data and cached ideas</td></tr><tr><td>AI reply drafts for DMs and lead outreach</td><td class="l"><code>dmDrafts</code></td><td class="l">Keyword auto-replies; outreach from a template</td></tr><tr><td>AI Edit learning a style from a reference</td><td class="l"><code>styleLearning</code></td><td class="l">Built-in edit presets</td></tr><tr><td>AI business profile from a website</td><td class="l"><code>websiteAi</code></td><td class="l">Colours, fonts, logo and copy still read from the site</td></tr><tr><td>AI thumbnail headline ideas</td><td class="l"><code>thumbnailHeadlines</code></td><td class="l">Headlines built from the clip’s own words</td></tr><tr><td>AI storyboards for launch and tutorial videos</td><td class="l"><code>storyboardAi</code></td><td class="l">Storyboards built from the site and its pages</td></tr>
+</table>
+<p>Always on: clip finding, captions, hooks, hashtags and the AI Writer's text. Turn a feature back on by adding its name to <code>LAUNCH_AI_FEATURES</code> in <code>server/.env</code> (comma-separated, or <code>all</code>) and restarting the API; the API logs which optional features are on at start-up. Asking for a feature that is off returns "coming soon" with the non-AI way to do it.</p>
+
+<h2>7. Notes</h2>
+<ul>
+<li>The plan limits and the 60% margin guarantee (pricing model) are unchanged; switching features off only lowers costs.</li>
+<li>Typical credit costs are estimates from token sizes; the real figures will come from provider dashboards in the first month. Turn features back on one at a time and watch the spend.</li>
+<li>Server numbers come from jobs measured on a laptop and converted to e2-standard-4 workers; time a few real jobs on the VM to confirm.</li>
+</ul>
+</body></html>

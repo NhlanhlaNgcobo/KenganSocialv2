@@ -41,7 +41,7 @@ export class LyricsInputError extends Error {
 /**
  * @param {{ audio?: { buffer: Buffer, originalname: string, mimetype: string } | null, lyrics?: string, duration: number, energy?: number }} input
  */
-export async function analyzeLyrics({ audio, lyrics = '', duration, energy }) {
+export async function analyzeLyrics({ audio, lyrics = '', duration, energy, ai = true }) {
     if (!Number.isFinite(duration) || duration <= 0) {
         throw new LyricsInputError('Song duration is required.');
     }
@@ -53,7 +53,7 @@ export async function analyzeLyrics({ audio, lyrics = '', duration, energy }) {
     if (pasted && hasLrcTimestamps(pasted)) {
         timed = parseLrc(pasted, duration);
         timingSource = 'lrc';
-    } else if (audio) {
+    } else if (audio && ai) {
         ({ timed, timingSource } = await transcribe(audio, duration, pasted || undefined));
     }
 
@@ -72,7 +72,7 @@ export async function analyzeLyrics({ audio, lyrics = '', duration, energy }) {
 
     const analysis = buildHeuristicAnalysis(timed, timingSource, energy);
 
-    if (openRouterConfigured()) {
+    if (ai && openRouterConfigured()) {
         try {
             return await enrichWithClaude(analysis);
         } catch (error) {
