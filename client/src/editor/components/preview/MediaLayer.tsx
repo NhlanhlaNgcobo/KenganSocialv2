@@ -8,7 +8,7 @@ import { isNeutralColor } from '../../lib/color-pipeline.js';
 import { useProjectStore } from '../../stores/project-store';
 import { GradedCanvas, useLut, webgl2Available } from './GradedCanvas';
 import { PLAYBACK_EVENTS, setMediaStalled, usePlaybackStore } from '../../stores/playback-store';
-import type { MediaElement } from '../../types';
+import type { ChromaKey, MediaElement } from '../../types';
 
 interface Props {
     kind: 'video' | 'audio';
@@ -21,14 +21,18 @@ interface Props {
     extendTail?: number;
     /** Extra CSS filter (effects preview). */
     extraFilter?: string;
+    /** Green/blue screen key (overlay tracks only, as in the export). */
+    chromaKey?: ChromaKey | null;
 }
 
-export function MediaLayer({ kind, src, element, trackMuted, active, extendHead = 0, extendTail = 0, extraFilter = '' }: Props) {
+export function MediaLayer({ kind, src, element, trackMuted, active, extendHead = 0, extendTail = 0, extraFilter = '', chromaKey = null }: Props) {
     const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
     const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
     const luts = useProjectStore((s) => s.luts);
     const graded = kind === 'video' && webgl2Available && !!element.color && !isNeutralColor(element.color);
     const lut = useLut(graded ? element.color : null, luts);
+    const keyed = kind === 'video' && webgl2Available && !!chromaKey;
+    const onCanvas = (graded && !!lut) || keyed;
     const isPlaying = usePlaybackStore((s) => s.isPlaying);
     const volume = usePlaybackStore((s) => s.volume);
     const muted = usePlaybackStore((s) => s.muted);
@@ -136,14 +140,14 @@ export function MediaLayer({ kind, src, element, trackMuted, active, extendHead 
                 }}
                 src={src}
                 className="ke-preview__media"
-                // A graded clip keeps decoding in this (invisible) element; the canvas shows it graded.
-                style={{ visibility: active ? 'visible' : 'hidden', opacity: graded ? 0 : 1, filter }}
+                // A graded or keyed clip keeps decoding in this (invisible) element; the canvas shows it.
+                style={{ visibility: active ? 'visible' : 'hidden', opacity: onCanvas ? 0 : 1, filter }}
                 playsInline
                 preload="auto"
                 disablePictureInPicture
                 onContextMenu={(e) => e.preventDefault()}
             />
-            {graded && lut ? <GradedCanvas source={videoEl} lut={lut} className="ke-preview__media" style={{ visibility: active ? 'visible' : 'hidden', filter }} /> : null}
+            {onCanvas ? <GradedCanvas source={videoEl} lut={graded ? lut : null} chromaKey={keyed ? chromaKey : null} className="ke-preview__media" style={{ visibility: active ? 'visible' : 'hidden', filter }} /> : null}
         </>
     );
 }

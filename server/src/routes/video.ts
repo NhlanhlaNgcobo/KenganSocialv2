@@ -109,17 +109,18 @@ router.post('/process', withWorkspace, planRateLimit(), checkLimit('renders'), a
     res.json({ success: true, jobId, message: 'Processing started in background' });
 });
 
-// POST /api/video/enhance — stabilize and/or auto-frame an uploaded clip into a new file.
+// POST /api/video/enhance — clean up, stabilize, auto-frame and/or remove the background of an uploaded clip into a new file.
 // Poll /api/video/manual-edit/status/:jobId; the result is also registered as a new upload.
 router.post('/enhance', withWorkspace, planRateLimit(), checkLimit('renders'), async (req: Request, res: Response) => {
     const uid = (req as any).uid;
-    const { sourceUploadId, stabilize, autoframe, cleanup } = req.body || {};
+    const { sourceUploadId, stabilize, autoframe, cleanup, removeBackground } = req.body || {};
 
     const wantsStabilize = !!stabilize?.enabled;
     const wantsAutoframe = !!autoframe?.enabled;
     const wantsCleanup = !!cleanup?.enabled && hasCleanup(normalizeCleanup(cleanup));
-    if (!wantsStabilize && !wantsAutoframe && !wantsCleanup) {
-        return res.status(400).json({ error: 'Choose at least one enhancement: clean-up, stabilize or auto-frame.' });
+    const wantsRemoveBackground = removeBackground?.enabled === true;
+    if (!wantsStabilize && !wantsAutoframe && !wantsCleanup && !wantsRemoveBackground) {
+        return res.status(400).json({ error: 'Choose at least one enhancement: clean-up, stabilize, auto-frame or background removal.' });
     }
     if (wantsAutoframe && !AUTOFRAME_RATIOS.includes(autoframe.ratio)) {
         return res.status(400).json({ error: `Auto-frame ratio must be one of ${AUTOFRAME_RATIOS.join(', ')}.` });
@@ -143,6 +144,7 @@ router.post('/enhance', withWorkspace, planRateLimit(), checkLimit('renders'), a
             stabilize: wantsStabilize ? stabilize : null,
             autoframe: wantsAutoframe ? { ratio: autoframe.ratio } : null,
             cleanup: wantsCleanup ? cleanup : null,
+            removeBackground: wantsRemoveBackground,
             onProgress: (progress: number) => {
                 if (progress === lastProgress) return;
                 lastProgress = progress;

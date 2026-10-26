@@ -25,7 +25,7 @@ export const automationsEnabled = (plan: unknown) => ruleLimit(plan) !== 0;
 /** The plan a workspace has now (paid plan or running trial), as withWorkspace computes it. */
 export async function workspacePlan(workspaceId: string): Promise<Plan> {
     const snap = await db.collection('workspaces').doc(workspaceId).get();
-    return asPlan(applyDevPlanOverride(effectivePlan(snap.data() || {})));
+    return asPlan(applyDevPlanOverride(effectivePlan(snap.data() || {}), snap.data()));
 }
 
 /** Active keyword rules across both rule lists, leaving out one rule (the one being changed). */

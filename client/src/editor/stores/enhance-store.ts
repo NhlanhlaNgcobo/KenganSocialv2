@@ -1,12 +1,14 @@
 /**
  * Clip enhancement jobs (stabilize / auto-frame). The server produces a new file,
  * which replaces the source on every clip that uses it. Undo restores the original.
+ * Background removal replaces the source on one overlay clip only and keys out the colour.
  */
 import { create } from 'zustand';
 import { editorApi, pollJob, type CleanupOptions, type EnhanceSummary, type StabilizeSettings } from '../lib/editor-api';
 import { useMediaStore } from './media-store';
 import { useProjectStore } from './project-store';
 import { useTimelineStore } from './timeline-store';
+import type { MediaElement } from '../types';
 
 export interface EnhanceOptions extends StabilizeSettings {
     stabilize: boolean;
@@ -64,6 +66,8 @@ interface EnhanceState {
     controller: AbortController | null;
     setOptions: (partial: Partial<EnhanceOptions>) => void;
     run: (mediaId: string) => Promise<string>;
+    /** AI background removal on one overlay clip: swaps in the processed file and turns the key on. */
+    removeBackground: (trackId: string, elementId: string) => Promise<string>;
     cancel: () => void;
 }
 
@@ -158,6 +162,45 @@ export const useEnhanceStore = create<EnhanceState>((set, get) => ({
             const count = useTimelineStore.getState().replaceMedia(mediaId, item.id, item.duration, item.name);
             set({ runningMediaId: null, stage: '', controller: null });
             return describe(job.summary, count);
+        } catch (error) {
+            const message = (error as Error).message;
+            set({ runningMediaId: null, stage: '', controller: null, error: message === 'Cancelled' ? null : message });
+            throw error;
+        }
+    },
+
+    removeBackground: async (trackId, elementId) => {
+        const { projectKey } = useProjectStore.getState();
+        const found = useTimelineStore.getState().findElement(elementId);
+        const el = found?.element as MediaElement | undefined;
+        const media = el ? useMediaStore.getState().getItem(el.mediaId) : null;
+        if (!el || !media || !projectKey) throw new Error('This clip’s media is no longer in the project.');
+        if (media.type !== 'video') throw new Error('Background removal works on video clips.');
+        const mediaId = media.id;
+
+        get().controller?.abort();
+        const controller = new AbortController();
+        set({ runningMediaId: mediaId, stage: 'Uploading', progress: 0, error: null, controller });
+        try {
+            const uploads = await useMediaStore.getState().ensureUploaded([mediaId]);
+            const jobId = await editorApi.startEnhance({ sourceUploadId: uploads[mediaId], removeBackground: { enabled: true } });
+            const job = await pollJob(
+                () => editorApi.getRenderStatus(jobId),
+                (j) => set({ stage: 'Removing background', progress: j.progress || 0 }),
+                (j) => j.status === 'completed',
+                controller.signal
+            );
+            set({ stage: 'Loading result', progress: 100 });
+            const blob = await editorApi.downloadRender(job.downloadUrl!);
+            const baseName = media.name.replace(/\.[^.]+$/, '');
+            const item = await useMediaStore.getState().addProcessed(blob, `${baseName} (no background).mp4`, projectKey, job.outputUploadId!);
+            if (!item) throw new Error('Could not load the processed clip.');
+            // Same length as the source, so the clip's trims stay valid. The key is tight: the
+            // background is one flat colour, so nothing else in the picture is close to it.
+            const keyColor = job.summary?.backgroundRemoved?.keyColor || '#00ff00';
+            useTimelineStore.getState().updateElement(trackId, elementId, { mediaId: item.id, chromaKey: { color: keyColor, similarity: 0.1, blend: 0.06, spill: 0.5 } });
+            set({ runningMediaId: null, stage: '', controller: null });
+            return 'Background removed. Ctrl+Z to undo.';
         } catch (error) {
             const message = (error as Error).message;
             set({ runningMediaId: null, stage: '', controller: null, error: message === 'Cancelled' ? null : message });

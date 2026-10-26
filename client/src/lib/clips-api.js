@@ -62,7 +62,8 @@ export const clipsApi = {
             if (response.status === 404) throw new Error(body.message || 'This clip file is no longer available. Generate it again.');
             throw new Error(body.message || `Download failed (${response.status}). Try again.`);
         }
-        return response.blob();
+        // Bytes, not response.blob(): Chrome fails large response blobs when the disk is nearly full.
+        return new Blob([await response.arrayBuffer()], { type: response.headers.get('content-type') || 'video/mp4' });
     },
 };
 

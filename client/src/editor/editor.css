@@ -965,6 +965,8 @@
 }
 
 .ke-preview__stage {
+    /* Text and overlay layers inside use z-index 100+; keep them below dialogs and toasts. */
+    isolation: isolate;
     flex: 1;
     min-height: 0;
     display: flex;
@@ -2652,4 +2654,60 @@
 
 .ke-cutmark.is-on {
     box-shadow: 0 0 0 2px #22d3ee;
+}
+
+/* Lyric video generator */
+.ke-lyricvid__step { display: grid; gap: 8px; padding: 12px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.ke-lyricvid__step h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; }
+.ke-lyricvid__step h4 span { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: rgba(255, 255, 255, 0.1); font-size: 11px; }
+.ke-lyricvid__step h4 em { margin-left: auto; font-style: normal; font-weight: 400; font-size: 11px; color: #9a9aa6; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ke-lyricvid__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; }
+.ke-lyricvid__bg { position: relative; display: grid; padding: 0; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; overflow: hidden; background: #111116; color: inherit; cursor: pointer; aspect-ratio: 9 / 14; }
+.ke-lyricvid__bg video, .ke-lyricvid__bg img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ke-lyricvid__bg small { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 6px 5px; font-size: 10px; text-align: left; background: linear-gradient(transparent, rgba(0, 0, 0, 0.75)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ke-lyricvid__bg.is-active { border-color: #e04a18; box-shadow: 0 0 0 1px #e04a18; }
+.ke-lyricvid__bg:focus-visible { outline: 2px solid #e04a18; outline-offset: 1px; }
+.ke-lyricvid__methods { display: flex; flex-wrap: wrap; gap: 6px; }
+.ke-lyricvid__tap { display: grid; gap: 8px; padding: 10px; border-radius: 8px; background: rgba(224, 74, 24, 0.1); }
+.ke-lyricvid__tap strong { font-size: 15px; }
+.ke-lyricvid__tap kbd { padding: 0 4px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 3px; font-size: 11px; }
+
+/* Overlays (picture-in-picture): preview handles and the layout picker */
+.ke-overlay-handle { position: absolute; cursor: move; touch-action: none; border-radius: 2px; }
+.ke-overlay-handle:hover { outline: 1px dashed rgba(255, 255, 255, 0.6); }
+.ke-overlay-handle.is-selected { outline: 2px solid #e04a18; }
+/* Inside the box: an overlay standing on the frame's edge would otherwise hide its handle. */
+.ke-overlay-handle__corner { position: absolute; right: 4px; bottom: 4px; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #e04a18; cursor: nwse-resize; }
+.ke-overlay-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ke-overlay-pick { display: grid; gap: 4px; justify-items: center; padding: 6px 4px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.ke-overlay-pick:hover, .ke-overlay-pick:focus-visible { border-color: #e04a18; }
+.ke-overlay-pick small { font-size: 10px; line-height: 1.2; text-align: center; color: #b4b4bf; }
+.ke-overlay-pick__frame { position: relative; width: 44px; height: 26px; border-radius: 3px; background: #2a2a33; overflow: hidden; }
+.ke-overlay-pick__frame i { position: absolute; background: #e04a18; border-radius: 2px; }
+.ke-overlay-pick--top-left i { left: 3px; top: 3px; width: 14px; height: 9px; }
+.ke-overlay-pick--top-right i { right: 3px; top: 3px; width: 14px; height: 9px; }
+.ke-overlay-pick--bottom-left i { left: 3px; bottom: 3px; width: 14px; height: 9px; }
+.ke-overlay-pick--bottom-right i { right: 3px; bottom: 3px; width: 14px; height: 9px; }
+.ke-overlay-pick--presenter-left i { left: 3px; bottom: 0; width: 10px; height: 22px; }
+.ke-overlay-pick--presenter-right i { right: 3px; bottom: 0; width: 10px; height: 22px; }
+.ke-overlay-pick--center i { left: 15px; top: 8px; width: 14px; height: 10px; }
+.ke-overlay-pick--full i { inset: 0; opacity: 0.7; }
+
+/* Green screen key colour row */
+.ke-key-colour {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* AI background removal progress row */
+.ke-bg-remove {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+.ke-bg-remove span {
+    flex: 1;
 }

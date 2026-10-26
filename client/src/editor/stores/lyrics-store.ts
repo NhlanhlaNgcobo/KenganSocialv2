@@ -30,6 +30,12 @@ interface LyricsState {
     setStyle: (style: LyricStyle) => void;
     setVisible: (visible: boolean) => void;
     analyze: () => Promise<LyricAnalysis>;
+    /** The user's own lines timed to the vocals by speech-to-text (POST /api/lyrics/sync, 3 credits). */
+    syncToVocals: (lines: string[]) => Promise<LyricAnalysis>;
+    /** Lyrics timed in the browser (pasted, SRT/LRC, tap-along): no credits. */
+    setAnalysis: (analysis: LyricAnalysis) => void;
+    /** The source song's length and loudness/tempo, decoded in the browser. */
+    songInfo: () => Promise<{ duration: number; features: AudioFeatures | null }>;
     nudge: (deltaSec: number) => void;
     clear: () => void;
 }
@@ -124,6 +130,51 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
             set({ analyzing: false, error: (error as Error).message });
             throw error;
         }
+    },
+
+    syncToVocals: async (lines) => {
+        const { source } = get();
+        if (!source || source.kind !== 'element') throw new Error('Upload the song to sync your lyrics to it.');
+        const el = findSourceElement(source.elementId);
+        const media = el ? useMediaStore.getState().getItem(el.mediaId) : undefined;
+        if (!el || !media) throw new Error('That song is no longer on the timeline.');
+        set({ analyzing: true, error: null });
+        try {
+            const { duration, features } = await get().songInfo();
+            const form = new FormData();
+            form.append('file', media.file, media.name.includes('.') ? media.name : `${media.name}.mp3`);
+            form.append('lines', JSON.stringify(lines));
+            form.append('duration', String(duration));
+            if (features) form.append('energy', String(features.averageEnergy));
+            const payload = await apiClient('/lyrics/sync', { method: 'POST', body: form });
+            if (!isLyricAnalysis(payload)) throw new Error('The lyric sync returned an unexpected response.');
+            set({ analysis: payload, visible: true, analyzing: false });
+            return payload;
+        } catch (error) {
+            set({ analyzing: false, error: (error as Error).message });
+            throw error;
+        }
+    },
+
+    setAnalysis: (analysis) => set({ analysis, visible: true, error: null }),
+
+    songInfo: async () => {
+        const { source } = get();
+        if (!source) throw new Error('Pick the song first.');
+        if (source.kind === 'guide') {
+            const guide = useGuideTrackStore.getState();
+            return { duration: guide.duration || guide.track?.durationSec || 0, features: null };
+        }
+        const el = findSourceElement(source.elementId);
+        const media = el ? useMediaStore.getState().getItem(el.mediaId) : undefined;
+        if (!el || !media) throw new Error('That song is no longer on the timeline.');
+        let features = featureCache.get(media.id) ?? null;
+        if (!features) {
+            features = await analyzeAudioBlob(media.file).catch(() => null);
+            if (features) featureCache.set(media.id, features);
+        }
+        set({ features });
+        return { duration: features?.duration || media.duration, features };
     },
 
     nudge: (deltaSec) => set((s) => ({ analysis: s.analysis ? shiftAnalysis(s.analysis, deltaSec) : null })),

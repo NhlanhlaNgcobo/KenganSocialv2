@@ -70,7 +70,7 @@ async function buildSession(uid: string, user: Record<string, unknown>) {
 
     const workspaceDoc = workspaceSnap.docs[0];
     const workspace = { ...workspaceDoc.data(), id: workspaceDoc.id };
-    const plan = applyDevPlanOverride(effectivePlan(workspace)) as keyof typeof PLAN_LIMITS;
+    const plan = applyDevPlanOverride(effectivePlan(workspace), workspace as any) as keyof typeof PLAN_LIMITS;
 
     let usage: Record<string, number>;
     try {
@@ -82,7 +82,11 @@ async function buildSession(uid: string, user: Record<string, unknown>) {
         ) as Record<string, number>;
     }
 
-    return { user, workspace, plan, usage, planLimits: PLAN_LIMITS[plan] };
+    // Internal test workspaces show every allowance as unlimited (-1).
+    const planLimits = (workspace as any).unlimited === true
+        ? Object.fromEntries(Object.keys(PLAN_LIMITS[plan]).map((feature) => [feature, -1]))
+        : PLAN_LIMITS[plan];
+    return { user, workspace, plan, usage, planLimits };
 }
 
 // ─── POST /api/auth/verify ───────────────────────────────────────────────────
@@ -118,7 +122,7 @@ router.post('/verify', async (req: Request, res: Response) => {
 
         const workspaceDoc = workspaceSnap.docs[0];
         const workspace = { id: workspaceDoc.id, ...workspaceDoc.data() };
-        const plan = applyDevPlanOverride(effectivePlan(workspace));
+        const plan = applyDevPlanOverride(effectivePlan(workspace), workspace as any);
 
         return res.status(200).json({ user, workspace, plan });
     } catch (err: any) {

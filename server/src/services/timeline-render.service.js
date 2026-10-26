@@ -106,6 +106,19 @@ function normalizeTransform(raw) {
     return identity ? null : t;
 }
 
+/** Green/blue screen key on an overlay; null when absent or the colour is invalid. */
+function normalizeChromaKey(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const color = parseColor(raw.color);
+    if (!color || color.alpha === 0) return null;
+    return {
+        hex: color.hex,
+        similarity: num(raw.similarity, 0.15, 0.01, 0.5),
+        blend: num(raw.blend, 0.08, 0, 0.3),
+        spill: num(raw.spill, 0.6, 0, 1),
+    };
+}
+
 function normalizeMedia(item, ownerId) {
     const kind = ['video', 'image', 'audio'].includes(item?.kind) ? item.kind : 'video';
     const speed = num(item.speed, 1, 0.25, 4);
@@ -131,6 +144,7 @@ function normalizeMedia(item, ownerId) {
         color: item.color && typeof item.color === 'object' ? normalizeColor(item.color) : null,
         // Keyframes (seconds from the element's start); they override the static/camera value per property.
         keyframes: normalizeKeyframes(item.keyframes, 'media'),
+        chromaKey: normalizeChromaKey(item.chromaKey),
     };
 }
 
@@ -499,6 +513,39 @@ function sourceFraming(t, W, H, length, bgHex, kf, headShift, src, colour) {
         const wanted = Math.min(size, 2 * Math.ceil(half) + 4);
         return Math.min(size, size - 4 * Math.floor((size - wanted) / 4));
     };
+    // Still framing (no zoom or move animation) inside the source: crop only the visible window
+    // (plus 2 px), scale it by the exact zoom and crop the canvas out of that. Same picture as the
+    // pad route below, without building frames several times the canvas size: a 3x punch-in padded
+    // 3768x3256 4:4:4 frames per segment, and parallel segments ran x264 out of memory.
+    if (!animated && !kf?.x && !kf?.y && process.env.KENGAN_FRAMING_STILL !== 'off') {
+        const S = t.scaleStart * k; // source px -> canvas px
+        // Framings flush with a source edge land a hair outside it in floating point; half a
+        // source pixel of slack is invisible once scaled.
+        const fit = (a, size, span) => (a < 0 && a > -0.5 ? 0 : a + span > size && a + span < size + 0.5 ? size - span : a);
+        const u0 = fit(src.w / 2 - (W / 2 + t.x) / S, src.w, W / S);
+        const v0 = fit(src.h / 2 - (H / 2 + t.y) / S, src.h, H / S);
+        const u1 = u0 + W / S;
+        const v1 = v0 + H / S;
+        if (u0 >= 0 && v0 >= 0 && u1 <= src.w + 1e-6 && v1 <= src.h + 1e-6) {
+            // Even offsets and sizes: crops on 4:2:0 frames snap to even pixels.
+            const x0 = Math.floor(u0 / 2) * 2;
+            const y0 = Math.floor(v0 / 2) * 2;
+            const cwS = Math.min(src.w - x0, Math.ceil((u1 - x0) / 2) * 2 + 2);
+            const chS = Math.min(src.h - y0, Math.ceil((v1 - y0) / 2) * 2 + 2);
+            const sw = Math.max(W, 2 * Math.round((cwS * S) / 2));
+            const sh = Math.max(H, 2 * Math.round((chS * S) / 2));
+            const dx = Math.min(sw - W, Math.max(0, Math.round((u0 - x0) * (sw / cwS))));
+            const dy = Math.min(sh - H, Math.max(0, Math.round((v0 - y0) * (sh / chS))));
+            const still = [];
+            if (t.flipH) still.push('hflip');
+            if (t.flipV) still.push('vflip');
+            still.push(`crop=${cwS}:${chS}:${x0}:${y0}`);
+            if (colour) still.push(colour);
+            still.push(`scale=${sw}:${sh}`, 'format=yuv444p', `crop=${W}:${H}:${dx}:${dy}`);
+            return still.join(',');
+        }
+    }
+
     const cw = span(src.w, need(W, reachX));
     const ch = span(src.h, need(H, reachY));
     const s = `(${zoom})*${k.toFixed(6)}`;
@@ -600,6 +647,28 @@ function overlayKeyframeFilters(kf, et, ctx) {
     return parts.length ? `,${parts.join(',')}` : '';
 }
 
+/**
+ * Filter graph for one overlay picture, from `input` (already timed by `head`) to [ov<i>].
+ * A keyed overlay builds its matte from the original colours (chromakey + alphaextract) while the
+ * picture branch is despilled and graded; alphamerge joins them before the overlay zoom. Grading
+ * filters (eq, curves, lut3d...) need not carry alpha this way.
+ */
+function overlayPictureGraph(input, i, head, look, ov, tail, W, H) {
+    const fit = `scale=${W}:${H}:force_original_aspect_ratio=decrease`;
+    const rest = `${overlayTransformFilters(ov.transform)},format=yuva420p${tail}[ov${i}]`;
+    const key = ov.chromaKey;
+    if (!key) return [`${input}${head},${fit}${look}${rest}`];
+    const blue = parseInt(key.hex.slice(4, 6), 16) > parseInt(key.hex.slice(2, 4), 16);
+    const spill = (-key.spill).toFixed(3);
+    const despill = key.spill > 0 ? `despill=type=${blue ? 'blue' : 'green'}:mix=0.5:expand=0:red=0:green=${blue ? 0 : spill}:blue=${blue ? spill : 0}` : 'null';
+    return [
+        `${input}${head},${fit},split=2[ovp${i}][ovk${i}]`,
+        `[ovk${i}]chromakey=0x${key.hex}:${key.similarity.toFixed(3)}:${key.blend.toFixed(3)},format=yuva420p,alphaextract[ovm${i}]`,
+        `[ovp${i}]${despill}${look}[ovc${i}]`,
+        `[ovc${i}][ovm${i}]alphamerge${rest}`,
+    ];
+}
+
 function overlayTransformFilters(t) {
     if (!t) return '';
     const parts = [];
@@ -678,7 +747,7 @@ async function renderSegment(segment, spec, outPath) {
     // Exactly `frames` pictures and the same length of sound. "-t <seconds to 3 decimals>" let in an
     // extra frame for lengths like 1.5667 s, so later cuts drifted a frame behind titles and music.
     const frames = segment.frameCount || Math.round(segment.length * fps);
-    args.push('-t', (frames / fps).toFixed(6), '-frames:v', String(frames), '-r', String(fps), ...ENCODE_VIDEO, ...ENCODE_AUDIO, '-video_track_timescale', '90000', outPath);
+    args.push('-t', (frames / fps).toFixed(6), '-frames:v', String(frames), '-r', String(fps), ...ENCODE_VIDEO, '-threads', String(segmentEncoderThreads()), ...ENCODE_AUDIO, '-video_track_timescale', '90000', outPath);
     await run(FFMPEG, args);
 }
 
@@ -848,6 +917,15 @@ function segmentConcurrency() {
     return Math.max(1, Math.min(3, Math.floor(os.cpus().length / 2)));
 }
 
+/**
+ * x264 threads per segment encoder: the cores shared between the segments rendering at once.
+ * Left alone, x264 starts 1.5 threads per core in every encoder, each holding its own frames: on a
+ * 16-core, 8 GB machine three 1080x1920 encoders ran out of memory (x264 "malloc failed").
+ */
+function segmentEncoderThreads() {
+    return Math.max(2, Math.floor(os.cpus().length / segmentConcurrency()));
+}
+
 /** Seconds of context rendered around an exact-preview range (covers any transition half). */
 const RANGE_MARGIN = 1.05;
 
@@ -928,14 +1006,15 @@ async function composite(basePath, spec, workDir, outPath, onProgress) {
         const t1 = (ov.timelineStart + ov.length).toFixed(3);
         const ovAssets = await colorAssets(ov.color ? { ...ov.color, vignette: { amount: 0 } } : null, spec, workDir);
         const filter = `${ov.filter !== 'none' ? `,${FILTER_PRESETS[ov.filter]}` : ''}${gradeFilters(ov.grade)}${ovAssets.lut ? `,lut3d=file='${filterPath(ovAssets.lut)}':interp=tetrahedral` : ''}`;
+        const tail = `${overlayRotation(ov.transform)}${overlayKeyframeFilters(ov.keyframes, `(t-${t0})`, { fps: spec.fps, dir: workDir, start: ov.timelineStart, end: ov.timelineStart + ov.length, width: W, height: H })}`;
         if (ov.kind === 'image') {
             args.push('-loop', '1', '-framerate', String(spec.fps), '-t', ov.length.toFixed(3), '-i', ov.path);
-            graph.push(`[${k}:v]setpts=PTS-STARTPTS+${t0}/TB,scale=${W}:${H}:force_original_aspect_ratio=decrease${filter}${overlayTransformFilters(ov.transform)},format=yuva420p${overlayRotation(ov.transform)}${overlayKeyframeFilters(ov.keyframes, `(t-${t0})`, { fps: spec.fps, dir: workDir, start: ov.timelineStart, end: ov.timelineStart + ov.length, width: W, height: H })}[ov${i}]`);
+            graph.push(...overlayPictureGraph(`[${k}:v]`, i, `setpts=PTS-STARTPTS+${t0}/TB`, filter, ov, tail, W, H));
         } else {
             const info = await probe(ov.path);
             args.push('-ss', ov.sourceStart.toFixed(3), '-t', (ov.sourceEnd - ov.sourceStart).toFixed(3), '-i', ov.path);
             if (!info.hasVideo) continue;
-            graph.push(`[${k}:v]setpts=(PTS-STARTPTS)/${ov.speed}+${t0}/TB,scale=${W}:${H}:force_original_aspect_ratio=decrease${filter}${overlayTransformFilters(ov.transform)},format=yuva420p${overlayRotation(ov.transform)}${overlayKeyframeFilters(ov.keyframes, `(t-${t0})`, { fps: spec.fps, dir: workDir, start: ov.timelineStart, end: ov.timelineStart + ov.length, width: W, height: H })}[ov${i}]`);
+            graph.push(...overlayPictureGraph(`[${k}:v]`, i, `setpts=(PTS-STARTPTS)/${ov.speed}+${t0}/TB`, filter, ov, tail, W, H));
             if (info.hasAudio && ov.volume > 0) {
                 const tempo = atempoChain(ov.speed);
                 const delay = Math.round(ov.timelineStart * 1000);
@@ -1075,17 +1154,33 @@ export async function renderTimeline(config, ownerId, onProgress = () => {}) {
         // Several segments at once: each one's filters mostly use a single core.
         let done = 0;
         let next = 0;
+        const retry = [];
+        const concurrency = Math.min(segmentConcurrency(), segments.length);
         const worker = async () => {
             while (next < segments.length) {
                 const i = next++;
                 const out = path.join(workDir, `seg_${String(i).padStart(4, '0')}.mp4`);
                 segmentPaths[i] = out;
-                await renderSegment(segments[i], spec, out);
+                try {
+                    await renderSegment(segments[i], spec, out);
+                } catch (error) {
+                    // Parallel encoders can exhaust memory on a small machine (x264 then reports a
+                    // "generic error"); render it again alone below. Input errors fail at once.
+                    if (concurrency === 1 || error instanceof RenderInputError) throw error;
+                    retry.push(i);
+                    continue;
+                }
                 done += 1;
                 report((done / segments.length) * 0.6);
             }
         };
-        await Promise.all(Array.from({ length: Math.min(segmentConcurrency(), segments.length) }, worker));
+        await Promise.all(Array.from({ length: concurrency }, worker));
+        for (const i of retry.sort((a, b) => a - b)) {
+            console.warn(`[render] segment ${i} failed in parallel; rendering it alone`);
+            await renderSegment(segments[i], spec, segmentPaths[i]);
+            done += 1;
+            report((done / segments.length) * 0.6);
+        }
 
         const basePath = path.join(workDir, 'base.mp4');
         await joinSegments(segmentPaths, boundaries, workDir, spec, segments.map((s) => s.frameCount));

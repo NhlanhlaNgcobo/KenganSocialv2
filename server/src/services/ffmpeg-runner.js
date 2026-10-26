@@ -29,8 +29,14 @@ export function run(bin, args, { cwd, duration, onProgress } = {}) {
         child.on('error', (err) => reject(new Error(`${path.basename(bin)} could not start: ${err.message}`)));
         child.on('close', (code) => {
             if (process.env.KENGAN_RENDER_DEBUG && path.basename(bin).startsWith('ffmpeg')) console.log(`[ffmpeg] ${((Date.now() - started) / 1000).toFixed(1)}s ${args.find((a) => /\.(mp4|m4a)$/.test(a) && !args[args.indexOf(a) - 1]?.startsWith('-i')) || args.slice(-1)[0]}`);
-            if (code === 0) resolve(stdout);
-            else reject(new Error(`${path.basename(bin)} failed (${code}): ${stderr.split('\n').slice(-6).join(' ').trim()}`));
+            if (code === 0) return resolve(stdout);
+            // The cause is usually an early line ("Invalid argument" for a filter, a missing file);
+            // the last lines are generic "Terminating thread" / "Conversion failed" noise.
+            const lines = stderr.split('\n').map((l) => l.trim()).filter(Boolean);
+            const generic = /Terminating thread|Task finished with error|Nothing was written|Conversion failed|Qavg|^frame=|Error while filtering|Could not open encoder before EOF/i;
+            if (process.env.KENGAN_RENDER_DEBUG) console.log(`[ffmpeg] failed: ${JSON.stringify(args)}\n${stderr.slice(-3000)}`);
+            const cause = lines.filter((l) => /error|invalid|no such|not found|cannot|could not|unable|failed|mismatch|unsupported/i.test(l) && !generic.test(l)).slice(0, 3);
+            reject(new Error(`${path.basename(bin)} failed (${code}): ${[...cause, ...lines.slice(-3)].join(' ').trim()}`));
         });
     });
 }

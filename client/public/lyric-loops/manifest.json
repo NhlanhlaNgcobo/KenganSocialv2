@@ -1,0 +1,122 @@
+[
+  {
+    "id": "aurora",
+    "name": "Aurora",
+    "seconds": 8,
+    "files": {
+      "vertical": {
+        "video": "/lyric-loops/aurora-vertical.mp4",
+        "poster": "/lyric-loops/aurora-vertical.jpg"
+      },
+      "landscape": {
+        "video": "/lyric-loops/aurora-landscape.mp4",
+        "poster": "/lyric-loops/aurora-landscape.jpg"
+      }
+    }
+  },
+  {
+    "id": "neon-grid",
+    "name": "Neon grid",
+    "seconds": 8,
+    "files": {
+      "vertical": {
+        "video": "/lyric-loops/neon-grid-vertical.mp4",
+        "poster": "/lyric-loops/neon-grid-vertical.jpg"
+      },
+      "landscape": {
+        "video": "/lyric-loops/neon-grid-landscape.mp4",
+        "poster": "/lyric-loops/neon-grid-landscape.jpg"
+      }
+    }
+  },
+  {
+    "id": "particles",
+    "name": "Rising particles",
+    "seconds": 8,
+    "files": {
+      "vertical": {
+        "video": "/lyric-loops/particles-vertical.mp4",
+        "poster": "/lyric-loops/particles-vertical.jpg"
+      },
+      "landscape": {
+        "video": "/lyric-loops/particles-landscape.mp4",
+        "poster": "/lyric-loops/particles-landscape.jpg"
+      }
+    }
+  },
+  {
+    "id": "bokeh",
+    "name": "Bokeh night",
+    "seconds": 8,
+    "files": {
+      "vertical": {
+        "video": "/lyric-loops/bokeh-vertical.mp4",
+        "poster": "/lyric-loops/bokeh-vertical.jpg"
+      },
+      "landscape": {
+        "video": "/lyric-loops/bokeh-landscape.mp4",
+        "poster": "/lyric-loops/bokeh-landscape.jpg"
+      }
+    }
+  },
+  {
+    "id": "waves",
+    "name": "Ocean waves",
+    "seconds": 8,
+    "files": {
+      "vertical": {
+        "video": "/lyric-loops/waves-vertical.mp4",
+        "poster": "/lyric-loops/waves-vertical.jpg"
+      },
+      "landscape": {
+        "video": "/lyric-loops/waves-landscape.mp4",
+        "poster": "/lyric-loops/waves-landscape.jpg"
+      }
+    }
+  },
+  {
+    "id": "warp",
+    "name": "Star warp",
+    "seconds": 8,
+    "files": {
+      "vertical": {
+        "video": "/lyric-loops/warp-vertical.mp4",
+        "poster": "/lyric-loops/warp-vertical.jpg"
+      },
+      "landscape": {
+        "video": "/lyric-loops/warp-landscape.mp4",
+        "poster": "/lyric-loops/warp-landscape.jpg"
+      }
+    }
+  },
+  {
+    "id": "liquid",
+    "name": "Liquid sunset",
+    "seconds": 8,
+    "files": {
+      "vertical": {
+        "video": "/lyric-loops/liquid-vertical.mp4",
+        "poster": "/lyric-loops/liquid-vertical.jpg"
+      },
+      "landscape": {
+        "video": "/lyric-loops/liquid-landscape.mp4",
+        "poster": "/lyric-loops/liquid-landscape.jpg"
+      }
+    }
+  },
+  {
+    "id": "vinyl",
+    "name": "Vinyl glow",
+    "seconds": 8,
+    "files": {
+      "vertical": {
+        "video": "/lyric-loops/vinyl-vertical.mp4",
+        "poster": "/lyric-loops/vinyl-vertical.jpg"
+      },
+      "landscape": {
+        "video": "/lyric-loops/vinyl-landscape.mp4",
+        "poster": "/lyric-loops/vinyl-landscape.jpg"
+      }
+    }
+  }
+]

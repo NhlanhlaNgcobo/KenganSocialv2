@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
-import { CloudUpload, Image as ImageIcon, Loader2, Music, Plus, Search, Trash2, Video } from 'lucide-react';
+import { CloudUpload, Image as ImageIcon, Layers, Loader2, Music, Plus, Search, Trash2, Video } from 'lucide-react';
+import { defaultLayout, layoutTransform, OVERLAY_LAYOUTS } from '../../lib/overlay-layouts';
 import { formatShort } from '../../lib/time';
 import { useMediaStore } from '../../stores/media-store';
 import { usePlaybackStore } from '../../stores/playback-store';
-import { useProjectStore } from '../../stores/project-store';
+import { getCanvasSize, useProjectStore } from '../../stores/project-store';
 import { useTimelineStore } from '../../stores/timeline-store';
 import { useUiStore } from '../../stores/ui-store';
 import { DRAG_MIME, type MediaItem } from '../../types';
@@ -35,6 +36,16 @@ export function MediaView() {
     const addToTimeline = (item: MediaItem) => {
         const ok = useTimelineStore.getState().addMediaAtTime(item, usePlaybackStore.getState().currentTime);
         if (!ok) notify(`Could not place ${item.name}.`, 'error');
+    };
+
+    /** Picture-in-picture at the playhead, placed by layout (portrait on landscape = presenter). */
+    const addAsOverlay = (item: MediaItem) => {
+        const canvas = getCanvasSize(useProjectStore.getState().ratio);
+        const anchor = defaultLayout(item, canvas);
+        const placed = useTimelineStore.getState().addOverlay(item, usePlaybackStore.getState().currentTime, layoutTransform(anchor, 'medium', item, canvas));
+        if (!placed) return notify(`Could not overlay ${item.name}.`, 'error');
+        const label = OVERLAY_LAYOUTS.find((l) => l.id === anchor)?.label.toLowerCase();
+        notify(`Added as an overlay (${label}). Drag it on the preview, or pick a layout in Properties.`, 'success');
     };
 
     const remove = (item: MediaItem) => {
@@ -125,6 +136,11 @@ export function MediaView() {
                                         <button className="ke-icon-btn ke-icon-btn--xs" title="Add at playhead" onClick={() => addToTimeline(item)}>
                                             <Plus size={12} />
                                         </button>
+                                        {item.type !== 'audio' ? (
+                                            <button className="ke-icon-btn ke-icon-btn--xs" title="Overlay: add on top of the main video (picture-in-picture)" aria-label={`Add ${item.name} as an overlay`} onClick={() => addAsOverlay(item)}>
+                                                <Layers size={12} />
+                                            </button>
+                                        ) : null}
                                         <button className="ke-icon-btn ke-icon-btn--xs" title="Remove from project" onClick={() => remove(item)}>
                                             <Trash2 size={12} />
                                         </button>

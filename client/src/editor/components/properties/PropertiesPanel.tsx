@@ -1,5 +1,8 @@
 import { CAMERA_MOTIONS } from '../../lib/camera-motion.js';
-import { AlignCenter, AlignLeft, AlignRight, Bold, Eye, EyeOff, Italic, Loader2, Volume2, VolumeX, Wand2 } from 'lucide-react';
+import { useState } from 'react';
+import { AlignCenter, AlignLeft, AlignRight, Bold, Eye, EyeOff, Italic, Layers, Loader2, Pipette, Volume2, VolumeX, Wand2 } from 'lucide-react';
+import { defaultLayout, layoutTransform, OVERLAY_LAYOUTS, OVERLAY_SIZES, type OverlayAnchor, type OverlaySize } from '../../lib/overlay-layouts';
+import { DEFAULT_KEY, KEY_PRESETS } from '../../lib/chroma-key';
 import { useAuth } from '../../../context/AuthContext';
 import { CLEANUP_PRESETS, hasCleanup, NO_CLEANUP, STABILIZE_PRESETS, useEnhanceStore } from '../../stores/enhance-store';
 import type { CleanupOptions } from '../../lib/editor-api';
@@ -17,7 +20,7 @@ import { useMediaStore } from '../../stores/media-store';
 import { usePlaybackStore } from '../../stores/playback-store';
 import { useProjectStore } from '../../stores/project-store';
 import { useTimelineStore } from '../../stores/timeline-store';
-import type { ClipEffect, ClipTransform, EffectType, MediaElement, TextAnimation, TextElement, TimelineTrack, TransitionType } from '../../types';
+import type { ChromaKey, ClipEffect, ClipTransform, EffectType, MediaElement, TextAnimation, TextElement, TimelineTrack, TransitionType } from '../../types';
 import { CAPTION_MOTIONS, TEXT_ANIMATIONS, captionTokens } from '../../lib/caption-motion.js';
 
 /** Edits made while dragging a slider or typing are grouped into one undo step. */
@@ -425,6 +428,9 @@ function TransformSection({ track, el }: { track: TimelineTrack; el: MediaElemen
     const isFill = Math.abs(t.scale - fill) < 0.005 && fill !== 1;
 
     return (
+        <>
+        <OverlaySection track={track} el={el} />
+        {!track.isMain && media && media.type !== 'audio' ? <ChromaKeySection track={track} el={el} isVideo={media.type === 'video'} /> : null}
         <section className="ke-props-section">
             <h4>Transform</h4>
             <div className="ke-chip-row">
@@ -474,6 +480,153 @@ function TransformSection({ track, el }: { track: TimelineTrack; el: MediaElemen
                 </>
             ) : (
                 <p className="ke-note">Zoom animation is available on the main track. On this track, zoom below 100% makes a picture-in-picture.</p>
+            )}
+        </section>
+        </>
+    );
+}
+
+/**
+ * Picture-in-picture: layouts and size for a clip on an overlay track, or a button that moves a
+ * main-track clip onto one. Dragging the overlay on the preview moves and resizes it freely.
+ */
+function OverlaySection({ track, el }: { track: TimelineTrack; el: MediaElement }) {
+    const media = useMediaStore((s) => s.items.find((i) => i.id === el.mediaId));
+    const ratio = useProjectStore((s) => s.ratio);
+    const canvas = getCanvasSize(ratio);
+    const [size, setSize] = useState<OverlaySize>('medium');
+    const notify = useUiStore((s) => s.notify);
+    if (!media || media.type === 'audio') return null;
+    const t = getTransform(el);
+
+    if (track.isMain) {
+        return (
+            <section className="ke-props-section">
+                <h4>Overlay</h4>
+                <button
+                    className="ke-btn ke-btn--block"
+                    onClick={() => {
+                        const placed = useTimelineStore.getState().makeOverlay(track.id, el.id, layoutTransform(defaultLayout(media, canvas), 'medium', media, canvas, t));
+                        if (!placed) notify('Could not move this clip to an overlay track.', 'error');
+                    }}
+                >
+                    <Layers size={15} /> Make overlay
+                </button>
+                <p className="ke-note">Moves this clip on top of the main video as a picture-in-picture, like a reaction or a presenter in front of a screen.</p>
+            </section>
+        );
+    }
+
+    const apply = (anchor: OverlayAnchor, nextSize = size) =>
+        useTimelineStore.getState().updateElement(track.id, el.id, { transform: layoutTransform(anchor, nextSize, media, canvas, t) }, true);
+    return (
+        <section className="ke-props-section">
+            <h4>Overlay layout</h4>
+            <div className="ke-overlay-grid" role="group" aria-label="Overlay layout">
+                {OVERLAY_LAYOUTS.map((l) => (
+                    <button key={l.id} className={`ke-overlay-pick ke-overlay-pick--${l.id}`} onClick={() => apply(l.id)} title={l.hint}>
+                        <span className="ke-overlay-pick__frame" aria-hidden="true">
+                            <i />
+                        </span>
+                        <small>{l.label}</small>
+                    </button>
+                ))}
+            </div>
+            <Row label="Size">
+                <div className="ke-seg ke-seg--text">
+                    {OVERLAY_SIZES.map((s) => (
+                        <button key={s.id} className={size === s.id ? 'is-active' : ''} onClick={() => setSize(s.id)}>
+                            {s.label}
+                        </button>
+                    ))}
+                </div>
+            </Row>
+            <p className="ke-note">Pick a size, then a layout to place it, or drag it on the preview. Pull the corner handle to resize.</p>
+        </section>
+    );
+}
+
+type EyeDropperCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
+
+/** Green/blue screen removal for overlay clips (lib/chroma-key.ts; preview and export match). */
+function ChromaKeySection({ track, el, isVideo }: { track: TimelineTrack; el: MediaElement; isVideo: boolean }) {
+    const key = el.chromaKey || null;
+    const running = useEnhanceStore((s) => (s.runningMediaId === el.mediaId ? s : null));
+    const busy = useEnhanceStore((s) => !!s.runningMediaId);
+    const notify = useUiStore((s) => s.notify);
+    const removeWithAi = async () => {
+        try {
+            notify(await useEnhanceStore.getState().removeBackground(track.id, el.id), 'success');
+        } catch (error) {
+            if ((error as Error).message !== 'Cancelled') notify((error as Error).message, 'error');
+        }
+    };
+    const commit = (next: ChromaKey | null) => useTimelineStore.getState().updateElement(track.id, el.id, { chromaKey: next });
+    const update = (partial: Partial<ChromaKey>) => key && useTimelineStore.getState().updateElement(track.id, el.id, { chromaKey: { ...key, ...partial } }, false);
+    const EyeDropper = (window as unknown as { EyeDropper?: EyeDropperCtor }).EyeDropper;
+    const pick = async () => {
+        try {
+            const { sRGBHex } = await new EyeDropper!().open();
+            commit({ ...(key || DEFAULT_KEY), color: sRGBHex });
+        } catch {
+            // Cancelled with Escape.
+        }
+    };
+    return (
+        <section className="ke-props-section">
+            <h4>Green screen</h4>
+            {isVideo ? (
+                running ? (
+                    <div className="ke-bg-remove">
+                        <Loader2 size={14} className="ke-spin" />
+                        <span>
+                            {running.stage} {running.progress ? `${running.progress}%` : ''}
+                        </span>
+                        <button className="ke-btn ke-btn--sm" onClick={() => useEnhanceStore.getState().cancel()}>
+                            Cancel
+                        </button>
+                    </div>
+                ) : (
+                    <button className="ke-btn ke-btn--block" onClick={removeWithAi} disabled={busy} title="No green screen? AI cuts out the people and removes everything behind them.">
+                        <Wand2 size={15} /> Remove background with AI
+                    </button>
+                )
+            ) : null}
+            <div className="ke-chip-row">
+                <button className={`ke-chip ${!key ? 'is-active' : ''}`} onClick={() => commit(null)}>
+                    Off
+                </button>
+                {KEY_PRESETS.map((p) => (
+                    <button key={p.id} className={`ke-chip ${key?.color.toLowerCase() === p.color ? 'is-active' : ''}`} onClick={() => commit({ ...(key || DEFAULT_KEY), color: p.color })}>
+                        {p.label}
+                    </button>
+                ))}
+            </div>
+            {key ? (
+                <>
+                    <Row label="Key colour">
+                        <div className="ke-key-colour">
+                            <input type="color" className="ke-color" aria-label="Key colour" value={key.color} onPointerDown={beginEdit} onChange={(e) => update({ color: e.target.value })} />
+                            {EyeDropper ? (
+                                <button className="ke-btn ke-btn--sm" onClick={pick} title="Click the screen colour in the preview">
+                                    <Pipette size={13} /> Pick
+                                </button>
+                            ) : null}
+                        </div>
+                    </Row>
+                    <Row label="Strength">
+                        <Slider value={key.similarity} min={0.01} max={0.5} step={0.005} format={(v) => `${Math.round(v * 200)}`} onChange={(v) => update({ similarity: v })} />
+                    </Row>
+                    <Row label="Softness">
+                        <Slider value={key.blend} min={0} max={0.3} step={0.005} format={(v) => `${Math.round((v / 0.3) * 100)}`} onChange={(v) => update({ blend: v })} />
+                    </Row>
+                    <Row label="Spill">
+                        <Slider value={key.spill} min={0} max={1} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => update({ spill: v })} />
+                    </Row>
+                    <p className="ke-note">Raise Strength until the screen disappears, add Softness for smoother edges, and Spill to remove the green glow on hair and edges.</p>
+                </>
+            ) : (
+                <p className="ke-note">Filmed in front of a green or blue screen? Turn it on to remove the screen so the video behind shows through. No screen? Use Remove background with AI (works on people; takes a little while).</p>
             )}
         </section>
     );

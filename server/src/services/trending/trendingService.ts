@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { db } from '../../utils/firestore';
 import { FieldValue } from 'firebase-admin/firestore';
-import { CHAT_MODEL, chatClient } from '../llm-client.js';
+import { CHAT_MODEL, chatClient, parseJsonReply } from '../llm-client.js';
 
 const openai = chatClient;
 
@@ -201,7 +201,7 @@ export async function fetchTrendingResult(
             ]
         }, { timeout: 15000, maxRetries: 0 });
 
-        const parsed = JSON.parse(gptRes.choices[0]?.message?.content || '{"cards":[]}');
+        const parsed = parseJsonReply(gptRes.choices[0]?.message?.content, { cards: [] });
         generatedCards = Array.isArray(parsed.cards) ? parsed.cards : [];
     } catch (err: any) {
         console.error('Trend GPT Consolidation Error:', err.message);

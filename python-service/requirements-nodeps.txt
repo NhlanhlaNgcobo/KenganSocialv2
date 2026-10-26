@@ -1,0 +1,4 @@
+# Installed with: pip install --no-deps -r requirements-nodeps.txt (after requirements.txt).
+# scenedetect declares opencv-python, which would replace opencv-python-headless; it works with
+# the headless build, and its other dependencies are pinned in requirements.txt.
+scenedetect==0.7.2

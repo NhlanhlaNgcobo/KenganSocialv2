@@ -66,13 +66,16 @@ export interface EnhanceSummary {
     stabilized: boolean;
     stabilizer?: (Partial<StabilizeSettings> & { engine: 'l1' | 'vidstab-fallback'; zoomApplied?: number; shots?: number }) | null;
     autoframe: null | { applied: boolean; reason?: string; ratio?: string; width?: number; height?: number; shots?: number; faceCoverage?: number };
+    backgroundRemoved?: { keyColor: string; personShare: number } | null;
 }
 
 export interface EnhanceRequest {
     sourceUploadId: string;
-    stabilize: { enabled: boolean } & StabilizeSettings;
-    autoframe: { enabled: boolean; ratio: string };
+    stabilize?: { enabled: boolean } & StabilizeSettings;
+    autoframe?: { enabled: boolean; ratio: string };
     cleanup?: { enabled: boolean } & CleanupOptions;
+    /** AI background removal: people on a flat key colour (summary.backgroundRemoved.keyColor). */
+    removeBackground?: { enabled: boolean };
 }
 
 export interface AnalysisJob {
@@ -116,7 +119,10 @@ export const editorApi = {
         const root = API_URL.replace(/\/api$/, '');
         const response = await apiFetch(`${root}${downloadUrl}`, { headers: await authHeaders() });
         if (!response.ok) throw new Error(`Download failed (${response.status})`);
-        return response.blob();
+        // Not response.blob(): Chrome streams large response blobs into its disk-backed blob store
+        // and fails them ("Failed to fetch") when the disk is nearly full. Reading the bytes and
+        // wrapping them works in that case too, at the same memory cost.
+        return new Blob([await response.arrayBuffer()], { type: response.headers.get('content-type') || 'video/mp4' });
     },
 
     async startAnalysis(body: {
@@ -148,7 +154,8 @@ export const editorApi = {
             const body = await response.json().catch(() => ({}));
             throw new Error(body.error || `Download failed (${response.status})`);
         }
-        return response.blob();
+        // Bytes, not response.blob(): see downloadRender.
+        return new Blob([await response.arrayBuffer()], { type: response.headers.get('content-type') || 'video/mp4' });
     },
 };
 

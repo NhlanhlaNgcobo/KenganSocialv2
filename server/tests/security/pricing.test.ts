@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CREDIT_COSTS, MAX_SOURCE_MINUTES, PLAN_LIMITS, TRIAL_LIMITS, TRIAL_MEDIA_PLAN, transcriptionMinutes, videoUnits } from '../../src/utils/planLimits';
 import { PLAN_CATALOG } from '../../src/config/plan-catalog';
-import { mediaPlan, noteTrial, usageLimit } from '../../src/middleware/planGate';
+import { mediaPlan, noteTrial, noteUnlimited, usageLimit } from '../../src/middleware/planGate';
+import { effectivePlan } from '../../src/utils/trial';
 // @ts-ignore -- plain ES module shared with docs/pricing
 import { CREDIT_PRICES, ECON, PLANS, costPlan } from '../../../scripts/pricing-model.mjs';
 
@@ -82,4 +83,17 @@ test('the 60% margin also holds if the rand weakens to the stress exchange rate'
     } finally {
         ECON.usdZar = base;
     }
+});
+
+test('internal unlimited workspaces get Agency with no caps; others are unaffected', () => {
+    const ws = `unlimited-test-${Date.now()}`;
+    assert.equal(effectivePlan({ plan: 'starter', unlimited: true }), 'agency');
+    assert.equal(effectivePlan({ plan: 'starter', unlimited: 'yes' }), 'starter'); // only a real true counts
+    noteTrial(ws, new Date(Date.now() + 86400000).toISOString());
+    noteUnlimited(ws, true);
+    assert.equal(usageLimit(ws, 'agency', 'aiCalls'), -1); // trial caps don't apply either
+    assert.equal(usageLimit(ws, 'agency', 'renders'), -1);
+    assert.equal(usageLimit('someone-else', 'nano', 'aiCalls'), PLAN_LIMITS.nano.aiCalls);
+    noteUnlimited(ws, false);
+    assert.equal(usageLimit(ws, 'agency', 'aiCalls'), TRIAL_LIMITS.aiCalls);
 });

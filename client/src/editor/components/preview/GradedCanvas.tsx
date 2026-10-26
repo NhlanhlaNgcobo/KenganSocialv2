@@ -1,11 +1,13 @@
 /**
  * Colour-graded preview: draws a video (or image) through the clip's 3D LUT on the GPU (WebGL2).
  * The LUT comes from lib/color-pipeline.js, the same code the export renderer uses for lut3d,
- * so the preview matches the export.
+ * so the preview matches the export. Also keys green/blue screens (lib/chroma-key.ts): the key
+ * reads the original colours, before the grade, as the export does.
  */
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import { buildLut } from '../../lib/color-pipeline.js';
-import type { ColorSettings } from '../../types';
+import { isBlueKey, keyUv } from '../../lib/chroma-key';
+import type { ChromaKey, ColorSettings } from '../../types';
 
 // Preview LUT resolution: 25³ rebuilds fast enough while dragging sliders; trilinear sampling
 // makes the difference from the export's 33³ invisible.
@@ -25,12 +27,37 @@ precision highp sampler3D;
 uniform sampler2D u_frame;
 uniform sampler3D u_lut;
 uniform float u_size;
+uniform bool u_useLut;
+uniform bool u_key;
+uniform vec2 u_keyUv;
+uniform float u_similarity;
+uniform float u_blend;
+uniform float u_spill;
+uniform bool u_spillBlue;
+uniform vec2 u_texel;
 in vec2 v_uv;
 out vec4 outColor;
+// U/V as FFmpeg's chromakey sees them (BT.601 limited range, centred on 0).
+vec2 uvOf(vec3 c) {
+    return vec2(dot(c, vec3(-0.168736, -0.331264, 0.5)), dot(c, vec3(0.5, -0.418688, -0.081312))) * (224.0 / 255.0);
+}
 void main() {
     vec3 c = texture(u_frame, v_uv).rgb;
-    vec3 coord = c * ((u_size - 1.0) / u_size) + 0.5 / u_size;
-    outColor = vec4(texture(u_lut, coord).rgb, 1.0);
+    float alpha = 1.0;
+    if (u_key) {
+        // chromakey: mean U/V distance over a 3x3 neighbourhood, then similarity/blend ramp.
+        float diff = 0.0;
+        for (int y = -1; y <= 1; y++)
+            for (int x = -1; x <= 1; x++)
+                diff += length(uvOf(texture(u_frame, v_uv + vec2(float(x), float(y)) * u_texel).rgb) - u_keyUv) / sqrt(2.0);
+        diff /= 9.0;
+        alpha = u_blend > 0.0001 ? clamp((diff - u_similarity) / u_blend, 0.0, 1.0) : (diff > u_similarity ? 1.0 : 0.0);
+        // despill (mix 0.5, expand 0).
+        if (u_spillBlue) c.b = max(c.b - u_spill * max(c.b - (c.r + c.g) * 0.5, 0.0), 0.0);
+        else c.g = max(c.g - u_spill * max(c.g - (c.r + c.b) * 0.5, 0.0), 0.0);
+    }
+    if (u_useLut) c = texture(u_lut, c * ((u_size - 1.0) / u_size) + 0.5 / u_size).rgb;
+    outColor = vec4(c, alpha);
 }`;
 
 /** LUTs cached by settings, shared by all clips with the same grade. */
@@ -55,15 +82,20 @@ export function useLut(color: ColorSettings | null | undefined, luts: Record<str
 
 interface Props {
     source: HTMLVideoElement | HTMLImageElement | null;
-    lut: Float32Array;
+    lut: Float32Array | null;
+    chromaKey?: ChromaKey | null;
     style?: CSSProperties;
     className?: string;
 }
 
-export function GradedCanvas({ source, lut, style, className }: Props) {
+type Uniforms = Record<'useLut' | 'key' | 'keyUv' | 'similarity' | 'blend' | 'spill' | 'spillBlue' | 'texel', WebGLUniformLocation | null>;
+
+export function GradedCanvas({ source, lut, chromaKey, style, className }: Props) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const glRef = useRef<{ gl: WebGL2RenderingContext; frame: WebGLTexture; lutTex: WebGLTexture } | null>(null);
+    const glRef = useRef<{ gl: WebGL2RenderingContext; frame: WebGLTexture; lutTex: WebGLTexture; u: Uniforms } | null>(null);
     const drawRef = useRef<() => void>(() => {});
+    const settingsRef = useRef({ lut, chromaKey });
+    settingsRef.current = { lut, chromaKey };
 
     // Set up WebGL once.
     useEffect(() => {
@@ -112,17 +144,28 @@ export function GradedCanvas({ source, lut, style, className }: Props) {
         gl.uniform1i(gl.getUniformLocation(prog, 'u_frame'), 0);
         gl.uniform1i(gl.getUniformLocation(prog, 'u_lut'), 1);
         gl.uniform1f(gl.getUniformLocation(prog, 'u_size'), PREVIEW_LUT_SIZE);
-        glRef.current = { gl, frame, lutTex };
+        const names = ['useLut', 'key', 'keyUv', 'similarity', 'blend', 'spill', 'spillBlue', 'texel'] as const;
+        const u = Object.fromEntries(names.map((n) => [n, gl.getUniformLocation(prog, `u_${n}`)])) as Uniforms;
+        glRef.current = { gl, frame, lutTex, u };
         return () => {
-            gl.getExtension('WEBGL_lose_context')?.loseContext();
             glRef.current = null;
+            gl.deleteTexture(frame);
+            gl.deleteTexture(lutTex);
+            gl.deleteBuffer(buf);
+            gl.deleteProgram(prog);
+            // Free the context promptly (browsers cap live WebGL contexts), but only once the canvas
+            // has left the page: a StrictMode re-mount reuses this canvas, and a lost context
+            // cannot be got back.
+            setTimeout(() => {
+                if (!canvas.isConnected) gl.getExtension('WEBGL_lose_context')?.loseContext();
+            }, 0);
         };
     }, []);
 
     // Upload the LUT when the grade changes.
     useEffect(() => {
         const ctx = glRef.current;
-        if (!ctx) return;
+        if (!ctx || !lut) return;
         const { gl, lutTex } = ctx;
         const rgba = new Float32Array((lut.length / 3) * 4);
         for (let i = 0, j = 0; i < lut.length; i += 3, j += 4) {
@@ -138,12 +181,15 @@ export function GradedCanvas({ source, lut, style, className }: Props) {
         drawRef.current();
     }, [lut]);
 
+    // Redraw when the key settings change (paused video has no new frames).
+    useEffect(() => drawRef.current(), [chromaKey]);
+
     // Draw frames: on every decoded video frame, on seeks and when the grade changes.
     useEffect(() => {
         const ctx = glRef.current;
         const canvas = canvasRef.current;
         if (!ctx || !canvas || !source) return undefined;
-        const { gl, frame } = ctx;
+        const { gl, frame, u } = ctx;
         const draw = () => {
             const w = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
             const h = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
@@ -163,6 +209,18 @@ export function GradedCanvas({ source, lut, style, className }: Props) {
                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
             } catch {
                 return; // not ready yet
+            }
+            const { lut: hasLut, chromaKey: key } = settingsRef.current;
+            gl.uniform1i(u.useLut, hasLut ? 1 : 0);
+            gl.uniform1i(u.key, key ? 1 : 0);
+            if (key) {
+                gl.uniform2fv(u.keyUv, keyUv(key.color));
+                gl.uniform1f(u.similarity, key.similarity);
+                gl.uniform1f(u.blend, key.blend);
+                gl.uniform1f(u.spill, key.spill);
+                gl.uniform1i(u.spillBlue, isBlueKey(key.color) ? 1 : 0);
+                // FFmpeg keys on 4:2:0 chroma: its 3x3 neighbourhood spans two source pixels per step.
+                gl.uniform2f(u.texel, 2 / w, 2 / h);
             }
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         };

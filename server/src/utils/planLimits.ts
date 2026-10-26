@@ -54,6 +54,7 @@ export const CREDIT_COSTS = {
     fastImage: 5, // one AI image, fast quality
     bestImage: 6, // one AI image, best quality
     lyrics: 17, // lyric transcription and structuring for a song
+    lyricsSync: 3, // the user's own lyrics timed to the vocals (speech-to-text only)
 } as const
 
 /** Seconds of video one export or AI-edit render unit covers. */

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>KenganSocial: going live, with and without money</title>
+<style>
+  @page { size: A4; margin: 15mm 15mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #16181d; font-size: 10pt; line-height: 1.42; margin: 0; }
+  h1 { font-size: 20pt; margin: 0 0 1.5mm; letter-spacing: -0.01em; }
+  .sub { color: #555b66; margin: 0 0 5mm; }
+  .note { background: #f3f4f6; border-left: 3px solid #16181d; padding: 3mm 4mm; margin: 0 0 4mm; }
+  .note p { margin: 0 0 1.6mm; } .note p:last-child { margin: 0; }
+  .warn { background: #fff7e6; border-left: 3px solid #b26a00; padding: 2.6mm 4mm; margin: 3mm 0; }
+  h2 { font-size: 13pt; margin: 7mm 0 2mm; padding-bottom: 1mm; border-bottom: 1.5px solid #16181d; break-after: avoid; }
+  h3 { font-size: 10.8pt; margin: 4.5mm 0 1.5mm; break-after: avoid; }
+  p { margin: 0 0 2mm; }
+  table { width: 100%; border-collapse: collapse; margin: 1.5mm 0 3mm; font-size: 9.2pt; break-inside: auto; }
+  th { text-align: left; background: #16181d; color: #fff; font-weight: 600; padding: 1.6mm 2mm; }
+  td { padding: 1.5mm 2mm; border-bottom: 1px solid #e3e5ea; vertical-align: top; }
+  tr { break-inside: avoid; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .yes { color: #116b2f; font-weight: 700; } .no { color: #9b1c1c; font-weight: 700; } .part { color: #8a5a00; font-weight: 700; }
+  ol { margin: 0; padding: 0; list-style: none; }
+  li { position: relative; padding: 1.5mm 0 1.5mm 9mm; break-inside: avoid; border-bottom: 1px dotted #e3e5ea; }
+  li::before { content: ""; position: absolute; left: 0; top: 2.1mm; width: 4.2mm; height: 4.2mm; border: 1.3px solid #16181d; border-radius: 1mm; }
+  li b { display: block; }
+  li span { color: #4a505a; }
+  code { font-family: Consolas, monospace; font-size: 8.6pt; background: #f1f2f4; padding: 0 1mm; border-radius: 1mm; }
+  .tag { display: inline-block; font-size: 7.4pt; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: .3mm 1.6mm; border-radius: 1mm; margin-left: 1.5mm; vertical-align: 1px; }
+  .free { background: #116b2f; color: #fff; } .cost { background: #9b1c1c; color: #fff; } .me { background: #d9dce2; color: #16181d; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin: 2mm 0 3mm; }
+  .card { border: 1.2px solid #16181d; border-radius: 2mm; padding: 3mm 3.5mm; break-inside: avoid; }
+  .card h3 { margin-top: 0; }
+  .card .big { font-size: 15pt; font-weight: 700; margin: 0 0 1mm; }
+  .card ul { margin: 1mm 0 0 4mm; padding: 0; } .card li { border: 0; padding: .4mm 0; } .card li::before { display: none; }
+  .pb { break-before: page; }
+  footer { margin-top: 6mm; color: #6b717c; font-size: 8.2pt; }
+  footer a { color: #6b717c; }
+</style>
+</head>
+<body>
+
+<h1>Going live: what it takes, and what you can launch for free</h1>
+<p class="sub">KenganSocial · MiraiStack · 25 October 2026 · Prepared from the code as it stands today and current provider terms. Rand figures use R17.50 per US$ and include VAT where it applies; check live prices before paying anything.</p>
+
+<div class="note">
+  <p><b>Short answer: yes, you can launch a free first version without spending money.</b> A "KenganSocial Beta" can run on a free cloud server with free web hosting and free AI tiers. Creators would get the full video editor, captions, clips from their own uploads, AI Edit, green screen and AI background removal, the music library and the content calendar.</p>
+  <p><b>What the free version can't do yet:</b> take payments (not needed for a free beta), publish to Instagram, Facebook and TikTok for the public (those need platform approval, which costs nothing but takes weeks), or use the paid extras: voiceovers, AI music, AI images and fast cloud transcription for long videos.</p>
+  <p><b>The trade-off is capacity.</b> A free server and free AI are slow and rate-limited, so plan for a closed beta of about <b>20 to 50 invited creators</b>, not an open launch.</p>
+</div>
+
+<div class="cols">
+  <div class="card">
+    <h3>Path 1 · Free beta</h3>
+    <p class="big">R0 a month</p>
+    <ul>
+      <li>About 20–50 invited testers, one video job at a time</li>
+      <li>Editor, captions, clips, AI Edit, green screen, background removal, music, calendar</li>
+      <li>Publishing: YouTube (up to 100 listed users) and LinkedIn</li>
+      <li>No payments; everyone gets a free beta plan</li>
+      <li>Ready in about 1–2 weeks of setup</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Path 2 · Full paid launch</h3>
+    <p class="big">≈ R3,050–R5,060 a month fixed</p>
+    <ul>
+      <li>Open sign-up, paid plans through Payfast</li>
+      <li>Every feature, including voiceovers, AI music, AI images, launch videos and video ads</li>
+      <li>Publishing to all platforms once approved (4–12 weeks)</li>
+      <li>Per-use AI costs are covered by plan prices (about 65–68% margin)</li>
+      <li>Fixed costs are covered by roughly 17–29 paying Creator Starter subscribers</li>
+    </ul>
+  </div>
+</div>
+
+<h2>1. Part A: the free first launch</h2>
+
+<h3>What's included, and how it runs for free</h3>
+<table>
+  <tr><th style="width:27%">Feature</th><th style="width:9%">Free?</th><th>How it runs without money</th></tr>
+  <tr><td>Sign-up, log-in, workspaces, team invites</td><td class="yes">Yes</td><td>Firebase Auth and Firestore free tier (no card needed at beta size).</td></tr>
+  <tr><td>Video editor: timeline, templates, text, effects, looks, transitions, export</td><td class="yes">Yes</td><td>Runs on our own server with FFmpeg. No outside service.</td></tr>
+  <tr><td>Overlays, green screen, AI background removal</td><td class="yes">Yes</td><td>All on our server; the background-removal model is free (Apache-2.0). Slow on a small server, so keep clips short.</td></tr>
+  <tr><td>Auto captions</td><td class="yes">Yes</td><td>Speech-to-text runs on our server (Whisper). Expect some misheard words on the small model.</td></tr>
+  <tr><td>Clips from the user's own long videos</td><td class="yes">Yes</td><td>Transcription and moment-finding run on our server; titles and hooks come from a free AI tier.</td></tr>
+  <tr><td>AI Edit (auto editor)</td><td class="yes">Yes</td><td>Analysis on our server, edit decisions from a free AI tier; it falls back to a rule-based edit if the AI is busy.</td></tr>
+  <tr><td>Repurpose (articles and text into posts)</td><td class="part">Slow</td><td>Free AI tier. The built-in free fallback allows one reply every 30 seconds, so users may wait in busy moments.</td></tr>
+  <tr><td>Music library, stock images</td><td class="yes">Yes</td><td>Openverse, ccMixter and Jamendo music and images (Creative Commons). Stock videos need a free Pexels key.</td></tr>
+  <tr><td>Lyric video</td><td class="part">Mostly</td><td>Free when the user pastes or uploads the lyrics. "Listen and write the lyrics" and "Sync to vocals" use paid speech-to-text, so switch those off.</td></tr>
+  <tr><td>Content calendar and scheduling</td><td class="yes">Yes</td><td>Runs on our server (Redis queue).</td></tr>
+  <tr><td>Publishing to YouTube and LinkedIn</td><td class="part">Testers</td><td>Free developer apps. YouTube allows up to 100 listed test users before Google's verification; LinkedIn personal sharing is self-serve.</td></tr>
+  <tr><td>Client review links</td><td class="yes">Yes</td><td>In-app notifications work. Email alerts need an email provider (later).</td></tr>
+</table>
+
+<h3>What waits for money or approval</h3>
+<table>
+  <tr><th style="width:27%">Feature</th><th style="width:32%">Needs</th><th>Cost / time</th></tr>
+  <tr><td>Paid plans and subscriptions</td><td>Payfast merchant account</td><td>No monthly or setup fee; Payfast takes a percentage of each payment. You can switch this on as soon as you want to charge.</td></tr>
+  <tr><td>Instagram, Facebook, Threads publishing and Inbox</td><td>Meta Business Verification and App Review</td><td>Free, but needs registered business documents and takes weeks. Testers you add to the Meta app can try it before then.</td></tr>
+  <tr><td>TikTok publishing</td><td>TikTok Content Posting audit</td><td>Free; until approved, posts can only be private.</td></tr>
+  <tr><td>Voiceovers in video ads</td><td>ElevenLabs</td><td>Per character (paid plan for commercial use).</td></tr>
+  <tr><td>AI music for launch videos and ads</td><td>Treblo</td><td>About US$0.10 per 30 seconds of music (estimate).</td></tr>
+  <tr><td>AI images and thumbnail backgrounds</td><td>OpenRouter image models</td><td>About R1.60–R1.90 per image.</td></tr>
+  <tr><td>Fast transcription of long videos (10 min+)</td><td>OpenRouter Whisper</td><td>About R0.15 per minute of audio. The free path (our own server) works but is slower.</td></tr>
+  <tr><td>Trend research</td><td>Perplexity Sonar</td><td>About US$5 per 1,000 searches.</td></tr>
+  <tr><td>Reliable, fast AI writing (hooks, titles, posts)</td><td>OpenRouter (Claude Haiku)</td><td>Well under R1 per AI action. Free tiers work for a beta but are rate-limited.</td></tr>
+  <tr><td>YouTube link import in Clips</td><td>A policy decision, not money</td><td>Downloading from YouTube breaks YouTube's terms and is often blocked from cloud servers. Keep it off for the public; users upload their own files.</td></tr>
+</table>
+
+<h3 class="pb">Checklist: the free launch</h3>
+<p><span class="tag free">Free</span> = costs nothing. <span class="tag me">Me</span> = I can do this part for you; you only need to approve or log in.</p>
+<ol>
+  <li><b>Create an Oracle Cloud account and a free server <span class="tag free">Free</span></b><span>Oracle's "Always Free" tier gives an ARM server; it was reportedly cut in June 2026 from 4 cores / 24 GB to <b>2 cores / 12 GB</b>, plus free disk. It needs a bank card for identity checks but doesn't charge it. Choose the Johannesburg region (keeps data in South Africa for POPIA); if Johannesburg says "out of capacity", retry later or pick another region and note it in the privacy policy.</span></li>
+  <li><b>Make the app run on that server <span class="tag me">Me</span></b><span>Oracle's free server uses ARM processors. I'll check every part (API, video service, Chrome rendering, the background-removal model) builds for ARM, then start the stack with Docker and HTTPS. One render at a time on 2 cores.</span></li>
+  <li><b>Host the website for free <span class="tag free">Free</span> <span class="tag me">Me</span></b><span>Use Firebase Hosting (already configured in the project) or Cloudflare Pages. Not Vercel's free plan: it doesn't allow commercial use.</span></li>
+  <li><b>Point your domain at it <span class="tag free">Free</span></b><span>In GoDaddy DNS: <code>kengansocial.co.za</code> and <code>www</code> to the website, <code>api</code> to the Oracle server. You already own the domain; just keep its renewal paid.</span></li>
+  <li><b>Get a free Gemini API key <span class="tag free">Free</span></b><span>From Google AI Studio. It's faster than the built-in free fallback. On the free tier Google may use prompts to improve its models, so don't send confidential client material, and say so in the privacy policy (next items).</span></li>
+  <li><b>Get a free Pexels key <span class="tag free">Free</span></b><span>For stock videos in the editor and lyric video backgrounds.</span></li>
+  <li><b>Set the server to free mode <span class="tag me">Me</span></b><span>No paid keys; local transcription only (<code>CLIP_TRANSCRIBE=local</code>); free AI fallback on; YouTube link import off; paid-only buttons (AI lyrics, voiceovers, AI images, AI music) hidden or marked "coming soon".</span></li>
+  <li><b>Give every tester a "Beta" plan <span class="tag me">Me</span></b><span>Today, new sign-ups land on the Free plan, which allows no clips or AI. I'll add a Beta plan given at sign-up, with limits sized to the free server (for example: videos up to 15 minutes, 3 clip projects and 10 exports a month).</span></li>
+  <li><b>Set up YouTube and LinkedIn developer apps <span class="tag free">Free</span></b><span>YouTube: OAuth consent screen in "Testing" with your testers' emails listed (up to 100). LinkedIn: "Share on LinkedIn" product. Rotate the YouTube client secret first: part of it appeared in a log earlier.</span></li>
+  <li><b>Replace the exposed keys <span class="tag free">Free</span></b><span>Delete the Firebase service-account key starting <code>ac504d10</code> and make a new one, set a fresh <code>TOKEN_ENCRYPTION_KEY</code> and <code>FREE_CLIP_SECRET</code>, and check the TikTok key (it's currently the same as the secret, which looks like a paste mistake).</span></li>
+  <li><b>Publish the Firebase rules and indexes <span class="tag free">Free</span></b><span>Needs your owner login: <code>firebase deploy --only firestore:rules,firestore:indexes</code>. The service account I have can't do it.</span></li>
+  <li><b>Update the privacy policy for the beta <span class="tag me">Me</span></b><span>Say which providers process data abroad (Google Gemini free tier, the Pollinations fallback, Openverse) and that it's a beta.</span></li>
+  <li><b>Register an Information Officer (POPIA) <span class="tag free">Free</span></b><span>Online with the Information Regulator. Required before you process people's personal information, even for free.</span></li>
+  <li><b>Make the support addresses work <span class="tag free">Free</span></b><span><code>support@</code> and <code>privacy@kengansocial.co.za</code>: forward them to your Gmail with Cloudflare Email Routing or Zoho Mail's free plan.</span></li>
+  <li><b>Backups <span class="tag free">Free</span></b><span>Oracle's free tier includes disk backups; schedule a weekly one. Firestore's automatic exports need a paid Google plan, so take a manual export before big changes.</span></li>
+  <li><b>Test on the live server, then invite testers <span class="tag me">Me</span></b><span>Run the deployment check and the end-to-end tests against the real domain, then invite your first 10 creators, collect feedback in one form, and grow to 20–50.</span></li>
+</ol>
+
+<div class="warn"><b>Know the limits of free.</b> Free tiers can change or run out without notice (Oracle has already cut its allowance once this year). A 2-core server renders slowly: a 10-minute video may take 15–30 minutes to turn into clips, and testers queue behind each other. Treat the beta as a test, and move to Part B once people would pay.</div>
+
+<h2 class="pb">2. Part B: everything needed for a full launch with all features</h2>
+
+<h3>Monthly fixed costs</h3>
+<table>
+  <tr><th>Item</th><th>Why</th><th class="num">Per month</th></tr>
+  <tr><td>Cloud server (Google e2-standard-4, Johannesburg: 4 cores, 16 GB, 100 GB disk)</td><td>Runs the API, video rendering and the video service for many users at once.</td><td class="num">≈ R2,450</td></tr>
+  <tr><td>Backups, snapshots, domain, email, monitoring</td><td>Firestore exports, disk snapshots, mailboxes, uptime checks.</td><td class="num">≈ R600</td></tr>
+  <tr><td>Remotion company licence</td><td>Launch videos and video ads. <b>Free while MiraiStack has 3 people or fewer</b>; from 4 people it's US$100 a month minimum.</td><td class="num">R0 now<br>≈ R2,010 later</td></tr>
+  <tr><td><b>Total fixed</b></td><td></td><td class="num"><b>≈ R3,050</b> (≈ R5,060 with Remotion)</td></tr>
+</table>
+<p>Everything else is <b>per use</b> (AI calls, transcription minutes, images, voiceovers, music) and already priced into the plans and credits. At full use, every paid plan keeps about 65–68% after costs, VAT and Payfast fees. A Creator Starter subscriber (R299) leaves about R177 a month after their costs, so about <b>17 subscribers cover R3,050</b> of fixed costs and about <b>29 cover R5,060</b>.</p>
+
+<h3>Accounts and keys to add</h3>
+<table>
+  <tr><th style="width:24%">Service</th><th>Unlocks</th><th style="width:28%">Cost</th></tr>
+  <tr><td>OpenRouter</td><td>Fast, reliable AI writing, AI Edit decisions, cloud transcription, AI images, AI lyrics</td><td>Prepaid credit, pay per use</td></tr>
+  <tr><td>ElevenLabs</td><td>Voiceovers in video ads</td><td>Paid plan for commercial use</td></tr>
+  <tr><td>Treblo</td><td>AI music for launch videos and ads</td><td>Credit plan</td></tr>
+  <tr><td>Perplexity</td><td>Trend research</td><td>Pay per search</td></tr>
+  <tr><td>Payfast</td><td>Subscriptions (Creator Starter R299, Creator Pro R699, Agency R3,499, Enterprise from R8,999)</td><td>No monthly fee; % per payment</td></tr>
+  <tr><td>Meta (Facebook, Instagram, Threads)</td><td>Publishing, comments and DM automation, analytics</td><td>Free; business verification + App Review</td></tr>
+  <tr><td>TikTok, YouTube, LinkedIn, Pinterest</td><td>Public publishing beyond test users</td><td>Free; each has its own review (TikTok audit, Google verification)</td></tr>
+  <tr><td>Error tracking (for example Sentry)</td><td>Alerts when something breaks for users</td><td>Free tier is enough at first</td></tr>
+</table>
+
+<h3>Checklist: before charging money</h3>
+<ol>
+  <li><b>Register the business, if MiraiStack isn't registered yet <span class="tag cost">Small fee</span></b><span>A (Pty) Ltd at CIPC. Meta's business verification, Payfast and a business bank account all ask for it.</span></li>
+  <li><b>Move to the paid server <span class="tag cost">≈ R2,450/month</span> <span class="tag me">Me</span></b><span>Re-open Google Cloud billing (both accounts are closed), create the server, move the data across from the beta server.</span></li>
+  <li><b>Open Payfast and test a full subscription <span class="tag free">No upfront cost</span> <span class="tag me">Me</span></b><span>Sandbox first: subscribe, renew, cancel, failed payment. Then one real low-value payment and refund.</span></li>
+  <li><b>Add the paid AI and media keys <span class="tag cost">Pay per use</span></b><span>OpenRouter first (biggest quality jump), then ElevenLabs, Treblo, Perplexity as you switch those features on.</span></li>
+  <li><b>Submit the platform reviews early <span class="tag free">Free</span></b><span>Meta, TikTok and Google take 4–12 weeks, so start during the beta. The screencast scripts are in <code>docs/SOCIAL_SETUP.md</code> and <code>docs/API_APPLICATIONS.md</code>.</span></li>
+  <li><b>Legal before the first payment <span class="tag cost">Advice fee</span></b><span>PAIA manual, ECTA disclosures on the website, Terms and Privacy Policy reviewed by someone qualified, POPIA agreements with each provider that handles user data.</span></li>
+  <li><b>Turn on automatic backups and monitoring <span class="tag cost">Included above</span></b><span>Scheduled Firestore exports, daily disk snapshots, an uptime check on <code>/api/health/ready</code>; test a restore once.</span></li>
+  <li><b>Store media in the cloud when you grow <span class="tag me">Me</span></b><span>For the first paying users, files on the server's disk are fine. Past a few hundred users, move them to cloud storage so the server can be replaced or scaled.</span></li>
+</ol>
+
+<h2>3. Suggested order</h2>
+<table>
+  <tr><th style="width:20%">When</th><th>What</th><th class="num" style="width:16%">Spend</th></tr>
+  <tr><td>Week 1–2</td><td>Free beta live (Part A). Invite 10 creators. Submit Meta, TikTok and Google reviews.</td><td class="num">R0</td></tr>
+  <tr><td>Week 3–6</td><td>Grow to 20–50 testers. Fix what they find. Ask who would pay, and for which features.</td><td class="num">R0</td></tr>
+  <tr><td>When 15–20 testers say they'd pay</td><td>Open Payfast (no upfront cost) and offer paid plans. Add OpenRouter credit from the first payments.</td><td class="num">Per use</td></tr>
+  <tr><td>When income reaches ≈ R3,000/month</td><td>Move to the paid server and switch on all features (Part B).</td><td class="num">≈ R3,050/month</td></tr>
+</table>
+
+<div class="warn"><b>Your laptop isn't a server.</b> Running KenganSocial for others from this computer isn't an option: it's nearly out of disk and memory, it sleeps, and its address changes. Every path above uses a cloud server, even the free one.</div>
+
+<footer>
+  Sources for provider terms (checked 25 October 2026):
+  Oracle Always Free resources, <a href="https://docs.oracle.com/en-us/iaas/Content/FreeTier/resourceref.htm">docs.oracle.com</a>, and the reported June 2026 change, <a href="https://infoq.com/news/2026/07/oracle-cloud-free-tier-limits/">InfoQ</a>;
+  Remotion licence, <a href="https://remotion.dev/license">remotion.dev/license</a> and <a href="https://www.remotion.dev/docs/license/pricing">pricing</a>;
+  Gemini API free tier, <a href="https://discuss.ai.google.dev/t/clarification-on-gemini-api-free-tier-vs-paid-tier-after-billing-activation/96995">Google AI forum</a>;
+  Payfast fees, <a href="https://payfast.io/">payfast.io</a>;
+  Vercel Hobby terms, <a href="https://vercel.com/docs/plans/hobby">vercel.com</a>.
+  Plan prices, margins and running costs come from <code>scripts/pricing-model.mjs</code>. Not legal or tax advice.
+</footer>
+</body>
+</html>

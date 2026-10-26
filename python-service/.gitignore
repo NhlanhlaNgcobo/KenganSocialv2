@@ -1,0 +1,4 @@
+
+# Downloaded at build time (scripts/download_models.py)
+models/modnet.onnx
+models/*.part

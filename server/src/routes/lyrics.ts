@@ -1,7 +1,7 @@
 import express, { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { analyzeLyrics } from '../services/lyrics/analyze.js';
+import { analyzeLyrics, syncLyrics } from '../services/lyrics/analyze.js';
 import { consumeUsage, planRateLimit, refundUsage } from '../middleware/planGate';
 import { CREDIT_COSTS } from '../utils/planLimits';
 
@@ -24,7 +24,9 @@ const upload = multer({
     limits: { fileSize: MAX_AUDIO_BYTES, files: 1 },
     fileFilter: (_req, file, cb) => {
         const ok = file.mimetype.startsWith('audio/') || AUDIO_EXTENSIONS.test(file.originalname);
-        cb(ok ? null : new Error('Upload an audio file (mp3, wav, m4a, aac, ogg, or flac).'));
+        // multer keeps the file only with cb(null, true); cb(null) alone silently drops it.
+        if (ok) cb(null, true);
+        else cb(new Error('Upload an audio file (mp3, wav, m4a, aac, ogg, or flac).'));
     },
 });
 
@@ -56,6 +58,42 @@ router.post('/analyze', withWorkspace, planRateLimit(), handleUpload, async (req
         if (error.status === 400) return res.status(400).json({ error: error.message });
         console.error('[Lyrics] Analyze failed:', error.message);
         res.status(502).json({ error: 'Lyric analysis failed. Try again, or paste the lyrics.' });
+    }
+});
+
+/**
+ * POST /api/lyrics/sync (multipart)
+ *  - file      the song (required)
+ *  - lines     JSON array of the user's lyric lines, in order
+ *  - duration  song length in seconds
+ * → LyricAnalysis with the user's exact lines, timed to the sung words
+ */
+router.post('/sync', withWorkspace, planRateLimit(), handleUpload, async (req: Request, res: Response) => {
+    const workspaceId = (req as any).workspaceId;
+    const plan = (req as any).plan || 'starter';
+    let lines: unknown = [];
+    try {
+        lines = JSON.parse(String(req.body.lines || '[]'));
+    } catch {
+        return res.status(400).json({ error: 'Send the lyric lines as a list.' });
+    }
+    if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: 'Add the lyrics first, one line per lyric line.' });
+    const usage = await consumeUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.lyricsSync);
+    if (!usage.ok) return res.status(usage.status).json(usage.body);
+    try {
+        const energy = Number(req.body.energy);
+        const analysis = await syncLyrics({
+            audio: req.file ?? null,
+            lines: lines.map((l) => String(l).slice(0, 300)),
+            duration: Number(req.body.duration),
+            energy: Number.isFinite(energy) ? energy : undefined,
+        });
+        res.json(analysis);
+    } catch (error: any) {
+        await refundUsage(workspaceId, plan, 'aiCalls', CREDIT_COSTS.lyricsSync);
+        if (error.status === 400) return res.status(400).json({ error: error.message });
+        console.error('[Lyrics] Sync failed:', error.message);
+        res.status(502).json({ error: 'Syncing to the vocals failed. Try again, or use Tap along.' });
     }
 });
 

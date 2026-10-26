@@ -11,11 +11,13 @@ COPY --from=denoland/deno:bin-2.1.4 /deno /usr/local/bin/deno
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-nodeps.txt ./
+RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir --no-deps -r requirements-nodeps.txt
 
 # Includes models/face_detection_yunet_2023mar.onnx (face framing).
 COPY . .
+# Background removal model (25 MB, kept out of git): pinned revision, checksum verified.
+RUN python scripts/download_models.py
 
 EXPOSE 8000
 

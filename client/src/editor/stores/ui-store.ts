@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type PanelTab = 'media' | 'templates' | 'music' | 'lyrics' | 'stock' | 'text' | 'captions' | 'effects' | 'transitions' | 'ai' | 'settings';
+export type PanelTab = 'media' | 'templates' | 'music' | 'lyric-video' | 'lyrics' | 'stock' | 'text' | 'captions' | 'effects' | 'transitions' | 'ai' | 'settings';
 
 interface UiState {
     activeTab: PanelTab;

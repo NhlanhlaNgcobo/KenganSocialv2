@@ -65,6 +65,19 @@ export interface MediaElement extends BaseTimelineElement {
     color?: ColorSettings | null;
     /** Beats of this clip's sound (lib/beats.js), in SOURCE seconds; editor-only, not exported. */
     beats?: BeatInfo | null;
+    /** Green/blue screen key (overlay tracks only, lib/chroma-key.ts). */
+    chromaKey?: ChromaKey | null;
+}
+
+export interface ChromaKey {
+    /** Key colour, #rrggbb. */
+    color: string;
+    /** 0.01..0.5: how far from the key colour still turns transparent. */
+    similarity: number;
+    /** 0..0.3: width of the soft edge. */
+    blend: number;
+    /** 0..1: removes the green (or blue) cast left on edges and hair. */
+    spill: number;
 }
 
 export interface BeatInfo {

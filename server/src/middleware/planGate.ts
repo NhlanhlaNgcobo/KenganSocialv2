@@ -20,8 +20,21 @@ export function noteTrial(workspaceId: string, endsAt: string | null) {
     else trials.delete(workspaceId);
 }
 
+/**
+ * Internal test workspaces (`unlimited: true` on the workspace, server-only): no monthly caps.
+ * Set by withWorkspace on every request, like trials.
+ */
+const unlimitedWorkspaces = new Set<string>();
+export function noteUnlimited(workspaceId: string, unlimited: boolean) {
+    if (!workspaceId) return;
+    if (unlimited) unlimitedWorkspaces.add(workspaceId);
+    else unlimitedWorkspaces.delete(workspaceId);
+}
+export const isUnlimited = (workspaceId: string) => unlimitedWorkspaces.has(workspaceId);
+
 /** The monthly allowance for a feature: the plan's, or the trial cap while a trial runs. */
 export function usageLimit(workspaceId: string, plan: string, feature: PlanFeature): number {
+    if (unlimitedWorkspaces.has(workspaceId)) return -1;
     const limit = (PLAN_LIMITS as any)[plan]?.[feature] ?? 0;
     const trialEnd = trials.get(workspaceId);
     if (!trialEnd || trialEnd <= Date.now()) return limit;

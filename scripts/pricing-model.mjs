@@ -84,6 +84,7 @@ export const CREDIT_PRICES = {
     fastImage: Math.ceil(PROVIDER.fastImage / CREDIT_USD), // 5
     bestImage: Math.ceil(PROVIDER.bestImage / CREDIT_USD), // 6
     lyrics: Math.ceil((PROVIDER.whisperApiMin * 6 + 3000 * PROVIDER.opusIn + 8000 * PROVIDER.opusOut) / CREDIT_USD), // 6-min song
+    lyricsSync: Math.ceil((PROVIDER.whisperApiMin * 6) / CREDIT_USD), // the user's lyrics timed to a 6-min song (Whisper only)
 };
 
 /** Worst-case rand cost of each unit a plan allowance is counted in. */

@@ -10,6 +10,7 @@ import { toTimelineBeats } from '../lib/beats.js';
 import { CAPTION_TEMPLATE_MAP, captionLook, captionText } from '../lib/caption-templates';
 import { useProjectStore } from './project-store';
 import type {
+    ClipTransform,
     CreateTimelineElement,
     MediaElement,
     MediaItem,
@@ -175,6 +176,12 @@ interface TimelineState {
     addCaptions: (words: { text: string; start: number; end: number }[], style: keyof typeof CAPTION_STYLES, canvasHeight?: number) => number;
     /** Puts lyric lines on a single "Lyrics" text track, replacing any previous one. Returns the count. */
     replaceLyricTrack: (lines: (Partial<TextElement> & { content: string; startTime: number; duration: number })[]) => number;
+    /** Picture-in-picture: a library item on an overlay track (above the main one) at `time`. */
+    addOverlay: (item: MediaItem, time: number, transform: ClipTransform) => { trackId: string; elementId: string } | null;
+    /** Moves a main-track clip onto an overlay track at the same time, with `transform`. */
+    makeOverlay: (trackId: string, elementId: string, transform: ClipTransform) => { trackId: string; elementId: string } | null;
+    /** Lyric video background: the main track becomes copies of one loop (muted) from 0 to `until`. */
+    setBackgroundLoop: (mediaId: string, name: string, loopDuration: number, until: number, transform?: MediaElement['transform']) => number;
     replaceMainTrackSegments: (mediaId: string, segments: { start: number; end: number; label?: string }[], mediaDuration: number) => void;
     /**
      * Applies a generated edit (AI Edit) as one undo step: replaces the main track, and replaces
@@ -610,6 +617,75 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
             };
             writeTracks([lyricTrack, ...get().tracks.filter((t) => !(t.type === 'text' && t.name === LYRIC_TRACK_NAME))]);
             return valid.length;
+        },
+
+        addOverlay: (item, time, transform) => {
+            if (item.type === 'audio') return null;
+            const duration = item.type === 'image' ? TIMELINE.DEFAULT_IMAGE_DURATION : item.duration || TIMELINE.DEFAULT_IMAGE_DURATION;
+            const startTime = Math.max(0, time);
+            // A free overlay track at this time, else a new one (overlay tracks sort above main).
+            const free = get().tracks.find((t) => t.type === 'media' && !t.isMain && !overlaps(t, startTime, duration));
+            const trackId = free?.id ?? get().addTrack('media');
+            const elementId = get().addElementToTrack(trackId, {
+                type: 'media',
+                mediaId: item.id,
+                name: item.name,
+                duration,
+                startTime,
+                trimStart: 0,
+                trimEnd: 0,
+                muted: false,
+                volume: 1,
+                speed: 1,
+                filter: 'none',
+                transform,
+            });
+            return elementId ? { trackId, elementId } : null;
+        },
+
+        makeOverlay: (trackId, elementId, transform) => {
+            const found = get().findElement(elementId);
+            if (!found || found.track.id !== trackId || found.element.type !== 'media' || !found.track.isMain) return null;
+            const el = found.element as MediaElement;
+            const length = getElementLength(el);
+            get().pushHistory();
+            const free = get().tracks.find((t) => t.type === 'media' && !t.isMain && !overlaps(t, el.startTime, length));
+            const target = free ?? createTrack('media');
+            const targetId = target.id;
+            // Transitions belong to cuts on the main track; an overlay doesn't keep them.
+            const moved: MediaElement = { ...el, transform, transitionIn: null };
+            const tracks = get().tracks.map((t) => (t.id === trackId ? { ...t, elements: t.elements.filter((e) => e.id !== elementId) } : t));
+            const withTarget = free ? tracks : [...tracks, target];
+            writeTracks(withTarget.map((t) => (t.id === targetId ? { ...t, elements: [...t.elements, moved] } : t)));
+            set({ selected: [{ trackId: targetId, elementId }] });
+            return { trackId: targetId, elementId };
+        },
+
+        setBackgroundLoop: (mediaId, name, loopDuration, until, transform) => {
+            if (!(loopDuration > 0) || !(until > 0)) return 0;
+            get().pushHistory();
+            const elements: MediaElement[] = [];
+            for (let start = 0, i = 0; start < until - 0.01; start += loopDuration, i++) {
+                const length = Math.min(loopDuration, until - start);
+                elements.push({
+                    id: generateId('clip'),
+                    type: 'media',
+                    mediaId,
+                    name: `${name} ${i + 1}`,
+                    duration: loopDuration,
+                    startTime: start,
+                    trimStart: 0,
+                    trimEnd: Math.max(0, loopDuration - length),
+                    muted: true,
+                    volume: 0,
+                    speed: 1,
+                    filter: 'none',
+                    ...(transform ? { transform } : {}),
+                });
+            }
+            writeTracks(get().tracks.map((t) => (t.isMain ? { ...t, elements } : t)));
+            set({ selected: [] });
+            return elements.length;
         },
 
         replaceMainTrackSegments: (mediaId, segments, mediaDuration) => {

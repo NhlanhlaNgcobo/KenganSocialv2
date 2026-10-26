@@ -2,6 +2,7 @@ import React from 'react';
 import { Composition, registerRoot } from 'remotion';
 import { LaunchVideo } from './LaunchVideo.jsx';
 import { ProductAd } from './ProductAd.jsx';
+import { LOOP_SECONDS, LyricLoop } from './LyricLoop.jsx';
 
 const SIZES = {
     landscape: { width: 1920, height: 1080 },
@@ -73,6 +74,16 @@ const Root = () => (
             ...(SIZES[props.format] || SIZES.vertical),
             durationInFrames: Math.round(props.seconds * FPS),
         })}
+    />
+    <Composition
+        id="LyricLoop"
+        component={LyricLoop}
+        fps={FPS}
+        width={1080}
+        height={1920}
+        durationInFrames={LOOP_SECONDS * FPS}
+        defaultProps={{ preset: 'aurora', format: 'vertical' }}
+        calculateMetadata={({ props }) => ({ ...(SIZES[props.format] || SIZES.vertical), durationInFrames: LOOP_SECONDS * FPS })}
     />
     </>
 );

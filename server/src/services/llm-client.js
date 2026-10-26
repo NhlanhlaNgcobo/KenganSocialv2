@@ -61,3 +61,15 @@ const notConfigured = {
 };
 
 export const chatClient = provider ? provider.client : notConfigured;
+
+/**
+ * JSON from a chat reply. Not every model behind OpenRouter honours response_format: json_object;
+ * some wrap the object in a ```json fence or add a sentence around it. Takes the outermost {...}.
+ */
+export function parseJsonReply(content, fallback = {}) {
+    const text = String(content || '').trim();
+    if (!text) return fallback;
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    return JSON.parse(start >= 0 && end > start ? text.slice(start, end + 1) : text);
+}

@@ -30,7 +30,7 @@ export interface LyricAnalysis {
     mood: LyricMood;
     keywords: string[];
     suggestedStyle: LyricStyle;
-    timingSource: 'whisper' | 'audio-model' | 'lrc' | 'estimated';
+    timingSource: 'whisper' | 'audio-model' | 'lrc' | 'srt' | 'tap' | 'estimated';
     analysisSource: 'claude' | 'heuristic';
 }
 
@@ -38,6 +38,8 @@ export const TIMING_LABELS: Record<LyricAnalysis['timingSource'], string> = {
     whisper: 'Synced from audio',
     'audio-model': 'AI-timed (approx.)',
     lrc: 'Synced from LRC',
+    srt: 'Synced from SRT',
+    tap: 'Tapped along',
     estimated: 'Estimated timing',
 };
 

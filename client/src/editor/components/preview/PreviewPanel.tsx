@@ -3,6 +3,7 @@ import { Expand, Minimize, Pause, Play, Repeat, SkipBack, SkipForward, Volume2, 
 import { previewFont } from '../../constants';
 import { formatTimecode, getElementEnd, getElementLength } from '../../lib/time';
 import { animatedTransform, cssFromValues, cssTransform, getTransform } from '../../lib/transform';
+import { overlayBox, snapBox, transformForBox } from '../../lib/overlay-layouts';
 import { evaluateKeyframes, setKeyframe } from '../../lib/keyframes.js';
 import { useMediaStore } from '../../stores/media-store';
 import { usePlaybackStore } from '../../stores/playback-store';
@@ -13,7 +14,7 @@ import { previewFilter } from '../../lib/grade';
 import { effectPreview, transitionStyles, transitionWindows } from '../../lib/fx';
 import { isNeutralColor, vignetteAt } from '../../lib/color-pipeline.js';
 import { GradedCanvas, useLut, webgl2Available } from './GradedCanvas';
-import type { ColorSettings } from '../../types';
+import type { ChromaKey, ColorSettings } from '../../types';
 import { GuideTrackPlayer } from './GuideTrackPlayer';
 import { LyricOverlay } from './LyricOverlay';
 import { MediaLayer } from './MediaLayer';
@@ -50,14 +51,14 @@ function vignetteMask(vig: ColorSettings['vignette'], aspect: number): string {
     return url;
 }
 
-function GradedImage({ src, color, style }: { src: string; color: ColorSettings; style: React.CSSProperties }) {
+function GradedImage({ src, color, chromaKey, style }: { src: string; color: ColorSettings | null; chromaKey: ChromaKey | null; style: React.CSSProperties }) {
     const [img, setImg] = useState<HTMLImageElement | null>(null);
     const luts = useProjectStore((st) => st.luts);
     const lut = useLut(color, luts);
     return (
         <>
             <img ref={setImg} src={src} alt="" className="ke-preview__media" style={{ ...style, opacity: 0 }} draggable={false} />
-            {lut ? <GradedCanvas source={img} lut={lut} className="ke-preview__media" style={style} /> : null}
+            {lut || chromaKey ? <GradedCanvas source={img} lut={lut} chromaKey={chromaKey} className="ke-preview__media" style={style} /> : null}
         </>
     );
 }
@@ -250,6 +251,70 @@ export function PreviewPanel() {
         );
     };
 
+    // ── Overlay (picture-in-picture) drag: move the box, or resize it from its corner ──
+    type OverlayDrag = { trackId: string; id: string; mode: 'move' | 'resize'; startX: number; startY: number; box: { left: number; top: number; width: number; height: number }; media: { width?: number; height?: number } };
+    const overlayDragRef = useRef<OverlayDrag | null>(null);
+    const [overlayDragging, setOverlayDragging] = useState(false);
+    useEffect(() => {
+        if (!overlayDragging) return undefined;
+        const onMove = (e: PointerEvent) => {
+            const d = overlayDragRef.current;
+            // Button released where we never saw the pointerup (outside the window): end the drag.
+            if (!e.buttons) return onUp();
+            if (!d || !scale) return;
+            const dx = (e.clientX - d.startX) / scale;
+            const dy = (e.clientY - d.startY) / scale;
+            const aspect = d.box.height / d.box.width;
+            let box = d.box;
+            if (d.mode === 'move') box = snapBox({ ...d.box, left: d.box.left + dx, top: d.box.top + dy }, canvas, 8 / scale);
+            else {
+                const width = Math.max(canvas.width * 0.08, d.box.width + dx);
+                box = { ...d.box, width, height: width * aspect };
+            }
+            const el = useTimelineStore.getState().findElement(d.id)?.element as MediaElement | undefined;
+            if (!el) return;
+            updateElement(d.trackId, d.id, { transform: { ...getTransform(el), ...transformForBox(d.media, canvas, box) } }, false);
+        };
+        const onUp = () => {
+            overlayDragRef.current = null;
+            setOverlayDragging(false);
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+        return () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointercancel', onUp);
+        };
+    }, [overlayDragging, scale, canvas, updateElement]);
+
+    /** A handle over each visible overlay: click selects, drag moves, the corner resizes. */
+    const renderOverlayHandle = (trackId: string, el: MediaElement, media: { width?: number; height?: number }, z: number) => {
+        if (el.keyframes && Object.values(el.keyframes).some((k) => Array.isArray(k) && k.length)) return null; // animated: edit in Keyframes
+        const box = overlayBox(media, canvas, getTransform(el));
+        const isSelected = selected.some((s) => s.elementId === el.id);
+        const start = (mode: OverlayDrag['mode']) => (e: React.PointerEvent) => {
+            if (e.button !== 0) return;
+            e.stopPropagation();
+            selectElement(trackId, el.id);
+            pushHistory();
+            overlayDragRef.current = { trackId, id: el.id, mode, startX: e.clientX, startY: e.clientY, box, media };
+            setOverlayDragging(true);
+        };
+        return (
+            <div
+                key={`handle-${el.id}`}
+                className={`ke-overlay-handle ${isSelected ? 'is-selected' : ''}`}
+                style={{ left: `${(box.left / canvas.width) * 100}%`, top: `${(box.top / canvas.height) * 100}%`, width: `${(box.width / canvas.width) * 100}%`, height: `${(box.height / canvas.height) * 100}%`, zIndex: 100 + z }}
+                onPointerDown={start('move')}
+                title="Drag to move · corner to resize"
+            >
+                {isSelected ? <span className="ke-overlay-handle__corner" onPointerDown={start('resize')} aria-label="Resize overlay" /> : null}
+            </div>
+        );
+    };
+
     const empty = !tracks.some((t) => t.elements.length);
 
     return (
@@ -294,12 +359,14 @@ export function PreviewPanel() {
                                 ? [<div key="vig" className="ke-preview__fx" style={{ backgroundImage: `url(${vignetteMask(vig, canvas.width / canvas.height)})`, backgroundSize: '100% 100%', mixBlendMode: vig.amount < 0 ? 'multiply' : 'screen' }} />]
                                 : []),
                         ];
-                        const gradedImage = media.type === 'image' && webgl2Available && mediaEl.color && !isNeutralColor(mediaEl.color);
+                        // Green/blue screen keys render on overlay tracks only (export matches).
+                        const chromaKey = !track.isMain && webgl2Available ? mediaEl.chromaKey || null : null;
+                        const gradedColor = webgl2Available && mediaEl.color && !isNeutralColor(mediaEl.color) ? mediaEl.color : null;
                         if (media.type === 'image') {
                             return active ? (
                                 <div key={element.id} className="ke-preview__tx" style={{ zIndex, ...tr?.style }}>
-                                    {gradedImage ? (
-                                        <GradedImage src={media.url} color={mediaEl.color!} style={{ filter: `${previewFilter(mediaEl.filter, mediaEl.grade)}${fx?.filter || ''}`.replace(/^none /, ''), transform }} />
+                                    {gradedColor || chromaKey ? (
+                                        <GradedImage src={media.url} color={gradedColor} chromaKey={chromaKey} style={{ filter: `${previewFilter(mediaEl.filter, mediaEl.grade)}${fx?.filter || ''}`.replace(/^none /, ''), transform, opacity: kfOpacity }} />
                                     ) : (
                                         <img
                                             src={media.url}
@@ -325,11 +392,17 @@ export function PreviewPanel() {
                                         extendHead={ext?.head || 0}
                                         extendTail={ext?.tail || 0}
                                         extraFilter={fx?.filter || ''}
+                                        chromaKey={chromaKey}
                                     />
                                 </div>
                                 {active ? overlays : null}
                             </div>
                         );
+                    })}
+                    {layers.map(({ track, element, z, active }) => {
+                        if (!active || track.isMain || element.type !== 'media') return null;
+                        const media = items.find((i) => i.id === (element as MediaElement).mediaId);
+                        return media && media.type !== 'audio' ? renderOverlayHandle(track.id, element as MediaElement, media, z) : null;
                     })}
                     {wash ? <div className="ke-preview__fx" style={{ ...wash, zIndex: 99 }} /> : null}
                     <LyricOverlay scale={scale} />

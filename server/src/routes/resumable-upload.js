@@ -8,7 +8,10 @@ const uploads = new ResumableUploads(path.join(os.tmpdir(), 'kengan-resumable'),
 const router = Router(); // Parent already enforces authentication, workspace and writer role.
 const route = handler => async (req, res) => {
     try { await handler(req, res); }
-    catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Upload could not be saved. Retry shortly.' }); }
+    catch (error) {
+        if (!error.status) console.error(`[Upload] ${req.method} ${req.path} failed:`, error.message);
+        res.status(error.status || 500).json({ error: error.status ? error.message : 'Upload could not be saved. Retry shortly.' });
+    }
 };
 router.post('/', route(async (req, res) => {
     const session = await uploads.create(req.uid, req.workspaceId, req.body);

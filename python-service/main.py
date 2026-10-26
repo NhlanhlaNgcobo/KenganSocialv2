@@ -33,6 +33,7 @@ from media_input import copy_media_input
 from autoframe import parse_ratio, plan_crop_path
 from style_analysis import analyze_footage, analyze_reference
 from stabilizer import StabilizeOptions, stabilize_video
+from background_removal import model_available as bg_model_available, remove_background
 from thumbnail_picker import pick_candidates
 
 try:
@@ -63,6 +64,8 @@ TMP.mkdir(parents=True, exist_ok=True)
 # Heavy jobs (transcription, analysis) run at once. On a dedicated 4-vCPU worker use 1, so each job
 # gets the whole machine; on the all-in-one VM the default 3 keeps short jobs moving.
 MAX_CONCURRENT_JOBS = max(1, int(os.getenv("MAX_CONCURRENT_JOBS", "3")))
+# Below this confidence, use WHISPER_FALLBACK_LANGUAGE only when explicitly configured.
+# WHISPER_LANGUAGE forces one language for every video.
 TRANSCRIBE_TIMEOUT_SEC = 600
 ANALYZE_TIMEOUT_SEC = 900
 ASSEMBLYAI_POLL_INTERVAL = 15
@@ -98,6 +101,7 @@ WHISPER_MODELS: Dict[str, Any] = {}
 
 load_dotenv()
 load_dotenv(Path(__file__).resolve().parents[1] / "server" / ".env", override=False)
+WHISPER_MIN_LANGUAGE_CONFIDENCE = float(os.getenv("WHISPER_MIN_LANGUAGE_CONFIDENCE", "0.6"))
 
 
 def init_firebase():
@@ -392,7 +396,8 @@ def merge_keep_segments(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return merge_time_ranges(filtered, gap_tolerance=0.5)
 
 
-def detect_scene_boundaries(video_path: Path, duration: float) -> List[float]:
+def detect_scene_boundaries(video_path: Path, duration: float, heuristic: bool = True) -> List[float]:
+    """Scene cuts plus 0 and the end. With no cuts found, heuristic=True adds one every 4 s (clip windows)."""
     boundaries = {0.0, round(duration, 2)}
     if open_video and SceneManager and ContentDetector:
         try:
@@ -406,7 +411,7 @@ def detect_scene_boundaries(video_path: Path, duration: float) -> List[float]:
             log.warning("PySceneDetect failed, falling back to heuristic windows: %s", exc)
 
     ordered = sorted(boundary for boundary in boundaries if 0 <= boundary <= duration)
-    if len(ordered) <= 2:
+    if len(ordered) <= 2 and heuristic:
         cursor = 0.0
         while cursor < duration:
             cursor = min(duration, cursor + 4.0)
@@ -510,13 +515,16 @@ def local_transcribe(audio_path: Path, plan: str) -> Dict[str, Any]:
     if model is None:
         return {"words": [], "highlights": [], "speakers": [], "duration_seconds": 0.0}
 
-    segments, info = model.transcribe(
-        str(audio_path),
-        word_timestamps=True,
-        vad_filter=True,
-        beam_size=1,
-        condition_on_previous_text=False,
-    )
+    options = dict(word_timestamps=True, vad_filter=True, beam_size=1, condition_on_previous_text=False)
+    forced = os.getenv("WHISPER_LANGUAGE") or None
+    segments, info = model.transcribe(str(audio_path), language=forced, **options)
+    # Language detection guesses from the first 30 s; music or noise there can make it pick the
+    # wrong language (a SA podcast detected as Yoruba at 49%), which ruins the whole transcript.
+    # An explicit fallback is opt-in, so code-switched and non-English speech isn't forced to English.
+    fallback = os.getenv("WHISPER_FALLBACK_LANGUAGE")
+    if not forced and fallback and float(getattr(info, "language_probability", 1.0) or 0.0) < WHISPER_MIN_LANGUAGE_CONFIDENCE:
+        log.info("Language '%s' detected with only %.2f confidence; transcribing as '%s'", info.language, info.language_probability, fallback)
+        segments, info = model.transcribe(str(audio_path), language=fallback, **options)
 
     words: List[Dict[str, Any]] = []
     segment_summaries: List[Dict[str, Any]] = []
@@ -1351,7 +1359,11 @@ async def analyze_footage_endpoint(req: StyleAnalysisRequest):
     if not video_path.is_file():
         raise HTTPException(400, detail={"error": "VIDEO_NOT_FOUND", "message": "Footage is not available to the video service."})
     async with job_semaphore:
-        return await asyncio.to_thread(analyze_footage, video_path)
+        result = await asyncio.to_thread(analyze_footage, video_path)
+        # Camera cuts already in the footage (multi-camera recordings): a crop is chosen per shot.
+        boundaries = await asyncio.to_thread(detect_scene_boundaries, video_path, float(result.get("durationSec") or 0), False)
+        result["sceneCuts"] = [b for b in boundaries if 0.05 < b < float(result.get("durationSec") or 0) - 0.05]
+        return result
 
 
 class StabilizeRequest(BaseModel):
@@ -1403,6 +1415,47 @@ async def stabilize(req: StabilizeRequest):
             return await asyncio.to_thread(stabilize_video, str(input_path), str(output_path), options, report)
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(422, detail={"error": "STABILIZE_FAILED", "message": str(exc)})
+
+
+class RemoveBackgroundRequest(BaseModel):
+    inputPath: str
+    outputPath: str
+    progressJobId: Optional[str] = None
+    progressFrom: float = 0
+    progressTo: float = 100
+
+
+@app.post("/process/remove-background")
+async def remove_background_endpoint(req: RemoveBackgroundRequest):
+    """AI background removal: people on a flat key colour (see background_removal.py). Paths come from the Node API."""
+    input_path = Path(req.inputPath)
+    output_path = Path(req.outputPath)
+    if not input_path.is_file():
+        raise HTTPException(400, detail={"error": "VIDEO_NOT_FOUND", "message": "Source video is not available to the video service."})
+    if output_path.suffix.lower() != ".mp4" or not output_path.parent.is_dir():
+        raise HTTPException(400, detail={"error": "INVALID_OUTPUT", "message": "Output must be an .mp4 in an existing folder."})
+    if not bg_model_available():
+        raise HTTPException(503, detail={"error": "MODEL_MISSING", "message": "Background removal is not set up on the video service (model file missing)."})
+
+    last = {"value": -1}
+
+    def report(fraction: float):
+        if not req.progressJobId:
+            return
+        value = int(req.progressFrom + (req.progressTo - req.progressFrom) * fraction)
+        if value == last["value"]:
+            return
+        last["value"] = value
+        try:
+            firestore.client().collection("manual_edit_jobs").document(req.progressJobId).set({"progress": value}, merge=True)
+        except Exception as exc:  # progress is best-effort
+            log.warning("Progress update failed: %s", exc)
+
+    async with job_semaphore:
+        try:
+            return await asyncio.to_thread(remove_background, str(input_path), str(output_path), report)
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(422, detail={"error": "REMOVE_BACKGROUND_FAILED", "message": str(exc)})
 
 
 # ---------------------------------------------------------------------------

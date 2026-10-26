@@ -61,6 +61,8 @@ export function buildEditConfig(uploadIds: Record<string, string>) {
             keyframes: el.keyframes || null,
             color: el.color || null,
             transitionIn: isMain ? el.transitionIn || null : null,
+            // Green/blue screen keys apply to overlays only (preview matches).
+            chromaKey: isMain ? null : el.chromaKey || null,
         };
     };
 

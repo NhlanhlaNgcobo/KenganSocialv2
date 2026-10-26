@@ -105,8 +105,11 @@ function editorialFallback(sentences, wantHook, calloutCount) {
 // 4. Framing
 // ---------------------------------------------------------------------------
 
-/** Who to frame in a source range: the most active face (talking), else the biggest. */
-function subjectIn(track, start, end) {
+/**
+ * Who to frame in a source range: the most active face (talking), else the face nearest `hintCx`
+ * (where the re-framing step found the focus), else the biggest.
+ */
+function subjectIn(track, start, end, hintCx = null) {
     const samples = (track?.samples || []).filter((s) => s.t >= start && s.t <= end && s.faces.length);
     if (!samples.length) return null;
     const clusters = [];
@@ -137,7 +140,8 @@ function subjectIn(track, start, end) {
     if (!present.length) return null;
     present.sort((a, b) => b.meanAct - a.meanAct);
     const talking = present.length > 1 && present[0].meanAct > present[1].meanAct * 1.35 ? present[0] : null;
-    const subject = talking || present.sort((a, b) => b.area - a.area)[0];
+    const hinted = hintCx == null ? null : [...present].sort((a, b) => Math.abs(a.cx - hintCx) - Math.abs(b.cx - hintCx))[0];
+    const subject = talking || hinted || present.sort((a, b) => b.area - a.area)[0];
     return { cx: subject.cx, cy: subject.cy, h: subject.h, speakers: present.length };
 }
 
@@ -158,6 +162,55 @@ function frameFor(subject, zoom, src, canvas) {
     const x = clamp(-(subject.cx - 0.5) * dispW, -maxX, maxX);
     const y = clamp((0.42 - 0.5) * canvas.height - (subject.cy - 0.5) * dispH, -maxY, maxY);
     return { scale: r2(scale), x: Math.round(x), y: Math.round(y) };
+}
+
+/** Focus move (share of the source width) that needs a new crop, and how long it must last. */
+const REFRAME_SHIFT = 0.1;
+const REFRAME_HOLD = 1.2;
+const REFRAME_MIN_PIECE = 1.5;
+
+/**
+ * Splits [start, end] where the framing has to move: the talking face changes, or the subject moves
+ * well away from where the crop is. One fixed crop per piece otherwise framed an empty table when a
+ * conversation switched speakers inside an 11-second piece. Splits land on word ends.
+ * @returns {{ start: number, end: number, focusCx: number | null }[]}
+ */
+export function reframeSpans(track, start, end, words) {
+    const samples = (track?.samples || []).filter((s) => s.t >= start && s.t <= end && s.faces.length);
+    if (samples.length < 6 || end - start < 2 * REFRAME_MIN_PIECE) return [{ start, end, focusCx: null }];
+    const spans = [];
+    let focus = null;
+    let anchor = null;
+    let spanStart = start;
+    let pending = null;
+    for (const s of samples) {
+        const byAct = [...s.faces].sort((a, b) => b.act - a.act);
+        const clear = byAct.length === 1 || byAct[0].act > byAct[1].act * 1.6 ? byAct[0] : null;
+        const nearest = focus == null ? [...s.faces].sort((a, b) => b.w * b.h - a.w * a.h)[0] : s.faces.reduce((best, f) => (Math.abs(f.cx - focus) < Math.abs(best.cx - focus) ? f : best));
+        const lead = clear || nearest;
+        focus = focus == null ? lead.cx : 0.5 * focus + 0.5 * lead.cx;
+        if (anchor == null) {
+            anchor = focus;
+            continue;
+        }
+        if (Math.abs(focus - anchor) <= REFRAME_SHIFT) {
+            pending = null;
+            continue;
+        }
+        pending ??= s.t;
+        if (s.t - pending < REFRAME_HOLD) continue;
+        // Cut at the word end nearest the moment the focus started to move.
+        const near = words.filter((w) => w.end > pending - 0.8 && w.end < pending + 0.8);
+        const cut = near.length ? near.reduce((best, w) => (Math.abs(w.end - pending) < Math.abs(best - pending) ? w.end : best), near[0].end) : pending;
+        if (cut - spanStart >= REFRAME_MIN_PIECE && end - cut >= REFRAME_MIN_PIECE) {
+            spans.push({ start: spanStart, end: cut, focusCx: anchor });
+            spanStart = cut;
+        }
+        anchor = focus;
+        pending = null;
+    }
+    spans.push({ start: spanStart, end, focusCx: anchor });
+    return spans;
 }
 
 // ---------------------------------------------------------------------------
@@ -320,18 +373,29 @@ export async function planEdit({ words, footage, profile, options, trendContext 
         split.push({ ...p, srcStart: from, srcEnd: p.srcEnd, outStart: out });
     }
 
+    // Re-frame inside a piece at the footage's own camera cuts (multi-camera recordings), and within a
+    // shot when the speaker changes or the subject moves. The zoom level carries over.
+    const sceneCuts = (footage.sceneCuts || []).filter((c) => Number.isFinite(c));
+    const framed = split.flatMap((p) => {
+        const edges = [p.srcStart, ...sceneCuts.filter((c) => c > p.srcStart + 0.4 && c < p.srcEnd - 0.4), p.srcEnd];
+        const shots = edges.slice(1).map((end, i) => ({ start: edges[i], end }));
+        return shots
+            .flatMap((shot) => reframeSpans(footage.faceTrack, shot.start, shot.end, words))
+            .map((s, i) => ({ ...p, srcStart: s.start, srcEnd: s.end, outStart: p.outStart + (s.start - p.srcStart), focusCx: s.focusCx, reframe: i > 0 }));
+    });
+
     let zoomed = false;
     let punchIns = 0;
     let lastBeatAt = -Infinity;
-    const finalPieces = split.map((p, index) => {
+    const finalPieces = framed.map((p, index) => {
         const callout = callouts.some((c) => c.at >= p.outStart - 0.2 && c.at < p.outStart + (p.srcEnd - p.srcStart));
-        if (beat && (p.outStart - lastBeatAt >= beat * 0.8 || callout)) {
+        if (beat && !p.reframe && (p.outStart - lastBeatAt >= beat * 0.8 || callout)) {
             zoomed = callout ? true : index === 0 ? false : !zoomed;
             lastBeatAt = p.outStart;
         }
         if (!beat) zoomed = false;
-        if (zoomed) punchIns += 1;
-        const subject = subjectIn(footage.faceTrack, p.srcStart, p.srcEnd);
+        if (zoomed && !p.reframe) punchIns += 1;
+        const subject = subjectIn(footage.faceTrack, p.srcStart, p.srcEnd, p.focusCx);
         const frame = frameFor(subject, zoomed ? 1 + profile.zooms.amount : 1, src, canvas);
         const slow = profile.zooms.slowZoom && options.zooms && !zoomed;
         return {
@@ -437,7 +501,8 @@ export async function planEdit({ words, footage, profile, options, trendContext 
             callouts: callouts.length,
             hookTitle: hookTitle || null,
             coldOpenSec: r2(coldOpen.reduce((s, c) => s + c.end - c.start, 0)),
-            speakers: Math.max(0, ...finalPieces.map((p) => p.speakers)),
+            // Faces present across the footage; a per-piece maximum overcounts people who move.
+            speakers: subjectIn(footage.faceTrack, 0, duration)?.speakers || Math.max(0, ...finalPieces.map((p) => p.speakers)),
             graded: !!grade,
         },
     };

@@ -2,10 +2,12 @@ import { recentTrendContext } from './trend-context.js';
 import axios from 'axios';
 import { FieldValue } from 'firebase-admin/firestore';
 import { probe } from '../ffmpeg-runner.js';
-import { CLIP_LENGTHS, findClips } from './find-clips.js';
+import { CLIP_LENGTHS } from './find-clips.js';
+import { selectClipMoments } from './select-clips.js';
 import { capLength, PLATFORMS } from './platforms.js';
 import { CAPTION_STYLES, LAYOUTS, RATIOS, renderClip } from './render-clip.js';
 import { normalizeWords } from './transcript.js';
+import { cloudTranscribe, useCloudTranscription } from './cloud-transcribe.js';
 import { loadClipBrand } from './brand.js';
 
 /**
@@ -77,37 +79,63 @@ export async function createClips(request, ctx, { onStage = () => {}, onClip = (
     });
 
     let transcription = { words: [] };
-    try {
-        const { data } = await axios.post(`${PYTHON_URL}/process/transcribe`, { videoUrl: sourcePath, jobId, workspaceId: pyWorkspace, plan, analysisPreferences: {} }, { timeout: 60 * 60 * 1000 });
-        transcription = data || { words: [] };
-        await analysisJob.update({ transcription, status: 'analyzing' });
-    } catch (error) {
-        // Starter plans and silent videos still get clips from visual signals.
-        console.warn('[Clips] Transcription unavailable:', pythonError(error, 'Transcription').message);
+    // Long videos: Whisper through OpenRouter (minutes, with progress). Short ones, or if the cloud
+    // fails: Whisper on this server's CPU in the video service.
+    if (plan !== 'starter' && useCloudTranscription(duration)) {
+        try {
+            transcription = await cloudTranscribe(sourcePath, duration, { onProgress: (f) => onStage('Transcribing', 5 + Math.round(f * 24)) });
+            await analysisJob.update({ transcription, status: 'analyzing' });
+        } catch (error) {
+            console.warn('[Clips] Cloud transcription failed, using the local model:', String(error.message).slice(0, 300));
+            transcription = { words: [] };
+        }
+    }
+    if (!transcription.words?.length) {
+        const started = Date.now();
+        const progressTimer = setInterval(() => {
+            const elapsed = Math.round((Date.now() - started) / 1000);
+            onStage(`Transcribing locally (${Math.floor(elapsed / 60)}m ${elapsed % 60}s elapsed)`, 5);
+        }, 10000);
+        progressTimer.unref?.();
+        try {
+            const { data } = await axios.post(`${PYTHON_URL}/process/transcribe`, { videoUrl: sourcePath, jobId, workspaceId: pyWorkspace, plan, analysisPreferences: {} }, { timeout: 10 * 60 * 1000 });
+            transcription = data || { words: [] };
+            await analysisJob.update({ transcription, status: 'analyzing' });
+        } catch (error) {
+            // Starter plans and silent videos still get clips from visual signals.
+            console.warn('[Clips] Transcription unavailable:', pythonError(error, 'Transcription').message);
+        } finally {
+            clearInterval(progressTimer);
+        }
     }
     const words = normalizeWords(transcription.words);
     onStage('Finding the best moments', 30, { words: words.length });
 
-    let signalClips = [];
-    try {
-        const { max } = CLIP_LENGTHS[request.length];
-        const { data } = await axios.post(
-            `${PYTHON_URL}/process/analyze-viral`,
-            {
-                videoUrl: sourcePath,
-                jobId,
-                workspaceId: pyWorkspace,
-                plan,
-                analysisPreferences: { mode: 'viral', keepCount: request.count * 2, minClipLength: Math.min(min, 20), maxClipLength: Math.min(max, 45) },
-            },
-            { timeout: 60 * 60 * 1000 }
-        );
-        signalClips = data?.clips || [];
-    } catch (error) {
-        console.warn('[Clips] Signal analysis unavailable:', pythonError(error, 'Analysis').message);
-    }
-
-    const { clips, finder, note } = await findClips({ words, duration, signalClips, count: request.count, length: request.length, prompt: request.prompt, trendContext: await recentTrendContext(workspaceId) });
+    const trendContext = await recentTrendContext(workspaceId);
+    const selectionInput = { words, duration, count: request.count, length: request.length, prompt: request.prompt, trendContext };
+    // With a substantial transcript, selecting moments does not require decoding every frame
+    // of a long source. Each selected short still gets face-aware framing during rendering.
+    const { clips, finder, note } = await selectClipMoments(selectionInput, async () => {
+        let signalClips = [];
+        try {
+            const { max } = CLIP_LENGTHS[request.length];
+            const { data } = await axios.post(
+                `${PYTHON_URL}/process/analyze-viral`,
+                {
+                    videoUrl: sourcePath,
+                    jobId,
+                    workspaceId: pyWorkspace,
+                    plan,
+                    analysisPreferences: { mode: 'viral', keepCount: request.count * 2, minClipLength: Math.min(min, 20), maxClipLength: Math.min(max, 45) },
+                },
+                { timeout: 60 * 60 * 1000 }
+            );
+            signalClips = data?.clips || [];
+        } catch (error) {
+            console.warn('[Clips] Signal analysis unavailable:', pythonError(error, 'Analysis').message);
+        }
+        return signalClips;
+    });
     if (!clips.length) throw new Error(note || 'No clips could be found in this video.');
     onStage(`Rendering clip 1 of ${clips.length}`, 40, { finder, note, planned: clips.length });
 
@@ -146,6 +174,6 @@ export async function createClips(request, ctx, { onStage = () => {}, onClip = (
         }
     }
     if (!rendered.length) throw new Error('None of the clips could be rendered.');
-    analysisJob.update({ status: 'ready', progress: 100 }).catch(() => {});
+    await analysisJob.update({ status: 'ready', progress: 100 });
     return { finder, note, duration };
 }

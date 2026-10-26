@@ -5,8 +5,10 @@ import { PLAN_LIMITS } from './planLimits';
  * plan. Only honoured when NODE_ENV is "development", so it cannot unlock paid features
  * in production even if the variable is set there by mistake.
  */
-export function applyDevPlanOverride(plan: string): string {
+export function applyDevPlanOverride(plan: string, workspace?: { unlimited?: unknown } | null): string {
     const override = process.env.DEV_PLAN_OVERRIDE;
+    // Internal unlimited workspaces keep their Agency plan.
+    if (workspace?.unlimited === true) return plan;
     if (process.env.NODE_ENV === 'development' && override && override in PLAN_LIMITS) {
         return override;
     }

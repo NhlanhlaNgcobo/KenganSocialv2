@@ -46,6 +46,8 @@ export function trialEndsAt(ws: any, now = Date.now()): string | null {
 
 /** The plan a workspace gets: its paid plan, or a running trial's plan when that is higher. */
 export function effectivePlan(ws: any, now = Date.now()): Plan {
+    // Internal test workspaces (server-only flag, set with scripts/set-unlimited.mjs): every feature.
+    if (ws?.unlimited === true) return 'agency';
     let paid = ((ws?.plan as Plan) in PLAN_LIMITS ? ws.plan : 'starter') as Plan;
     // Provider-managed access must have a valid paid-through date. Manual pilot grants remain explicit.
     if (ws?.paymentProvider && (!Number.isFinite(Date.parse(ws.currentPeriodEnd)) || Date.parse(ws.currentPeriodEnd) <= now)) paid = 'starter';

@@ -3,6 +3,8 @@ import fs from 'fs';
 import axios from 'axios';
 import { getFirestore as firebaseFirestore } from 'firebase-admin/firestore';
 import { normalizeWords } from '../clips/transcript.js';
+import { cloudTranscribe, useCloudTranscription } from '../clips/cloud-transcribe.js';
+import { probe } from '../ffmpeg-runner.js';
 import { planEdit } from './planner.js';
 import { enrichProfile, profileFromMetrics, sanitizeProfile } from './profile.js';
 
@@ -38,7 +40,20 @@ async function stage(ref, stageName, progress, extra = {}) {
     await ref.update({ stage: stageName, progress, updatedAt: now(), ...extra }).catch(() => {});
 }
 
+/**
+ * Same rule as Clips: long footage goes to cloud Whisper (minutes instead of roughly the video's
+ * length on CPU) on paid plans; short footage, or a cloud failure, uses the video service.
+ */
 async function transcribe(videoPath, jobKey, workspaceId, plan) {
+    const duration = (await probe(videoPath).catch(() => null))?.duration || 0;
+    if (plan !== 'starter' && duration > 0 && useCloudTranscription(duration)) {
+        try {
+            const { words } = await cloudTranscribe(videoPath, duration);
+            if (words.length) return normalizeWords(words);
+        } catch (error) {
+            console.warn('[AI Edit] Cloud transcription failed, using the local model:', String(error.message).slice(0, 300));
+        }
+    }
     const { data } = await axios.post(`${PYTHON_URL}/process/transcribe`, { videoUrl: videoPath, jobId: jobKey, workspaceId, plan }, { timeout: 2 * 60 * 60 * 1000 });
     return normalizeWords(data?.words || []);
 }

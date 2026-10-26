@@ -184,14 +184,22 @@ router.get('/calendar', withWorkspace, async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'INVALID_DATE_RANGE' });
         }
 
-        const snapshot = await db.collection('scheduled_posts')
-            .where('workspaceId', '==', workspaceId)
-            .where('scheduledAt', '>=', startDate)
-            .where('scheduledAt', '<=', endDate)
-            .orderBy('scheduledAt', 'asc')
-            .get();
+        const posts_ = db.collection('scheduled_posts').where('workspaceId', '==', workspaceId);
+        let docs;
+        try {
+            docs = (await posts_.where('scheduledAt', '>=', startDate).where('scheduledAt', '<=', endDate).orderBy('scheduledAt', 'asc').get()).docs;
+        } catch (error: any) {
+            // FAILED_PRECONDITION: the composite index (firestore.indexes.json) isn't deployed to this
+            // project yet. Read the workspace's posts and filter by date here, so the calendar still works.
+            if (error?.code !== 9) throw error;
+            console.warn('[Schedule] Calendar index missing; filtering in memory. Deploy firestore.indexes.json.');
+            const toMs = (v: any) => (v?.toMillis ? v.toMillis() : new Date(v).getTime());
+            docs = (await posts_.get()).docs
+                .filter((d) => { const t = toMs(d.data().scheduledAt); return t >= startDate.getTime() && t <= endDate.getTime(); })
+                .sort((a, b) => toMs(a.data().scheduledAt) - toMs(b.data().scheduledAt));
+        }
 
-        const posts = snapshot.docs
+        const posts = docs
             .map(doc => {
                 const data = doc.data();
                 // Firestore Timestamps serialise as {_seconds,...}; send ISO strings the client can parse.

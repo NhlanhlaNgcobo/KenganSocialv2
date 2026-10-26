@@ -10,12 +10,17 @@ google-cloud-videointelligence==2.21.0
 faster-whisper==1.2.1
 # faster-whisper passes av.open(metadata_errors=...), which PyAV 19 removed.
 av==18.1.0
-# scenedetect without its [opencv] extra: that pulls in opencv-python, which conflicts with
-# opencv-python-headless below and breaks cv2 (e.g. no CascadeClassifier).
-scenedetect==0.7.2
+# scenedetect is in requirements-nodeps.txt: it always requires opencv-python (not only with an
+# extra), which installs over opencv-python-headless below and breaks cv2 (OpenCV 5 has no
+# CascadeClassifier). Its other dependencies are pinned here instead.
+click==8.5.0
+platformdirs==4.12.2
+tqdm==4.70.1
 # OpenCV 5 removed CascadeClassifier, which main.py uses for face detection.
 opencv-python-headless==4.14.0.94
 numpy==2.5.4
+# MODNet background removal (also used by faster-whisper's VAD).
+onnxruntime==1.30.0
 # HiGHS linear-programming solver for L1 camera-path stabilization
 scipy==1.18.1
 pydantic==2.14.1

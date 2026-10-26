@@ -10,7 +10,7 @@ import {
 import { renderVerticalVideo, secondsToFrames } from '../services/render.service.js';
 import { uploadFile } from '../services/storage.service.js';
 import fs from 'fs';
-import { consumeUsage, noteTrial, refundUsage, usageLimit } from '../middleware/planGate.ts';
+import { consumeUsage, noteTrial, noteUnlimited, refundUsage, usageLimit } from '../middleware/planGate.ts';
 import { readyUsageRedis } from '../utils/usageRedis.ts';
 import { getMonth } from '../utils/dateUtils.ts';
 import { effectivePlan, trialEndsAt } from '../utils/trial.ts';
@@ -22,8 +22,9 @@ import { CREDIT_COSTS } from '../utils/planLimits.ts';
  * every other AI feature). The old separate `credits` balance is no longer used.
  */
 function workspacePlan(workspaceId, workspaceData) {
-    const plan = applyDevPlanOverride(effectivePlan(workspaceData));
+    const plan = applyDevPlanOverride(effectivePlan(workspaceData), workspaceData);
     noteTrial(workspaceId, plan === effectivePlan(workspaceData) ? trialEndsAt(workspaceData) : null);
+    noteUnlimited(workspaceId, workspaceData?.unlimited === true);
     return plan;
 }
 

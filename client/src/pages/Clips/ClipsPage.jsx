@@ -402,7 +402,7 @@ function ProjectView({ id, onBack }) {
                         <div style={{ width: `${project.progress || 0}%` }} />
                     </div>
                     <small className="muted">
-                        {project.progress || 0}%. Transcribing takes roughly a quarter of the video's length. You can leave this page; the project keeps going.
+                        {project.progress || 0}%. Processing time depends on video length and available resources. You can leave this page; the project keeps going.
                     </small>
                 </section>
             ) : null}

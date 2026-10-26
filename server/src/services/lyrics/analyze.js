@@ -2,10 +2,13 @@ import {
     MOODS,
     SECTIONS,
     VISUALIZER_STYLES,
+    alignLyricsToWords,
     buildHeuristicAnalysis,
     estimateLineTimings,
     hasLrcTimestamps,
     parseLrc,
+    segmentsToLines,
+    splitLineIntoWords,
 } from './lyric-model.js';
 import {
     OPENROUTER_AUDIO_MODEL,
@@ -14,13 +17,14 @@ import {
     openRouterConfigured,
     requestOpenRouterText,
 } from '../openrouter.js';
+import { whisperProviders, whisperTranscribe } from '../speech/whisper-api.js';
 
 /**
  * Lyric analyzer behind POST /api/lyrics/analyze.
  *
  * Timing, best source first:
  *   1. pasted LRC lyrics (exact),
- *   2. Whisper word timestamps (OPENAI_API_KEY),
+ *   2. Whisper word timestamps (OpenRouter's /audio/transcriptions first, then OPENAI_API_KEY),
  *   3. an audio-capable model on OpenRouter (OPENROUTER_API_KEY, ~±1s),
  *   4. pasted plain lyrics spread across the song (estimated).
  * Structure (sections, emphasis, mood, style) comes from Claude on OpenRouter,
@@ -80,13 +84,46 @@ export async function analyzeLyrics({ audio, lyrics = '', duration, energy }) {
 }
 
 /**
+ * POST /api/lyrics/sync: the user's own lyric lines, timed to the vocals. Whisper hears the
+ * words (the lines are its spelling hint) and each of the user's words is matched to a sung
+ * word, so their wording and line breaks are kept exactly. Speech-to-text only, no structuring
+ * model, so it costs far less than a full analysis.
+ */
+export async function syncLyrics({ audio, lines, duration, energy }) {
+    if (!Number.isFinite(duration) || duration <= 0) throw new LyricsInputError('Song duration is required.');
+    const clean = (lines || []).map((l) => String(l).trim()).filter(Boolean).slice(0, 400);
+    if (!clean.length) throw new LyricsInputError('Add the lyrics first, one line per lyric line.');
+    if (!audio) throw new LyricsInputError('Upload the song to sync the lyrics to it.');
+    // Whisper gives word times; if it's unavailable (no key, no credit), an audio model on
+    // OpenRouter gives line times (about ±1 s), whose words are spread across each line.
+    const attempts = [
+        ...whisperProviders().map((via) => ['whisper', async () => (await transcribeWithWhisper(audio, clean.join('\n'), via)).flatMap((s) => s.words || [])]),
+        ...(openRouterConfigured() ? [['audio-model', async () => (await transcribeWithAudioModel(audio, duration, clean.join('\n'))).flatMap((line) => splitLineIntoWords(line))]] : []),
+    ];
+    if (!attempts.length) throw new LyricsInputError('Syncing to the vocals needs OPENAI_API_KEY or OPENROUTER_API_KEY on the server. Use Place automatically or Tap along instead.');
+    let heardAnything = false;
+    for (const [timingSource, hear] of attempts) {
+        try {
+            const sung = await hear();
+            heardAnything ||= sung.length > 0;
+            const timed = alignLyricsToWords(clean, sung, duration);
+            if (timed.length) return buildHeuristicAnalysis(timed, timingSource, energy);
+        } catch (error) {
+            console.warn(`[Lyrics] Sync via ${timingSource} failed:`, String(error.message).slice(0, 200));
+        }
+    }
+    if (heardAnything) throw new LyricsInputError('The lyrics didn’t match the vocals well enough. Check they belong to this song, or use Tap along.');
+    throw new Error('No transcriber could hear the song.');
+}
+
+/**
  * Tries each configured transcriber in order of timing quality, so one provider
  * being down (or out of credit) falls through to the next. Returns no lines when
  * none are configured or all fail, letting the caller use pasted lyrics instead.
  */
 async function transcribe(audio, duration, knownLyrics) {
     const attempts = [
-        ['whisper', () => process.env.OPENAI_API_KEY && transcribeWithWhisper(audio, knownLyrics)],
+        ...whisperProviders().map((via) => ['whisper', async () => segmentsToLines(await transcribeWithWhisper(audio, knownLyrics, via))]),
         ['audio-model', () => openRouterConfigured() && transcribeWithAudioModel(audio, duration, knownLyrics)],
     ];
 
@@ -101,36 +138,10 @@ async function transcribe(audio, duration, knownLyrics) {
     return { timed: [], timingSource: 'estimated' };
 }
 
-async function transcribeWithWhisper(audio, prompt) {
-    const form = new FormData();
-    form.append('file', new Blob([audio.buffer], { type: audio.mimetype || 'audio/mpeg' }), audio.originalname);
-    form.append('model', 'whisper-1');
-    form.append('response_format', 'verbose_json');
-    form.append('timestamp_granularities[]', 'segment');
-    form.append('timestamp_granularities[]', 'word');
-    // Whisper only reads the last ~224 tokens of the prompt.
-    if (prompt) form.append('prompt', prompt.slice(-900));
-
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: form,
-    });
-    if (!response.ok) {
-        throw new Error(`Whisper transcription failed (${response.status}): ${await response.text()}`);
-    }
-
-    const { segments = [], words = [] } = await response.json();
-    return segments
-        .map((segment) => ({
-            text: String(segment.text).trim(),
-            start: segment.start,
-            end: segment.end,
-            words: words
-                .filter((w) => w.start >= segment.start - 0.05 && w.end <= segment.end + 0.05)
-                .map((w) => ({ text: String(w.word).trim(), start: w.start, end: w.end })),
-        }))
-        .filter((segment) => segment.text);
+/** Whisper through OpenRouter (or OpenAI): sentence segments with word times, in seconds. */
+async function transcribeWithWhisper(audio, prompt, via) {
+    const { segments } = await whisperTranscribe(audio.buffer, { filename: audio.originalname, mimetype: audio.mimetype || 'audio/mpeg', prompt, via });
+    return segments;
 }
 
 /** Line timings from a chat model are approximate, which is why the editor has nudge controls. */

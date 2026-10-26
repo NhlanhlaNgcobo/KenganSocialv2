@@ -1,10 +1,11 @@
 import type { ComponentType } from 'react';
-import { Aperture, ArrowLeftRight, Captions, Clapperboard, Film, LayoutTemplate, MicVocal, Music, Settings2, Sparkles, Type } from 'lucide-react';
+import { Aperture, ArrowLeftRight, Captions, Clapperboard, Disc3, Film, LayoutTemplate, MicVocal, Music, Settings2, Sparkles, Type } from 'lucide-react';
 import { EffectsView, TransitionsView } from './FxViews';
 import { useUiStore, type PanelTab } from '../../stores/ui-store';
 import { AiView } from './AiView';
 import { CaptionsView } from './CaptionsView';
 import { LyricsView } from './LyricsView';
+import { LyricVideoView } from './LyricVideoView';
 import { MediaView } from './MediaView';
 import { MusicView } from './MusicView';
 import { SettingsView } from './SettingsView';
@@ -16,6 +17,7 @@ const TABS: { id: PanelTab; label: string; icon: typeof Film }[] = [
     { id: 'media', label: 'Media', icon: Film },
     { id: 'templates', label: 'Templates', icon: LayoutTemplate },
     { id: 'music', label: 'Music', icon: Music },
+    { id: 'lyric-video', label: 'Lyric video', icon: Disc3 },
     { id: 'lyrics', label: 'Lyrics', icon: MicVocal },
     { id: 'stock', label: 'Stock', icon: Clapperboard },
     { id: 'text', label: 'Text', icon: Type },
@@ -30,6 +32,7 @@ const VIEWS: Record<PanelTab, ComponentType> = {
     media: MediaView,
     templates: TemplatesView,
     music: MusicView,
+    'lyric-video': LyricVideoView,
     lyrics: LyricsView,
     stock: StockView,
     text: TextView,

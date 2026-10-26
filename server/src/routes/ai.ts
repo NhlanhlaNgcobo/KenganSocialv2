@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { CHAT_MODEL, chatClient } from '../services/llm-client.js';
+import { CHAT_MODEL, chatClient, parseJsonReply } from '../services/llm-client.js';
 
 
 const openai = chatClient;
@@ -109,7 +109,7 @@ router.post('/generate-hooks', withWorkspace, planRateLimit(), checkLimit('aiCal
             ]
         });
 
-        const data = JSON.parse(response.choices[0]?.message?.content || '{"hooks":[]}');
+        const data = parseJsonReply(response.choices[0]?.message?.content, { hooks: [] });
         res.json({ success: true, hooks: data.hooks });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
@@ -129,7 +129,7 @@ router.post('/hashtag-research', withWorkspace, planRateLimit(), checkLimit('aiC
             ]
         });
 
-        const data = JSON.parse(response.choices[0]?.message?.content || '{}');
+        const data = parseJsonReply(response.choices[0]?.message?.content, {});
         res.json({ success: true, ...data.data });
     } catch (err: any) {
         res.status(500).json({ error: err.message });

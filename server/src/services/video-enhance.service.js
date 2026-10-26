@@ -205,26 +205,46 @@ async function applyFit(inputPath, workDir, ratio, duration, onProgress) {
     return out;
 }
 
+/** AI background removal in the Python video service: people on a flat key colour (background_removal.py). */
+async function removeBackgroundAi(inputPath, workDir, progressJob) {
+    const outputPath = path.resolve(workDir, 'no-background.mp4');
+    try {
+        const { data } = await axios.post(
+            `${PYTHON_URL}/process/remove-background`,
+            { inputPath: path.resolve(inputPath), outputPath, ...progressJob },
+            { timeout: 60 * 60 * 1000 }
+        );
+        return { outputPath, stats: data };
+    } catch (error) {
+        if (error.code === 'ECONNREFUSED') throw new Error('Background removal needs the AI video service, which is offline. Try again shortly.');
+        const detail = error.response?.data?.detail;
+        throw new Error(detail?.message || error.message);
+    }
+}
+
 /**
  * @param {object} opts
  * @param {string} opts.inputPath
  * @param {object | null} opts.stabilize  options accepted by normalizeStabilizeOptions
  * @param {{ ratio: string, layout?: string } | null} opts.autoframe  layout: auto | track | split | fit
+ * @param {boolean} [opts.removeBackground]  AI background removal, last (the matte follows the final framing)
  * @param {(pct: number) => void} [opts.onProgress]
  * @param {string} [opts.jobId]  manual_edit_jobs id the Python service may write progress to
  */
-export async function enhanceVideo({ inputPath, stabilize: stab, autoframe, cleanup: rawCleanup = null, onProgress = () => {}, jobId = null }) {
+export async function enhanceVideo({ inputPath, stabilize: stab, autoframe, cleanup: rawCleanup = null, removeBackground = false, onProgress = () => {}, jobId = null }) {
     const info = await probe(inputPath);
     const cleanup = rawCleanup ? normalizeCleanup(rawCleanup) : null;
     const wantsCleanup = cleanup && hasCleanup(cleanup);
-    if (!info.hasVideo && (stab || autoframe || !wantsCleanup)) throw new Error('This file has no video track to enhance.');
+    if (!info.hasVideo && (stab || autoframe || removeBackground || !wantsCleanup)) throw new Error('This file has no video track to enhance.');
     const duration = info.duration || 1;
     const workDir = fs.mkdtempSync(path.join(RENDER_DIR, 'enhance-'));
 
-    // Progress budget: stabilization 0–60 (or 0–100 alone), auto-frame the rest.
+    // Progress budget: stabilization 0–60 (or 0–100 alone), auto-frame the rest. Background removal,
+    // when combined, takes the last 60% and the other steps share the first 40%.
+    const bgShare = removeBackground ? (stab || autoframe || wantsCleanup ? 0.6 : 1) : 0;
     const stabShare = stab ? (autoframe ? 0.6 : 1) : 0;
-    const report = (f) => onProgress(Math.min(99, Math.round(f * 100)));
-    const summary = { stabilized: false, autoframe: null, cleanup: null };
+    const report = (f) => onProgress(Math.min(99, Math.round(f * (1 - bgShare) * 100)));
+    const summary = { stabilized: false, autoframe: null, cleanup: null, backgroundRemoved: null };
 
     try {
         let current = inputPath;
@@ -277,6 +297,14 @@ export async function enhanceVideo({ inputPath, stabilize: stab, autoframe, clea
                     twoSpeakerShare: plan.twoSpeakerShare,
                 };
             }
+        }
+
+        if (removeBackground) {
+            const from = Math.round((1 - bgShare) * 99);
+            const progressJob = jobId ? { progressJobId: jobId, progressFrom: from, progressTo: 99 } : {};
+            const removed = await removeBackgroundAi(current, workDir, progressJob);
+            current = removed.outputPath;
+            summary.backgroundRemoved = { keyColor: removed.stats.keyColor, personShare: removed.stats.personShare };
         }
 
         if (current === inputPath) throw new Error(summary.autoframe?.reason || 'Nothing to change for this clip.');
