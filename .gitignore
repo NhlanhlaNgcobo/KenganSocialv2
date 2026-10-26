@@ -80,3 +80,9 @@ client_secret*.json
 
 # Remotion browser download (Chrome Headless Shell)
 .remotion/
+
+# SSH and cloud keys: never commit
+oracle/
+*.key
+*.key.pub
+*.pem
