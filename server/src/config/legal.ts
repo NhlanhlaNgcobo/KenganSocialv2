@@ -5,8 +5,8 @@
  * signed-in user accept the documents again (client: /consent, server: POST /api/auth/consent).
  */
 export const LEGAL_VERSIONS = {
-    terms: '23 October 2026',
-    privacy: '23 October 2026',
+    terms: '26 October 2026',
+    privacy: '26 October 2026',
 } as const;
 
 /** True when a user profile has accepted the current Terms and Privacy Policy. */

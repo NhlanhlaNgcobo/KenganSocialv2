@@ -44,6 +44,20 @@ export function trialEndsAt(ws: any, now = Date.now()): string | null {
     return RANK[trial.plan] > RANK[paidOnly] ? trial.endsAt : null;
 }
 
+/** Free beta switched on (BETA_ACCESS=on); its features follow BETA_PLAN (default creator). */
+export function betaPlan(): Plan | null {
+    if (!/^(on|true|1)$/i.test(String(process.env.BETA_ACCESS || ''))) return null;
+    const plan = (process.env.BETA_PLAN || 'creator') as Plan;
+    return plan in PLAN_LIMITS && plan !== 'starter' ? plan : null;
+}
+
+/** Whether the workspace's plan comes from the free beta (no paid plan above it, no running trial). */
+export function onBeta(ws: any, now = Date.now()): boolean {
+    const beta = betaPlan();
+    if (!beta || ws?.unlimited === true) return false;
+    return effectivePlan({ ...ws, betaOff: true }, now) === 'starter';
+}
+
 /** The plan a workspace gets: its paid plan, or a running trial's plan when that is higher. */
 export function effectivePlan(ws: any, now = Date.now()): Plan {
     // Internal test workspaces (server-only flag, set with scripts/set-unlimited.mjs): every feature.
@@ -52,5 +66,8 @@ export function effectivePlan(ws: any, now = Date.now()): Plan {
     // Provider-managed access must have a valid paid-through date. Manual pilot grants remain explicit.
     if (ws?.paymentProvider && (!Number.isFinite(Date.parse(ws.currentPeriodEnd)) || Date.parse(ws.currentPeriodEnd) <= now)) paid = 'starter';
     const trial = activeTrial(ws, now);
-    return trial && RANK[trial.plan] > RANK[paid] ? trial.plan : paid;
+    const plan = trial && RANK[trial.plan] > RANK[paid] ? trial.plan : paid;
+    // Free beta: workspaces that would otherwise be on the free plan get the beta plan's features.
+    const beta = ws?.betaOff ? null : betaPlan();
+    return plan === 'starter' && beta ? beta : plan;
 }

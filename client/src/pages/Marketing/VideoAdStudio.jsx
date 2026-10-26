@@ -201,7 +201,7 @@ export default function VideoAdStudio({ kit }) {
                             <label>Voiceover script<textarea rows={4} value={script} maxLength={1000} onChange={e => { setScript(e.target.value); setConfirmed(false); }} /><small className={words(script) > limit ? 'video-ad-error-text' : 'muted'}>{words(script)} / {limit} words · shorter scripts leave room to breathe</small></label>
                             {options?.voices.length > 0 && <VoicePicker voices={options.voices} value={voiceId} onChange={setVoiceId} />}
                             {options?.voiceError && <p role="alert" className="video-ad-error-text">{options.voiceError}</p>}
-                            {options && !options.configured.voice && <p role="alert">Voiceovers need ElevenLabs to be set up on the server. Turn the voiceover off to make a music-only ad.</p>}
+                            {options && !options.configured.voice && <p role="alert">AI voiceovers are coming soon. Turn the voiceover off to make an ad without narration.</p>}
                         </> : <small className="muted">No voiceover: the ad uses music{sfx ? ' and sound effects' : ''}, with your name, selling points and offer on screen.</small>}
                         <div className="video-ad-music">
                             <label className="video-ad-switch"><input type="checkbox" checked={music} onChange={e => setMusic(e.target.checked)} /> <Music size={15} /> Background music</label>
@@ -209,7 +209,7 @@ export default function VideoAdStudio({ kit }) {
                                 <button type="button" role="radio" aria-checked={mood === 'auto'} className={mood === 'auto' ? 'is-selected' : ''} onClick={() => setMood('auto')}><strong>Auto{autoMood ? `: ${autoMood.label}` : ''}</strong><small>Matches {adCategory ? adCategory.label.toLowerCase() : 'your product'}</small></button>
                                 {options?.moods.map(m => <button type="button" key={m.id} role="radio" aria-checked={mood === m.id} className={mood === m.id ? 'is-selected' : ''} onClick={() => setMood(m.id)}><strong>{m.label}</strong><small>{m.description}</small></button>)}
                             </div>}
-                            {music && options && !options.configured.music && <p role="alert">Music needs Treblo to be set up on the server. Turn music off to make a voiceover-only ad.</p>}
+                            {music && options && !options.configured.music && <p role="alert">AI music is coming soon. Turn music off and keep the sound effects on.</p>}
                         </div>
                         <div className="video-ad-checks"><label><input type="checkbox" checked={sfx} onChange={e => setSfx(e.target.checked)} /> Sound effects (whooshes on angle changes, a hit on the offer)</label>{voiceover && <label><input type="checkbox" checked={captions} onChange={e => setCaptions(e.target.checked)} /> Captions</label>}</div>
                         <label className="video-ad-confirm"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /> I checked the claims and have permission to use these photos.</label>

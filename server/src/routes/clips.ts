@@ -8,8 +8,8 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { checkLimit, consumeUsage, mediaPlan, planRateLimit, refundUsage } from '../middleware/planGate';
-import { MAX_SOURCE_MINUTES, transcriptionMinutes } from '../utils/planLimits';
+import { checkLimit, consumeUsage, isBeta, maxSourceMinutes, mediaPlan, planRateLimit, refundUsage } from '../middleware/planGate';
+import { transcriptionMinutes } from '../utils/planLimits';
 import { effectivePlan } from '../utils/trial';
 import { probe } from '../services/ffmpeg-runner.js';
 import { getUploadPath, storeUpload } from '../services/manual-edit.service.js';
@@ -177,9 +177,9 @@ async function chargeSource(sourcePath: string, workspaceId: string, plan: strin
         return { status: 400, body: { error: 'This file could not be read as a video. Try exporting it again as MP4.' } };
     }
     const limitPlan = mediaPlan(workspaceId, plan);
-    const maxMinutes = (MAX_SOURCE_MINUTES as any)[limitPlan] ?? 0;
+    const maxMinutes = maxSourceMinutes(workspaceId, plan);
     if (seconds / 60 > maxMinutes) {
-        const who = limitPlan === plan ? 'Your plan turns' : 'During your free trial, KenganSocial turns';
+        const who = isBeta(workspaceId) ? 'During the beta, KenganSocial turns' : limitPlan === plan ? 'Your plan turns' : 'During your free trial, KenganSocial turns';
         return {
             status: 402,
             body: {

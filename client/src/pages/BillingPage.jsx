@@ -175,9 +175,11 @@ export default function BillingPage() {
     const supportEmail = catalog?.supportEmail || status?.supportEmail || BILLING_EMAIL;
     // On the full-access trial nothing is paid for yet: every paid plan can be bought.
     const onTrial = status?.paymentStatus === 'trial';
+    // Free beta (BETA_ACCESS on the server): like a trial, nothing is paid for yet.
+    const onBeta = status?.paymentStatus === 'beta';
     const trialEnds = formatDate(status?.trialEndsAt);
-    const currentTier = status ? (onTrial ? 'starter' : status.plan) : null;
-    const currentPlanId = status ? (onTrial ? 'starter' : status.planId) : null;
+    const currentTier = status ? (onTrial || onBeta ? 'starter' : status.plan) : null;
+    const currentPlanId = status ? (onTrial || onBeta ? 'starter' : status.planId) : null;
     const currentRank = currentTier ? PLAN_RANK[currentTier] ?? 0 : null;
     const discount = catalog?.annualDiscountPercent || 0;
     const paidUntil = formatDate(status?.currentPeriodEnd);
@@ -260,7 +262,9 @@ export default function BillingPage() {
                     <span className="usage-hint">
                         {!status
                             ? ' '
-                            : onTrial
+                            : onBeta
+                                ? 'Free beta: clips, AI Edit and the editor, with beta-sized limits. Thanks for testing!'
+                                : onTrial
                                 ? `Full access until ${trialEnds}, then the free plan unless you upgrade.`
                                 : isPaid
                                 ? paidUntil

@@ -14,7 +14,8 @@ import { redis } from '../utils/redis';
 import { getMonth } from '../utils/dateUtils';
 import { calculateWorkspaceStorage } from '../utils/storage';
 import { ANNUAL_DISCOUNT, BILLING_EMAIL, PLAN_CATALOG, publicCatalog } from '../config/plan-catalog';
-import { activeTrial } from '../utils/trial';
+import { activeTrial, onBeta } from '../utils/trial';
+import { usageLimit } from '../middleware/planGate';
 import { activateFromTransaction, safeJson, type PaystackTransaction } from '../services/payment-activation';
 import { billingAmount as computeAmount } from '../services/paystack-subscriptions';
 
@@ -168,7 +169,8 @@ router.get('/status', withWorkspace, async (req: Request, res: Response) => {
         const catalogId = tier === 'starter'
             ? null
             : (PLAN_CATALOG[ws.billingPlanId]?.tier === tier ? ws.billingPlanId : TIER_TO_CATALOG[tier]) || null;
-        const planName = catalogId ? PLAN_CATALOG[catalogId].label : PLAN_DISPLAY_NAMES[tier];
+        const beta = onBeta(ws) && toTier(ws.plan) !== tier;
+        const planName = beta ? 'Beta' : catalogId ? PLAN_CATALOG[catalogId].label : PLAN_DISPLAY_NAMES[tier];
 
         const usage = await readUsage(workspaceId, tier);
         let storageGB: number | null = null;
@@ -187,7 +189,8 @@ router.get('/status', withWorkspace, async (req: Request, res: Response) => {
             planRank: TIER_RANK[tier],
             planId: catalogId || 'starter',
             planName,
-            limits: PLAN_LIMITS[tier],
+            // What this workspace can really use (a trial or the beta caps the plan's quantities).
+            limits: Object.fromEntries(Object.keys(PLAN_LIMITS[tier]).map((k) => [k, usageLimit(workspaceId, tier, k as any)])),
             usage: usage ? { ...usage, storageGB: storageGB ?? 0 } : null,
             usageAvailable: Boolean(usage),
             storageGB,
@@ -197,7 +200,7 @@ router.get('/status', withWorkspace, async (req: Request, res: Response) => {
             canCancelSubscription: Boolean(ws.payfastToken && !ws.cancelAtPeriodEnd),
             currentPeriodEnd: ws.currentPeriodEnd || null,
             // A running full-access trial (utils/trial.ts) that is above the paid plan.
-            paymentStatus: tier === 'starter' ? 'free' : trialOnly ? 'trial' : (ws.paymentStatus || 'inactive'),
+            paymentStatus: tier === 'starter' ? 'free' : beta ? 'beta' : trialOnly ? 'trial' : (ws.paymentStatus || 'inactive'),
             trialEndsAt: trial?.endsAt || null,
             pendingPlan: ws.pendingPlan || null,
             paystackCustomerCode: ws.paystackCustomerCode || null,

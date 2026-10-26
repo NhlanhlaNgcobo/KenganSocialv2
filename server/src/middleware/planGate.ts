@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { readyUsageRedis } from '../utils/usageRedis';
 import { RESERVE_USAGE, REFUND_USAGE } from '../services/usage-reservation';
-import { MAX_SOURCE_MINUTES, PLAN_LIMITS, PlanFeature, TRIAL_LIMITS, TRIAL_MEDIA_PLAN } from '../utils/planLimits';
+import { BETA_LIMITS, BETA_MAX_SOURCE_MINUTES, MAX_SOURCE_MINUTES, PLAN_LIMITS, PlanFeature, TRIAL_LIMITS, TRIAL_MEDIA_PLAN } from '../utils/planLimits';
 import { getMonth, endOfMonth } from '../utils/dateUtils';
 
 export type UsageResult = { ok: boolean; status: number; body: Record<string, any> };
@@ -32,10 +32,24 @@ export function noteUnlimited(workspaceId: string, unlimited: boolean) {
 }
 export const isUnlimited = (workspaceId: string) => unlimitedWorkspaces.has(workspaceId);
 
-/** The monthly allowance for a feature: the plan's, or the trial cap while a trial runs. */
+/** Workspaces on the free beta (BETA_ACCESS=on; set by withWorkspace like trials): BETA_LIMITS apply. */
+const betas = new Set<string>();
+export function noteBeta(workspaceId: string, beta: boolean) {
+    if (!workspaceId) return;
+    if (beta) betas.add(workspaceId);
+    else betas.delete(workspaceId);
+}
+export const isBeta = (workspaceId: string) => betas.has(workspaceId);
+
+/** The monthly allowance for a feature: the plan's, or the trial or beta cap while one applies. */
 export function usageLimit(workspaceId: string, plan: string, feature: PlanFeature): number {
     if (unlimitedWorkspaces.has(workspaceId)) return -1;
     const limit = (PLAN_LIMITS as any)[plan]?.[feature] ?? 0;
+    if (betas.has(workspaceId)) {
+        if (limit === 0) return 0;
+        const cap = (BETA_LIMITS as any)[feature] ?? limit;
+        return limit === -1 ? cap : Math.min(limit, cap);
+    }
     const trialEnd = trials.get(workspaceId);
     if (!trialEnd || trialEnd <= Date.now()) return limit;
     const cap = (TRIAL_LIMITS as any)[feature] ?? limit;
@@ -48,10 +62,17 @@ export function usageLimit(workspaceId: string, plan: string, feature: PlanFeatu
  * (TRIAL_MEDIA_PLAN), otherwise the workspace's own plan.
  */
 export function mediaPlan(workspaceId: string, plan: string): string {
+    if (betas.has(workspaceId)) return TRIAL_MEDIA_PLAN; // fast speech model on the small beta server
     const trialEnd = trials.get(workspaceId);
     if (!trialEnd || trialEnd <= Date.now()) return plan;
     const limit = (MAX_SOURCE_MINUTES as any)[plan] ?? 0;
     return limit > MAX_SOURCE_MINUTES[TRIAL_MEDIA_PLAN] ? TRIAL_MEDIA_PLAN : plan;
+}
+
+/** Longest source video (minutes) for this workspace now: the plan's, the trial's or the beta's. */
+export function maxSourceMinutes(workspaceId: string, plan: string): number {
+    const max = (MAX_SOURCE_MINUTES as any)[mediaPlan(workspaceId, plan)] ?? 0;
+    return betas.has(workspaceId) ? Math.min(max, BETA_MAX_SOURCE_MINUTES) : max;
 }
 
 /**

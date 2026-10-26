@@ -3,6 +3,7 @@ import { AudioLines, Clapperboard, FileText, Hand, Loader2, Music2, Scissors, Se
 import { formatDuration } from '../../../lib/music-api';
 import { CAPTION_TEMPLATES } from '../../lib/caption-templates';
 import { editorApi, type StockAsset } from '../../lib/editor-api';
+import { apiClient } from '../../../lib/api';
 import { TIMING_LABELS } from '../../lib/lyrics';
 import {
     coverScale,
@@ -73,6 +74,15 @@ export function LyricVideoView() {
     useEffect(() => {
         loadLoopPresets().then(setPresets).catch((e) => notify(e.message, 'error'));
     }, [notify]);
+
+    // "Sync to vocals" and "AI writes them" need the server's lyrics AI (LAUNCH_AI_FEATURES).
+    const [lyricsAi, setLyricsAi] = useState(true);
+    useEffect(() => {
+        apiClient('/ai/status')
+            .then((s: { aiFeatures?: Record<string, boolean> }) => setLyricsAi(s?.aiFeatures?.lyricsAi !== false))
+            .catch(() => {});
+    }, []);
+    const comingSoon = (m: Method) => !lyricsAi && (m === 'sync' || m === 'ai');
 
     // Songs: audio clips on the timeline.
     const songs = useMemo(
@@ -340,8 +350,8 @@ export function LyricVideoView() {
                 <h4><span>3</span> Lyrics {analysis ? <em>{analysis.lines.length} lines · {TIMING_LABELS[analysis.timingSource]}</em> : null}</h4>
                 <div className="ke-lyricvid__methods" role="radiogroup" aria-label="How to add the lyrics">
                     {METHODS.map((m) => (
-                        <button key={m.id} role="radio" aria-checked={method === m.id} className={`ke-chip ${method === m.id ? 'is-active' : ''}`} onClick={() => setMethod(m.id)}>
-                            <m.icon size={13} /> {m.label}
+                        <button key={m.id} role="radio" aria-checked={method === m.id} className={`ke-chip ${method === m.id ? 'is-active' : ''}`} onClick={() => setMethod(m.id)} disabled={comingSoon(m.id)} title={comingSoon(m.id) ? 'Coming soon' : undefined}>
+                            <m.icon size={13} /> {m.label}{comingSoon(m.id) ? ' · soon' : ''}
                         </button>
                     ))}
                 </div>

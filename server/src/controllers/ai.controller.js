@@ -10,10 +10,10 @@ import {
 import { renderVerticalVideo, secondsToFrames } from '../services/render.service.js';
 import { uploadFile } from '../services/storage.service.js';
 import fs from 'fs';
-import { consumeUsage, noteTrial, noteUnlimited, refundUsage, usageLimit } from '../middleware/planGate.ts';
+import { consumeUsage, noteBeta, noteTrial, noteUnlimited, refundUsage, usageLimit } from '../middleware/planGate.ts';
 import { readyUsageRedis } from '../utils/usageRedis.ts';
 import { getMonth } from '../utils/dateUtils.ts';
-import { effectivePlan, trialEndsAt } from '../utils/trial.ts';
+import { effectivePlan, onBeta, trialEndsAt } from '../utils/trial.ts';
 import { applyDevPlanOverride } from '../utils/devPlan.ts';
 import { CREDIT_COSTS } from '../utils/planLimits.ts';
 import { aiFeatureStatus } from '../config/ai-features.ts';
@@ -25,6 +25,7 @@ import { aiFeatureStatus } from '../config/ai-features.ts';
 function workspacePlan(workspaceId, workspaceData) {
     const plan = applyDevPlanOverride(effectivePlan(workspaceData), workspaceData);
     noteTrial(workspaceId, plan === effectivePlan(workspaceData) ? trialEndsAt(workspaceData) : null);
+    noteBeta(workspaceId, plan === effectivePlan(workspaceData) && onBeta(workspaceData));
     noteUnlimited(workspaceId, workspaceData?.unlimited === true);
     return plan;
 }

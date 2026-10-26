@@ -21,7 +21,7 @@ export const COMPANY = {
 
 const OPERATOR_LINE = `${COMPANY.product} is operated by ${COMPANY.operator} (registration number ${COMPANY.registration}), a company registered in the Republic of South Africa${COMPANY.address ? ` and based in ${COMPANY.address}` : ''}.`;
 
-const EFFECTIVE = '23 October 2026';
+const EFFECTIVE = '26 October 2026';
 
 export const PRIVACY = {
     slug: 'privacy',
@@ -100,14 +100,20 @@ We do not use your content, your connected account data or your audience's messa
             heading: 'Artificial intelligence features',
             content: `Some features send content to an AI provider to produce a result for you: writing captions and posts, suggesting or sending replies to comments and messages you have set to automate, transcribing and finding highlights in your videos, and creating images.
 
-Only the content needed for the request is sent (for example, the text of one message and your reply instructions). Providers process it to return the result and, under their API terms, do not use it to train their models. AI-written replies are only sent automatically when you have switched that automation on; otherwise they wait in your Inbox for approval.
+Only the content needed for the request is sent (for example, the text of one message and your reply instructions). Providers process it to return the result. Under their paid API terms, OpenRouter, OpenAI and Perplexity do not use it to train their models.
 
-AI providers we use: OpenRouter (which routes requests to model providers such as Anthropic), OpenAI, Google (Gemini), Perplexity (trend research, without your account data), Pollinations (image generation) and AssemblyAI (transcription).`,
+Free beta: while ${COMPANY.product} is in its free beta, some AI requests go to Google's free Gemini tier and, when that is busy, to Pollinations' free service. Free tiers may use what is sent to improve their models, so don't put confidential or client-sensitive material into AI requests during the beta. Video transcription, clip finding, background removal and rendering run on our own server.
+
+AI-written replies are only sent automatically when you have switched that automation on; otherwise they wait in your Inbox for approval.
+
+AI providers we use: OpenRouter (which routes requests to model providers such as Anthropic), OpenAI, Google (Gemini, including its free tier during the beta), Perplexity (trend research, without your account data), Pollinations (image generation, and text when other providers are busy) and AssemblyAI (transcription).
+
+Free media libraries: when you search the music or image library, only your search words are sent to Openverse, ccMixter, Jamendo or Pexels.`,
         },
         {
             id: 'sharing',
             heading: 'Who we share information with',
-            content: `Service providers who process data for us under contract: Google Cloud and Firebase (sign-in, database and file storage), our cloud hosting and file storage provider, Payfast (payments; Paystack for subscriptions started before 23 October 2026), Redis hosting (job queues), and the AI providers listed above.
+            content: `Service providers who process data for us under contract: Google Cloud and Firebase (sign-in, database and file storage), our cloud hosting and file storage provider (Oracle Cloud in Johannesburg, South Africa, during the free beta), Payfast (payments; Paystack for subscriptions started before 23 October 2026), Redis hosting (job queues), and the AI providers listed above.
 
 Social platforms: when you publish, reply or change an ad, we send that content or instruction to the platform you chose. The platform's own terms and privacy policy then apply.
 

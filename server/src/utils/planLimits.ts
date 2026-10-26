@@ -80,6 +80,18 @@ export const MAX_SOURCE_MINUTES = { starter: 0, nano: 30, creator: 60, agency: 1
  */
 export const TRIAL_MEDIA_PLAN = 'nano' as const
 
+/**
+ * Free beta (BETA_ACCESS=on, docs/KenganSocial_Going_Live.pdf Part A): every workspace without a
+ * paid plan or a running trial gets BETA_PLAN's features with these quantities, sized for one
+ * small free server. Videos up to BETA_MAX_SOURCE_MINUTES, transcribed with the fast model.
+ */
+export const BETA_LIMITS = {
+    posts: 30, exports: 10, connections: 3,
+    dms: 10, transcribeMinutes: 60, clipAnalysis: 3,
+    aiCalls: 60, renders: 2, storageGB: 2
+}
+export const BETA_MAX_SOURCE_MINUTES = 15
+
 /** Client brands a workspace can manage in Clients & approvals (-1 = unlimited, 0 = not on this plan).
  *  Approvals are for Creator Pro, Agency and Enterprise (Enterprise uses the agency tier). */
 export const MAX_CLIENTS = { starter: 0, nano: 0, creator: 5, agency: -1 } as const

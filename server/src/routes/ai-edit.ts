@@ -7,8 +7,8 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../utils/firestore';
 import { withWorkspace } from '../middleware/withWorkspace';
-import { consumeUsage, mediaPlan, planRateLimit, refundUsage } from '../middleware/planGate';
-import { MAX_SOURCE_MINUTES, transcriptionMinutes, videoUnits } from '../utils/planLimits';
+import { consumeUsage, maxSourceMinutes, mediaPlan, planRateLimit, refundUsage } from '../middleware/planGate';
+import { transcriptionMinutes, videoUnits } from '../utils/planLimits';
 import { fail, requireWorkspace, route } from '../services/marketing/http';
 import { probe } from '../services/ffmpeg-runner.js';
 import { getUploadPath } from '../services/manual-edit.service.js';
@@ -192,7 +192,7 @@ router.post(
         } catch {
             throw fail(400, 'This file could not be read as a video. Try exporting it again as MP4.');
         }
-        const maxMinutes = (MAX_SOURCE_MINUTES as any)[mediaPlan(workspaceId, plan)] ?? 0;
+        const maxMinutes = maxSourceMinutes(workspaceId, plan);
         if (seconds / 60 > maxMinutes) {
             return res.status(402).json({
                 error: 'VIDEO_TOO_LONG',
