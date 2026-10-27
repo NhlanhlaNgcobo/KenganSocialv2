@@ -488,3 +488,39 @@
 .clips-field-error {
     color: var(--error, #e5484d);
 }
+
+/* YouTube links: still in development */
+.clips-tag {
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+}
+
+.clips-dev-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.04));
+}
+
+.clips-dev-notice p {
+    flex: 1 1 280px;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.clips-dev-notice strong {
+    color: var(--text-primary);
+}

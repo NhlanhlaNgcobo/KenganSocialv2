@@ -185,13 +185,22 @@ function NewProject({ onCreated, onOpen }) {
                                 <Upload size={15} /> Upload from device
                             </button>
                             <button role="tab" aria-selected={fromLink} className={fromLink ? 'is-active' : ''} onClick={() => setFrom('link')} disabled={busy}>
-                                <Youtube size={15} /> YouTube link
+                                <Youtube size={15} /> YouTube link <span className="clips-tag">In development</span>
                             </button>
                         </div>
                     ) : null}
 
                     {fromLink ? (
                         <>
+                            <div className="clips-dev-notice" role="note">
+                                <p>
+                                    <strong>YouTube links are still in development</strong> and may not work yet. You can upload your long video
+                                    instead: Clips finds the best moments and turns them into Shorts.
+                                </p>
+                                <button type="button" className="btn btn-sm btn-secondary" onClick={() => setFrom('upload')} disabled={busy}>
+                                    <Upload size={14} /> Upload a video instead
+                                </button>
+                            </div>
                             <label className="field">
                                 <span>YouTube video link</span>
                                 <input
