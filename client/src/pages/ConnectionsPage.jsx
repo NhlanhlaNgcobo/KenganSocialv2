@@ -227,6 +227,15 @@ export default function ConnectionsPage() {
         setPendingConnect({ platformId, source });
     };
 
+    // Shareable link: /dashboard/connections?connect=tiktok opens that platform's sign-in explanation.
+    const requestedPlatform = new URLSearchParams(window.location.search).get('connect');
+    useEffect(() => {
+        if (!requestedPlatform || !currentWorkspace?.id || !capabilities) return;
+        window.history.replaceState(null, '', window.location.pathname);
+        if (REAL_OAUTH_PLATFORMS.has(requestedPlatform) && !lockedInBeta(requestedPlatform)) handleConnect(requestedPlatform, 'Ungrouped');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [requestedPlatform, currentWorkspace?.id, capabilities]);
+
     const startConnect = async (platformId, source) => {
         setConnecting(platformId);
         setConnectSource(source);

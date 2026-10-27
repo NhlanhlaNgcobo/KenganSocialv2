@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authErrorMessage } from '../lib/auth-errors';
 import './Auth.css';
@@ -16,6 +16,9 @@ export default function LoginPage() {
     const [sendingReset, setSendingReset] = useState(false);
     const { login, loginWithGoogle, resetPassword } = useAuth();
     const navigate = useNavigate();
+    // Back to the page that sent them here (only paths inside the app), else the dashboard.
+    const from = useLocation().state?.from;
+    const returnTo = typeof from === 'string' && from.startsWith('/dashboard') ? from : '/dashboard';
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -26,7 +29,7 @@ export default function LoginPage() {
         try {
             await login(email, password);
             // The route guard sends anyone who has not finished onboarding there instead.
-            navigate('/dashboard');
+            navigate(returnTo);
         } catch (err) {
             setError(authErrorMessage(err, 'Could not sign in. Try again.'));
         } finally {
@@ -40,7 +43,7 @@ export default function LoginPage() {
         setLoading(true);
         try {
             const { needsOnboarding } = await loginWithGoogle();
-            navigate(needsOnboarding ? '/onboarding' : '/dashboard');
+            navigate(needsOnboarding ? '/onboarding' : returnTo);
         } catch (err) {
             setError(authErrorMessage(err, 'Google sign-in failed. Try again.'));
         } finally {

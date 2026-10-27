@@ -21,3 +21,20 @@ test('pilot requires a signed, verified and invited identity', async () => {
     assert.equal((await request(new Error('revoked'))).status, 401);
     assert.equal((await request({}, '', null)).passed, true);
 });
+
+test('the invite list holds 1 to 10 unique addresses', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { loadPilotEmails } = await import('../../src/middleware/pilotAccess.js');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pilot-')), 'pilot-access.json');
+    const load = (emails: string[]) => { fs.writeFileSync(file, JSON.stringify({ emails })); return loadPilotEmails(file); };
+    const list = (n: number) => Array.from({ length: n }, (_, i) => `tester${i}@example.com`);
+    assert.equal(load(list(1))?.size, 1);
+    assert.equal(load(list(6))?.size, 6);
+    assert.equal(load(list(10))?.size, 10);
+    assert.throws(() => load([]));
+    assert.throws(() => load(list(11)));
+    assert.throws(() => load(['a@example.com', 'A@example.com']), /unique/);
+    assert.equal(loadPilotEmails(path.join(path.dirname(file), 'missing.json')), null, 'no file: the gate is off');
+});

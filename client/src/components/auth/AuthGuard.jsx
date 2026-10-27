@@ -23,7 +23,8 @@ export default function AuthGuard({ children }) {
     }
 
     if (!user) {
-        return <Navigate to="/login" replace />;
+        // Remember where they were going (e.g. a shared ?connect=tiktok link) for after sign-in.
+        return <Navigate to="/login" replace state={{ from: `${pathname}${search}` }} />;
     }
 
     if (accessError) {
