@@ -999,11 +999,50 @@ def analyze_with_gcv(
     }
 
 
+def make_analysis_proxy(video_path: Path) -> Optional[Path]:
+    """A small 360p copy for frame analysis when the source is heavy to decode.
+
+    Scene detection, black-frame checks and face checks decode every frame. On a 4K HEVC phone
+    video (3840x2160, 3 min) that took over 15 minutes on the beta server's CPU in one Python
+    thread; FFmpeg decodes once on all threads and the analysis then reads 360p frames. The frame
+    rate is kept, so every time found on the copy matches the original.
+    """
+    cap = cv2.VideoCapture(str(video_path))
+    width, height = cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+    cap.release()
+    codec = "".join(chr((fourcc >> (8 * i)) & 0xFF) for i in range(4)).lower()
+    if max(width, height) <= 1280 and codec in ("avc1", "h264"):
+        return None
+    proxy = video_path.with_name(f"{video_path.stem}-analysis360.mp4")
+    scale = "scale=-2:360" if width >= height else "scale=360:-2"
+    started = time.time()
+    try:
+        run_ffmpeg("-threads", "0", "-i", str(video_path), "-an", "-vf", scale, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", str(proxy))
+    except Exception as exc:  # fall back to analysing the original
+        log.warning("Analysis proxy failed, using the original: %s", exc)
+        cleanup(proxy)
+        return None
+    log.info("Analysis proxy %dx%d %s -> 360p in %.1fs", width, height, codec or "?", time.time() - started)
+    return proxy
+
+
 def analyze_locally(video_path: Path, req: AnalyzeViralRequest, options: Dict[str, Any]) -> Dict[str, Any]:
-    duration = get_video_duration(video_path)
+    proxy = make_analysis_proxy(video_path)
+    try:
+        return _analyze_locally(proxy or video_path, video_path, req, options)
+    finally:
+        if proxy:
+            cleanup(proxy)
+
+
+def _analyze_locally(frames_path: Path, audio_path: Path, req: AnalyzeViralRequest, options: Dict[str, Any]) -> Dict[str, Any]:
+    """frames_path: the video to read frames from (a 360p copy for heavy sources); audio_path: the original."""
+    video_path = frames_path
+    duration = get_video_duration(audio_path)
     scene_boundaries = detect_scene_boundaries(video_path, duration)
     black_segments = merge_time_ranges(detect_black_segments(video_path) + detect_black_segments_ffmpeg(video_path))
-    silence_segments = parse_silence_segments(video_path) if options.get("removeSilence") else []
+    silence_segments = parse_silence_segments(audio_path) if options.get("removeSilence") else []
     transcription = load_job_transcription(req.jobId)
     indexed_words = build_word_index(transcription.get("words", []))
     windows = build_candidate_windows(duration, scene_boundaries, options)

@@ -43,6 +43,10 @@ async function cut(sourcePath, start, end, outPath) {
         '-hide_banner', '-y',
         '-ss', start.toFixed(3), '-i', sourcePath, '-t', (end - start).toFixed(3),
         '-map', '0:v:0', '-map', '0:a?',
+        // Clips are at most 1080x1920: a 4K source is cut at up to 1440p (a 9:16 crop of 1440p
+        // landscape still has 810 px of width), which made each 4K clip several minutes faster on
+        // the beta server. Smaller sources keep their size.
+        '-vf', "scale='if(gte(iw,ih),min(2560,trunc(iw/2)*2),-2)':'if(gte(iw,ih),-2,min(2560,trunc(ih/2)*2))'",
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-b:a', '192k',
         '-movflags', '+faststart', outPath,
