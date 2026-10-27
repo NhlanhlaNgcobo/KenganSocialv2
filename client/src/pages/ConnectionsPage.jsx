@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { useAuth } from '../context/AuthContext';
+import PlatformLogo from '../components/brand/PlatformLogo';
 import { apiClient } from '../lib/api';
 import ConnectPermissions from '../components/connections/ConnectPermissions';
 import MetaAccountPicker from '../components/connections/MetaAccountPicker';
@@ -462,12 +463,16 @@ export default function ConnectionsPage() {
                                     return (
                                         <div key={connection.id} className="connection-card card connection-card--connected">
                                             <div className="connection-card__header">
-                                                <div
-                                                    className="platform-icon"
-                                                    style={{ backgroundColor: `color-mix(in srgb, ${meta.color} 9%, transparent)`, color: meta.color }}
-                                                >
-                                                    <Icon size={24} />
-                                                </div>
+                                                {['youtube', 'instagram', 'tiktok', 'facebook'].includes(connection.platform) ? (
+                                                    <PlatformLogo platform={connection.platform} size={24} className="platform-icon" />
+                                                ) : (
+                                                    <div
+                                                        className="platform-icon"
+                                                        style={{ backgroundColor: `color-mix(in srgb, ${meta.color} 9%, transparent)`, color: meta.color }}
+                                                    >
+                                                        <Icon size={24} />
+                                                    </div>
+                                                )}
                                                 <div className="connection-card__actions">
                                                     <button className="btn-icon btn-ghost" onClick={() => handleDisconnect(connection)} title="Disconnect">
                                                         <Trash2 size={16} />

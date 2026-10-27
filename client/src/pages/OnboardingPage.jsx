@@ -7,6 +7,7 @@ import ConnectPermissions from '../components/connections/ConnectPermissions';
 import { BILLING_EMAIL, fetchPlanCatalog, formatZar } from '../utils/planLimits';
 import './Onboarding.css';
 import { KenganLogo } from '../components/brand/KenganLogo';
+import PlatformLogo from '../components/brand/PlatformLogo';
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -23,29 +24,21 @@ const PLATFORMS = [
     {
         id: 'youtube',
         name: 'YouTube',
-        emoji: '▶️',
-        bg: '#FF0000',
         desc: 'Schedule Shorts & long-form videos',
     },
     {
         id: 'instagram',
         name: 'Instagram',
-        emoji: '📸',
-        bg: 'linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)',
         desc: 'Reels, stories & carousel posts',
     },
     {
         id: 'tiktok',
         name: 'TikTok',
-        emoji: '🎵',
-        bg: '#010101',
         desc: 'Short-form video & trends',
     },
     {
         id: 'facebook',
         name: 'Facebook',
-        emoji: '👍',
-        bg: '#1877F2',
         desc: 'Page posts, Reels & comments',
     },
 ];
@@ -182,6 +175,9 @@ function StepSetup({ onNext }) {
 
 // ─── STEP 2 — Connect Accounts ─────────────────────────────────────────────────
 function StepConnect({ onNext, onBack }) {
+    const { capabilities } = useAuth();
+    // Beta: only the platforms the server opens (BETA_PLATFORMS) can be connected.
+    const lockedInBeta = (id) => Boolean(capabilities?.beta) && !(capabilities.betaPlatforms || []).includes(id);
     const [connecting, setConnecting] = useState(null);
     const [error, setError] = useState('');
     // Explain what the platform will be asked for before its sign-in (ConnectPermissions).
@@ -218,27 +214,26 @@ function StepConnect({ onNext, onBack }) {
             <div className="platforms-grid stagger-children">
                 {PLATFORMS.map((p) => (
                     <div key={p.id} className="platform-card">
-                        <div
-                            className="platform-card__icon"
-                            style={{ background: p.bg, fontSize: '1.5rem' }}
-                        >
-                            {p.emoji}
-                        </div>
+                        <PlatformLogo platform={p.id} size={24} className="platform-card__icon" />
                         <div className="platform-card__info">
                             <div className="platform-card__name">{p.name}</div>
                             <div className="platform-card__desc">{p.desc}</div>
                         </div>
-                        <button
-                            id={`ob-connect-${p.id}`}
-                            className="platform-card__btn platform-card__btn--connect"
-                            onClick={() => {
-                                setError('');
-                                setPending(p);
-                            }}
-                            disabled={Boolean(connecting)}
-                        >
-                            {connecting === p.id ? 'Opening…' : 'Connect'}
-                        </button>
+                        {lockedInBeta(p.id) ? (
+                            <span className="platform-card__locked">Locked in beta</span>
+                        ) : (
+                            <button
+                                id={`ob-connect-${p.id}`}
+                                className="platform-card__btn platform-card__btn--connect"
+                                onClick={() => {
+                                    setError('');
+                                    setPending(p);
+                                }}
+                                disabled={Boolean(connecting)}
+                            >
+                                {connecting === p.id ? 'Opening…' : 'Connect'}
+                            </button>
+                        )}
                     </div>
                 ))}
             </div>

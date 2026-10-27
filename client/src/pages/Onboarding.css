@@ -748,3 +748,15 @@
 .onboarding-page__orb {
     display: none;
 }
+
+/* A platform that can't be connected during the beta */
+.platform-card__locked {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
