@@ -2720,3 +2720,58 @@
 .ke-progress-card__cancel {
     margin-top: 10px;
 }
+
+/* Videos the browser cannot decode (camera formats): conversion status */
+.ke-media-card__converting {
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    font-size: 10.5px;
+}
+
+.ke-media-card__converting button {
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.ke-preview__unplayable {
+    position: absolute;
+    inset: 0;
+    z-index: 98;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.78);
+    color: #fff;
+}
+
+.ke-preview__unplayable p {
+    margin: 0;
+    max-width: 280px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.ke-preview__unplayable small {
+    display: block;
+    margin-top: 6px;
+    opacity: 0.75;
+}

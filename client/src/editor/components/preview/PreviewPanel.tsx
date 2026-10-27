@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Expand, Minimize, Pause, Play, Repeat, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react';
+import { Expand, Loader2, Minimize, Pause, Play, Repeat, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react';
 import { previewFont } from '../../constants';
 import { formatTimecode, getElementEnd, getElementLength } from '../../lib/time';
 import { animatedTransform, cssFromValues, cssTransform, getTransform } from '../../lib/transform';
@@ -18,6 +18,7 @@ import type { ChromaKey, ColorSettings } from '../../types';
 import { GuideTrackPlayer } from './GuideTrackPlayer';
 import { LyricOverlay } from './LyricOverlay';
 import { MediaLayer } from './MediaLayer';
+import { useEnhanceStore } from '../../stores/enhance-store';
 import { captionFrame } from '../../lib/caption-motion.js';
 import { ExactPreviewButton, ExactPreviewOverlay } from './ExactPreview';
 
@@ -60,6 +61,34 @@ function GradedImage({ src, color, chromaKey, style }: { src: string; color: Col
             <img ref={setImg} src={src} alt="" className="ke-preview__media" style={{ ...style, opacity: 0 }} draggable={false} />
             {lut || chromaKey ? <GradedCanvas source={img} lut={lut} chromaKey={chromaKey} className="ke-preview__media" style={style} /> : null}
         </>
+    );
+}
+
+function UnplayableNotice({ mediaId }: { mediaId: string }) {
+    const job = useEnhanceStore((s) => (s.runningMediaId === mediaId ? s : null));
+    const convert = () => useEnhanceStore.getState().convertForPreview(mediaId).catch(() => {});
+    return (
+        <div className="ke-preview__unplayable" role="status">
+            {job ? (
+                <>
+                    <Loader2 size={18} className="ke-spin" />
+                    <p>
+                        Converting this video so it plays here… {job.progress ? `${job.progress}%` : ''}
+                        <small>Camera formats such as ProRes play sound but no picture in the browser.</small>
+                    </p>
+                </>
+            ) : (
+                <>
+                    <p>
+                        Your browser can't show this video's format (common for camera files such as ProRes).
+                        <small>Convert it to MP4 to see it here; your edits stay in place.</small>
+                    </p>
+                    <button className="ke-btn ke-btn--sm ke-btn--primary" onClick={convert}>
+                        Convert to MP4
+                    </button>
+                </>
+            )}
+        </div>
     );
 }
 
@@ -404,6 +433,14 @@ export function PreviewPanel() {
                         const media = items.find((i) => i.id === (element as MediaElement).mediaId);
                         return media && media.type !== 'audio' ? renderOverlayHandle(track.id, element as MediaElement, media, z) : null;
                     })}
+                    {(() => {
+                        // A video the browser can't decode (camera formats such as ProRes) plays sound
+                        // but no picture: say so instead of showing a black frame.
+                        const unplayable = layers.find(({ element, active }) => active && element.type === 'media' && items.find((i) => i.id === (element as MediaElement).mediaId && i.type === 'video' && !i.width));
+                        if (!unplayable) return null;
+                        const mediaId = (unplayable.element as MediaElement).mediaId;
+                        return <UnplayableNotice mediaId={mediaId} />;
+                    })()}
                     {wash ? <div className="ke-preview__fx" style={{ ...wash, zIndex: 99 }} /> : null}
                     <LyricOverlay scale={scale} />
                     {exact ? (

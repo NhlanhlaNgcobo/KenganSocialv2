@@ -6,7 +6,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getUploadPath, storeUpload } from '../services/manual-edit.service.js';
-import { AUTOFRAME_RATIOS, enhanceVideo } from '../services/video-enhance.service.js';
+import { AUTOFRAME_RATIOS, convertForEditing, enhanceVideo } from '../services/video-enhance.service.js';
 import { hasCleanup, normalizeCleanup } from '../services/clip-cleanup.js';
 
 const router = express.Router();
@@ -167,6 +167,45 @@ router.post('/enhance', withWorkspace, planRateLimit(), checkLimit('renders'), a
     } catch (error: any) {
         console.error(`[Enhance] Job ${jobId} failed:`, error.message);
         await jobRef.update({ status: 'failed', error: error.message, updatedAt: new Date().toISOString() }).catch(() => {});
+    }
+});
+
+// POST /api/video/convert — re-encodes an upload the browser cannot show (ProRes and other camera
+// formats) to H.264 MP4 for the editor. Poll /api/video/manual-edit/status/:jobId; the result is
+// registered as a new upload. Not counted as a render: it only fixes the file format.
+router.post('/convert', withWorkspace, planRateLimit(), async (req: Request, res: Response) => {
+    const uid = (req as any).uid;
+    const { sourceUploadId } = req.body || {};
+    const inputPath = typeof sourceUploadId === 'string' ? getUploadPath(sourceUploadId, uid) : null;
+    if (!inputPath) return res.status(400).json({ error: 'Source not found for this upload. Re-upload the file and try again.' });
+
+    const jobId = uuidv4();
+    const jobRef = db.collection('manual_edit_jobs').doc(jobId);
+    await jobRef.set({ id: jobId, userId: uid, type: 'convert', status: 'processing', progress: 0, createdAt: new Date().toISOString() });
+    res.status(202).json({ jobId, status: 'processing' });
+
+    let lastProgress = -1;
+    try {
+        const outputPath = await convertForEditing(inputPath, (progress: number) => {
+            if (progress === lastProgress) return;
+            lastProgress = progress;
+            jobRef.update({ progress }).catch(() => {});
+        });
+        const outputUploadId = uuidv4();
+        storeUpload(outputUploadId, outputPath, uid);
+        const filename = path.basename(outputPath);
+        await jobRef.update({
+            status: 'completed',
+            progress: 100,
+            outputPath,
+            outputFilename: filename,
+            downloadUrl: `/api/video/manual-edit/download/${filename}`,
+            outputUploadId,
+            updatedAt: new Date().toISOString(),
+        });
+    } catch (error: any) {
+        console.error(`[Convert] Job ${jobId} failed:`, error.message);
+        await jobRef.update({ status: 'failed', error: 'This video could not be converted. Try exporting it as MP4 (H.264) from your camera app.', updatedAt: new Date().toISOString() }).catch(() => {});
     }
 });
 

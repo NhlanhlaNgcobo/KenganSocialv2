@@ -68,6 +68,11 @@ interface EnhanceState {
     run: (mediaId: string) => Promise<string>;
     /** AI background removal on one overlay clip: swaps in the processed file and turns the key on. */
     removeBackground: (trackId: string, elementId: string) => Promise<string>;
+    /**
+     * A video the browser cannot show (ProRes and other camera formats: it plays sound but no
+     * picture) is converted to MP4 on the server and replaces the original everywhere.
+     */
+    convertForPreview: (mediaId: string) => Promise<string>;
     cancel: () => void;
 }
 
@@ -201,6 +206,38 @@ export const useEnhanceStore = create<EnhanceState>((set, get) => ({
             useTimelineStore.getState().updateElement(trackId, elementId, { mediaId: item.id, chromaKey: { color: keyColor, similarity: 0.1, blend: 0.06, spill: 0.5 } });
             set({ runningMediaId: null, stage: '', controller: null });
             return 'Background removed. Ctrl+Z to undo.';
+        } catch (error) {
+            const message = (error as Error).message;
+            set({ runningMediaId: null, stage: '', controller: null, error: message === 'Cancelled' ? null : message });
+            throw error;
+        }
+    },
+
+    convertForPreview: async (mediaId) => {
+        const { projectKey } = useProjectStore.getState();
+        const media = useMediaStore.getState().getItem(mediaId);
+        if (!media || !projectKey) throw new Error('This video is no longer in the project.');
+        get().controller?.abort();
+        const controller = new AbortController();
+        set({ runningMediaId: mediaId, stage: 'Uploading for conversion', progress: 0, error: null, controller });
+        try {
+            const uploads = await useMediaStore.getState().ensureUploaded([mediaId], undefined, controller.signal);
+            const jobId = await editorApi.startConvert(uploads[mediaId], controller.signal);
+            const job = await pollJob(
+                () => editorApi.getRenderStatus(jobId),
+                (j) => set({ stage: 'Converting', progress: j.progress || 0 }),
+                (j) => j.status === 'completed',
+                controller.signal
+            );
+            set({ stage: 'Loading the converted video', progress: 100 });
+            const blob = await editorApi.downloadRender(job.downloadUrl!);
+            const baseName = media.name.replace(/\.[^.]+$/, '');
+            const item = await useMediaStore.getState().addProcessed(blob, `${baseName}.mp4`, projectKey, job.outputUploadId!);
+            if (!item) throw new Error('Could not load the converted video.');
+            useTimelineStore.getState().replaceMedia(mediaId, item.id, item.duration, item.name);
+            useMediaStore.getState().removeItem(mediaId, projectKey);
+            set({ runningMediaId: null, stage: '', controller: null });
+            return `${media.name} was converted to MP4 so it plays in the editor.`;
         } catch (error) {
             const message = (error as Error).message;
             set({ runningMediaId: null, stage: '', controller: null, error: message === 'Cancelled' ? null : message });

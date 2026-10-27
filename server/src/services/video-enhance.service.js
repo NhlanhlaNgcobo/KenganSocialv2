@@ -317,3 +317,26 @@ export async function enhanceVideo({ inputPath, stabilize: stab, autoframe, clea
         fs.rm(workDir, { recursive: true, force: true }, () => {});
     }
 }
+
+/**
+ * Re-encodes a video the browser cannot show (ProRes, DNxHD, some 10-bit HEVC from cameras) to
+ * H.264 MP4 for editing, at up to 1920 px on the long side. Audio is kept.
+ * @returns {Promise<string>} path of the new file in RENDER_DIR
+ */
+export async function convertForEditing(inputPath, onProgress = () => {}) {
+    const info = await probe(inputPath);
+    if (!info.hasVideo) throw new Error('This file has no video track to convert.');
+    const outputPath = path.join(RENDER_DIR, `converted_${uuidv4()}.mp4`);
+    await run(
+        FFMPEG,
+        [
+            '-hide_banner', '-y', '-i', inputPath,
+            '-map', '0:v:0', '-map', '0:a:0?',
+            '-vf', "scale='if(gte(iw,ih),min(1920,trunc(iw/2)*2),-2)':'if(gte(iw,ih),-2,min(1920,trunc(ih/2)*2))',setsar=1",
+            ...ENCODE, '-progress', 'pipe:1', '-nostats', outputPath,
+        ],
+        { duration: info.duration || 1, onProgress: (f) => onProgress(Math.min(99, Math.round(f * 100))) }
+    );
+    onProgress(100);
+    return outputPath;
+}

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { CloudUpload, Image as ImageIcon, Layers, Loader2, Music, Plus, Search, Trash2, Video } from 'lucide-react';
 import { defaultLayout, layoutTransform, OVERLAY_LAYOUTS } from '../../lib/overlay-layouts';
 import { formatShort } from '../../lib/time';
+import { useEnhanceStore } from '../../stores/enhance-store';
 import { useMediaStore } from '../../stores/media-store';
 import { usePlaybackStore } from '../../stores/playback-store';
 import { getCanvasSize, useProjectStore } from '../../stores/project-store';
@@ -15,6 +16,11 @@ export function MediaView() {
     const { items, isImporting, importErrors, addFiles, removeItem } = useMediaStore();
     const projectKey = useProjectStore((s) => s.projectKey);
     const notify = useUiStore((s) => s.notify);
+    // Separate primitive selectors: a selector returning a new object re-renders forever.
+    const convertingId = useEnhanceStore((s) => s.runningMediaId);
+    const convertingStage = useEnhanceStore((s) => s.stage);
+    const convertingProgress = useEnhanceStore((s) => s.progress);
+    const converting = convertingId ? { id: convertingId, stage: convertingStage, progress: convertingProgress } : null;
     const inputRef = useRef<HTMLInputElement>(null);
     const [query, setQuery] = useState('');
     const [dragOver, setDragOver] = useState(false);
@@ -29,6 +35,16 @@ export function MediaView() {
             for (const item of added.filter((i) => i.type !== 'audio')) {
                 timeline.addMediaAtTime(item, cursor);
                 cursor += item.type === 'image' ? 5 : item.duration;
+            }
+        }
+        // Camera formats (ProRes and others) play sound but no picture in the browser: their width
+        // reads as 0. Convert them to MP4 on the server so the preview shows them.
+        for (const item of added.filter((i) => i.type === 'video' && !i.width)) {
+            notify(`${item.name} is in a format your browser can't show (common for camera files). Converting it to MP4…`, 'info');
+            try {
+                notify(await useEnhanceStore.getState().convertForPreview(item.id), 'success');
+            } catch (error) {
+                if ((error as Error).message !== 'Cancelled') notify(`${item.name} could not be converted: ${(error as Error).message}`, 'error');
             }
         }
     };
@@ -131,7 +147,16 @@ export function MediaView() {
                                 <div className="ke-media-card__thumb">
                                     {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" draggable={false} /> : <Icon size={22} />}
                                     {item.type !== 'image' ? <span className="ke-media-card__dur">{formatShort(item.duration)}</span> : null}
-                                    {item.uploadStatus === 'uploading' ? <Loader2 size={14} className="ke-spin ke-media-card__status" /> : null}
+                                    {item.uploadStatus === 'uploading' || converting?.id === item.id ? <Loader2 size={14} className="ke-spin ke-media-card__status" /> : null}
+                                    {converting?.id === item.id ? (
+                                        <span className="ke-media-card__converting">
+                                            {converting.stage}
+                                            {converting.progress ? ` ${converting.progress}%` : '…'}
+                                            <button type="button" onClick={() => useEnhanceStore.getState().cancel()}>
+                                                Cancel
+                                            </button>
+                                        </span>
+                                    ) : null}
                                     <div className="ke-media-card__actions">
                                         <button className="ke-icon-btn ke-icon-btn--xs" title="Add at playhead" onClick={() => addToTimeline(item)}>
                                             <Plus size={12} />

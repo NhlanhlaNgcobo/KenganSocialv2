@@ -106,6 +106,12 @@ export const editorApi = {
         return data.jobId as string;
     },
 
+    /** Re-encodes an upload the browser cannot show (ProRes and other camera formats) to MP4. */
+    async startConvert(sourceUploadId: string, signal?: AbortSignal): Promise<string> {
+        const data = await apiClient('/video/convert', { method: 'POST', body: { sourceUploadId }, signal });
+        return data.jobId as string;
+    },
+
     async startEnhance(body: EnhanceRequest): Promise<string> {
         const data = await apiClient('/video/enhance', { method: 'POST', body });
         return data.jobId as string;
