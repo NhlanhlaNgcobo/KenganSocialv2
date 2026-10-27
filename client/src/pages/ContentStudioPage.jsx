@@ -9,6 +9,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient, apiFetch, buildApiError } from '../lib/api';
+import { RESUMABLE_FROM_BYTES } from '../lib/clips-api';
+import { resumableUpload } from '../lib/resumable-upload';
 import { useEditorStore } from '../stores/editorStore';
 import './ContentStudio.css';
 
@@ -36,8 +38,17 @@ async function authHeaders() {
     return headers;
 }
 
-/** Uploads the video for analysis with real upload progress (fetch can't report it). */
-async function uploadForAnalysis(file, fields, onProgress) {
+/**
+ * Uploads the video for analysis with real upload progress. Files over 2 MB go up in chunks first
+ * (a single long request is cut off by the proxy after 60 s), then the server analyses that upload.
+ * `signal` cancels the upload or the wait for the analysis.
+ */
+async function uploadForAnalysis(file, fields, onProgress, signal) {
+    if (file.size >= RESUMABLE_FROM_BYTES) {
+        const uploadId = await resumableUpload(file, onProgress, signal);
+        onProgress(100);
+        return apiClient('/ai/video/analyze', { method: 'POST', body: { ...fields, uploadId, fileName: file.name }, signal });
+    }
     const headers = await authHeaders();
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -56,6 +67,9 @@ async function uploadForAnalysis(file, fields, onProgress) {
             else reject(buildApiError(body, xhr.status));
         };
         xhr.onerror = () => reject(new Error('Upload failed. Check your connection and try again.'));
+        xhr.onabort = () => reject(Object.assign(new Error('Cancelled'), { name: 'AbortError' }));
+        if (signal?.aborted) return xhr.onabort();
+        signal?.addEventListener('abort', () => xhr.abort(), { once: true });
         const form = new FormData();
         form.append('video', file, file.name);
         Object.entries(fields).forEach(([k, v]) => v && form.append(k, v));
@@ -98,6 +112,7 @@ export default function ContentStudioPage() {
     const mediaBlobUrl = useRef(null);
     const renderedBlobRef = useRef(null);
     const renderPollRef = useRef(null);
+    const uploadAbortRef = useRef(null);
 
     // Media state
     const [media, setMedia] = useState(null);
@@ -246,13 +261,16 @@ export default function ContentStudioPage() {
         setUploadProgress(0);
 
         setError('');
+        uploadAbortRef.current?.abort();
+        const controller = new AbortController();
+        uploadAbortRef.current = controller;
         try {
             setSuccessMsg('Uploading video for analysis…');
             const data = await uploadForAnalysis(file, { context: caption || '', referenceUrl }, (pct) => {
                 setUploadProgress(pct);
                 // Once the bytes are sent, the server is transcribing and analysing.
                 if (pct >= 100) setAnalyzing(true);
-            });
+            }, controller.signal);
             setAnalyzing(true);
             setAnalysisJobId(data.jobId);
             setAnalysis(data.analysis);
@@ -283,14 +301,32 @@ export default function ContentStudioPage() {
             }
             setActiveTab('captions');
         } catch (err) {
-            console.error('Upload/analyze error:', err);
-            setError(err.message || 'The upload failed. Try again.');
-            setSuccessMsg('');
+            if (controller.signal.aborted || err?.name === 'AbortError') {
+                setSuccessMsg('Upload cancelled. Choose the video again when you are ready.');
+            } else {
+                console.error('Upload/analyze error:', err);
+                setError(err.message || 'The upload failed. Try again.');
+                setSuccessMsg('');
+            }
         } finally {
+            if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
             setUploading(false);
             setAnalyzing(false);
             setUploadProgress(0);
         }
+    };
+
+    /** Stops the upload or the wait for the analysis. */
+    const cancelUpload = () => {
+        uploadAbortRef.current?.abort();
+    };
+
+    /** Stops waiting for the render (the page stops polling; nothing is published). */
+    const cancelRender = () => {
+        clearInterval(renderPollRef.current);
+        setRendering(false);
+        setRenderProgress(0);
+        setSuccessMsg('Render cancelled.');
     };
 
     // ======================================================
@@ -521,6 +557,11 @@ export default function ContentStudioPage() {
                         </div>
                     )}
                     {analyzing && <span className="pipeline-label"><Loader2 size={14} className="spin" /> Analysing your video…</span>}
+                    {uploading || analyzing ? (
+                        <button type="button" className="btn btn-sm btn-secondary pipeline-cancel" onClick={cancelUpload}><X size={14} /> Cancel</button>
+                    ) : rendering ? (
+                        <button type="button" className="btn btn-sm btn-secondary pipeline-cancel" onClick={cancelRender}><X size={14} /> Cancel render</button>
+                    ) : null}
                 </div>
             )}
 
@@ -555,6 +596,7 @@ export default function ContentStudioPage() {
                                                     {!analyzing ? (
                                                         <div className="upload-progress-bar"><div className="upload-progress-fill" style={{ width: `${uploadProgress}%` }} /></div>
                                                     ) : null}
+                                                    <button type="button" className="btn btn-sm btn-secondary" onClick={cancelUpload}><X size={14} /> Cancel</button>
                                                 </div>
                                             )}
                                         </div>

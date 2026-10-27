@@ -2,6 +2,7 @@ import { analyzeVideo } from '../services/video-analyzer.service.js';
 import { cropToVertical, burnSubtitles, cropAndCaption, getVideoInfo } from '../services/video-editor.service.js';
 import { uploadFile } from '../services/storage.service.js';
 import { getFirestore } from '../config/firebase.js';
+import { getUploadPath } from '../services/manual-edit.service.js';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
@@ -15,7 +16,15 @@ const RENDER_DIR = path.join(os.tmpdir(), 'kengan-renders');
 // -------------------------------------------------------
 export async function analyzeUploadedVideo(req, res) {
     try {
-        const file = req.file;
+        // A file in the request, or a finished chunked upload (uploadId) owned by this user: large
+        // videos arrive in small pieces, because proxies cut off single requests that run long.
+        let file = req.file;
+        const fromUpload = !file && typeof req.body?.uploadId === 'string';
+        if (fromUpload) {
+            const uploadedPath = getUploadPath(req.body.uploadId, req.user.uid);
+            if (!uploadedPath || !fs.existsSync(uploadedPath)) return res.status(404).json({ error: 'UPLOAD_NOT_FOUND', message: 'The upload has expired. Upload the video again.' });
+            file = { path: uploadedPath, originalname: String(req.body.fileName || path.basename(uploadedPath)).slice(0, 200), size: fs.statSync(uploadedPath).size };
+        }
         if (!file) {
             return res.status(400).json({ error: 'No video file uploaded' });
         }
@@ -57,8 +66,8 @@ export async function analyzeUploadedVideo(req, res) {
             createdAt: new Date().toISOString(),
         });
 
-        // Clean up multer temp file
-        try { fs.unlinkSync(file.path); } catch { }
+        // Clean up multer temp file (a chunked upload stays: it is the user's registered upload)
+        if (!fromUpload) try { fs.unlinkSync(file.path); } catch { }
 
         res.json({
             jobId,

@@ -43,8 +43,14 @@ export function ExactPreviewButton({ onResult }: { onResult: (r: { url: string; 
     };
 
     return (
-        <button className={`ke-chip ${busy !== null ? 'is-active' : ''}`} onClick={run} title="Render 3 seconds around the playhead with the export engine (click again to cancel)">
+        <button
+            className={`ke-chip ${busy !== null ? 'is-active' : ''}`}
+            onClick={run}
+            title={busy !== null ? 'Cancel the exact preview' : 'Render 3 seconds around the playhead with the export engine'}
+            aria-label={busy !== null ? `Rendering ${busy}%, cancel` : 'Exact preview'}
+        >
             {busy !== null ? <Loader2 size={12} className="ke-spin" /> : <ScanEye size={12} />} {busy !== null ? `Rendering ${busy}%` : 'Exact preview'}
+            {busy !== null ? <span className="ke-chip__cancel">· Cancel</span> : null}
         </button>
     );
 }

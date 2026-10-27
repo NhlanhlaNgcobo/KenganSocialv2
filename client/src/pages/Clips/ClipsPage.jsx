@@ -65,6 +65,7 @@ function NewProject({ onCreated, onOpen }) {
     const [fileInfo, setFileInfo] = useState(null);
     const [options, setOptions] = useState({ ...DEFAULT_SHORTS_OPTIONS, prompt: '' });
     const [upload, setUpload] = useState(null);
+    const uploadAbort = useRef(null);
     const [error, setError] = useState('');
     const [recent, setRecent] = useState(null);
     const [dragging, setDragging] = useState(false);
@@ -132,6 +133,8 @@ function NewProject({ onCreated, onOpen }) {
         if (!ready || locked) return;
         setError('');
         setUpload(0);
+        const controller = new AbortController();
+        uploadAbort.current = controller;
         try {
             let id;
             if (fromLink) {
@@ -139,15 +142,20 @@ function NewProject({ onCreated, onOpen }) {
                 setUpload(100);
                 ({ id } = await clipsApi.fromUrl({ ...shortsRequest(options), prompt: options.prompt, url, rightsConfirmed: ytRights }));
             } else {
-                const sourceUploadId = await uploadVideo(file, setUpload);
+                const sourceUploadId = await uploadVideo(file, setUpload, controller.signal);
                 ({ id } = await clipsApi.create({ ...shortsRequest(options), prompt: options.prompt, sourceUploadId, sourceName: file.name }));
             }
             onCreated(id);
         } catch (err) {
-            setError(err.message || 'Could not start the clip project. Try again.');
+            if (!controller.signal.aborted) setError(err.message || 'Could not start the clip project. Try again.');
             setUpload(null);
+        } finally {
+            if (uploadAbort.current === controller) uploadAbort.current = null;
         }
     };
+
+    /** Stops the upload; the chosen video and settings stay so it can be started again. */
+    const cancelUpload = () => uploadAbort.current?.abort();
 
     const busy = upload !== null;
     const tooShort = fileInfo && fileInfo.duration < 20;
@@ -281,6 +289,11 @@ function NewProject({ onCreated, onOpen }) {
                             <div className="clips-upload__row">
                                 <Loader2 size={15} className="spin" />
                                 <span>{fromLink ? 'Fetching the video from YouTube…' : upload < 100 ? `Uploading… ${upload}%` : 'Starting…'}</span>
+                                {!fromLink && upload < 100 ? (
+                                    <button type="button" className="btn btn-sm btn-secondary clips-upload__cancel" onClick={cancelUpload}>
+                                        Cancel
+                                    </button>
+                                ) : null}
                             </div>
                             <div className="progress">
                                 <div style={{ width: `${upload}%` }} />

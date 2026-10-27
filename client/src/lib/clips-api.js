@@ -4,8 +4,9 @@
 import { apiClient, apiFetch } from './api';
 import { resumableUpload } from './resumable-upload';
 
-// Bigger files go up in chunks that survive dropped connections.
-export const RESUMABLE_FROM_BYTES = 32 * 1024 * 1024;
+// Files over 2 MB go up in 2 MB chunks: each request stays short (proxies cut off requests that
+// run past 60 seconds, which a single upload over mobile data easily does) and survives drops.
+export const RESUMABLE_FROM_BYTES = 2 * 1024 * 1024;
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const API_ROOT = API_URL.replace(/\/api$/, '');
@@ -20,9 +21,9 @@ async function authHeaders() {
     return headers;
 }
 
-/** Uploads a video with progress (fetch cannot report upload progress). Resolves to the upload ID. */
-export async function uploadVideo(file, onProgress = () => {}) {
-    if (file.size >= RESUMABLE_FROM_BYTES) return resumableUpload(file, onProgress);
+/** Uploads a video with progress (fetch cannot report upload progress). Resolves to the upload ID; `signal` cancels. */
+export async function uploadVideo(file, onProgress = () => {}, signal) {
+    if (file.size >= RESUMABLE_FROM_BYTES) return resumableUpload(file, onProgress, signal);
     const headers = await authHeaders();
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -40,6 +41,9 @@ export async function uploadVideo(file, onProgress = () => {}) {
             else reject(new Error(body.error || `Upload failed (${xhr.status})`));
         };
         xhr.onerror = () => reject(new Error('Upload failed. Check your connection and try again.'));
+        xhr.onabort = () => reject(Object.assign(new Error('Cancelled'), { name: 'AbortError', cancelled: true }));
+        if (signal?.aborted) return xhr.onabort();
+        signal?.addEventListener('abort', () => xhr.abort(), { once: true });
         const form = new FormData();
         form.append('video', file, file.name);
         xhr.send(form);

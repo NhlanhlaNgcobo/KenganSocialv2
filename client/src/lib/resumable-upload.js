@@ -19,6 +19,8 @@ async function headers(extra = {}) {
     return h;
 }
 
+const cancelled = () => Object.assign(new Error('Cancelled'), { name: 'AbortError', cancelled: true });
+
 async function call(url, options = {}) {
     const response = await fetch(url, { ...options, headers: await headers(options.headers) });
     const body = await response.json().catch(() => ({}));
@@ -26,12 +28,14 @@ async function call(url, options = {}) {
     return body;
 }
 
-/** Retries network errors and server hiccups; gives up at once on 4xx (except 408/429). */
-async function withRetry(task) {
+/** Retries network errors and server hiccups; gives up at once on 4xx (except 408/429) or when cancelled. */
+async function withRetry(task, signal) {
     for (let attempt = 0; ; attempt += 1) {
+        if (signal?.aborted) throw cancelled();
         try {
             return await task();
         } catch (error) {
+            if (signal?.aborted || error.name === 'AbortError') throw cancelled();
             const permanent = error.status && error.status < 500 && ![408, 429].includes(error.status);
             if (permanent || attempt >= RETRIES) throw error;
             await sleep(Math.min(15000, 1000 * 2 ** attempt));
@@ -59,14 +63,15 @@ function remember(file, id) {
     }
 }
 
-/** Uploads `file` and resolves to its upload id. onProgress gets 0-100. */
-export async function resumableUpload(file, onProgress = () => {}) {
+/** Uploads `file` and resolves to its upload id. onProgress gets 0-100; `signal` cancels (rejects with "Cancelled"). */
+export async function resumableUpload(file, onProgress = () => {}, signal) {
     let id = remembered(file);
     let status = null;
     if (id) status = await call(`${BASE}/${id}`).catch(() => null);
     if (!status) {
         const created = await withRetry(() =>
-            call(BASE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ size: file.size, type: file.type || 'video/mp4', name: file.name }) })
+            call(BASE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ size: file.size, type: file.type || 'video/mp4', name: file.name }), signal }),
+            signal
         );
         id = created.id;
         remember(file, id);
@@ -82,12 +87,12 @@ export async function resumableUpload(file, onProgress = () => {}) {
     for (let index = 0; index < count; index += 1) {
         if (done.has(index)) continue;
         const chunk = file.slice(index * chunkBytes, Math.min(file.size, (index + 1) * chunkBytes));
-        await withRetry(() => call(`${BASE}/${id}/${index}`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: chunk }));
+        await withRetry(() => call(`${BASE}/${id}/${index}`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: chunk, signal }), signal);
         done.add(index);
         report();
     }
 
-    const result = await withRetry(() => call(`${BASE}/${id}/complete`, { method: 'POST' }));
+    const result = await withRetry(() => call(`${BASE}/${id}/complete`, { method: 'POST', signal }), signal);
     remember(file, null);
     onProgress(100);
     return result.uploadId;

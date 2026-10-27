@@ -2711,3 +2711,12 @@
 .ke-bg-remove span {
     flex: 1;
 }
+
+/* Cancel affordances while rendering or exporting */
+.ke-chip__cancel {
+    margin-left: 2px;
+    opacity: 0.75;
+}
+.ke-progress-card__cancel {
+    margin-top: 10px;
+}

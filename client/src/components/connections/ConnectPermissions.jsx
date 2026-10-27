@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, ShieldCheck, X } from 'lucide-react';
 import { NEVER, PLATFORM_PERMISSIONS } from '../../content/platform-permissions';
+import { useAuth } from '../../context/AuthContext';
 import './ConnectPermissions.css';
 
 /**
@@ -11,6 +12,9 @@ import './ConnectPermissions.css';
 export default function ConnectPermissions({ platform, onContinue, onCancel, busy }) {
     const info = PLATFORM_PERMISSIONS[platform];
     const continueRef = useRef(null);
+    const { capabilities } = useAuth();
+    // TikTok's Sandbox only lets in accounts added as testers ("non_sandbox_target" otherwise).
+    const tiktokBeta = platform === 'tiktok' && capabilities?.beta;
 
     useEffect(() => {
         continueRef.current?.focus();
@@ -30,6 +34,12 @@ export default function ConnectPermissions({ platform, onContinue, onCancel, bus
                     </button>
                 </div>
                 <div className="modal-body">
+                    {tiktokBeta ? (
+                        <p className="cp-beta" role="note">
+                            <strong>Beta:</strong> your TikTok account must be added as a tester first. If TikTok says
+                            “non_sandbox_target”, send your TikTok username to the KenganSocial team and try again once you’re added.
+                        </p>
+                    ) : null}
                     <p className="cp-lead">
                         You’ll sign in with {info.signInWith}, which asks you to allow KenganSocial to:
                     </p>

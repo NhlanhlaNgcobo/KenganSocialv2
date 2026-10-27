@@ -23,7 +23,7 @@ interface MediaState {
     removeItem: (id: string, projectKey: string) => void;
     restore: (metas: StoredMediaMeta[], projectKey: string) => Promise<void>;
     reset: () => void;
-    ensureUploaded: (ids: string[], onProgress?: (done: number, total: number) => void) => Promise<Record<string, string>>;
+    ensureUploaded: (ids: string[], onProgress?: (done: number, total: number) => void, signal?: AbortSignal) => Promise<Record<string, string>>;
     invalidateUploads: () => void;
     addProcessed: (blob: Blob, name: string, projectKey: string, uploadId: string) => Promise<MediaItem | null>;
     getItem: (id: string) => MediaItem | undefined;
@@ -120,7 +120,7 @@ export const useMediaStore = create<MediaState>((set, get) => ({
         set({ items: [], importErrors: [] });
     },
 
-    ensureUploaded: async (ids, onProgress) => {
+    ensureUploaded: async (ids, onProgress, signal) => {
         const unique = [...new Set(ids)];
         const result: Record<string, string> = {};
         let done = 0;
@@ -132,11 +132,13 @@ export const useMediaStore = create<MediaState>((set, get) => ({
             } else {
                 set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, uploadStatus: 'uploading' } : i)) }));
                 try {
-                    const uploadId = await editorApi.uploadSource(item.file, item.name);
+                    const uploadId = await editorApi.uploadSource(item.file, item.name, signal);
                     result[id] = uploadId;
                     set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, uploadId, uploadStatus: 'uploaded' } : i)) }));
                 } catch (error) {
-                    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, uploadStatus: 'failed' } : i)) }));
+                    // A cancelled upload is not a failure: the file uploads again next time.
+                    const status = signal?.aborted ? 'idle' : 'failed';
+                    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, uploadStatus: status } : i)) }));
                     throw error;
                 }
             }

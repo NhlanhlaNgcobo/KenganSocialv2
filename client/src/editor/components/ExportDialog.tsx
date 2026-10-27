@@ -87,6 +87,11 @@ export function ExportDialog() {
                         <div className="ke-bar">
                             <div style={{ width: `${progress.progress}%` }} />
                         </div>
+                        {busy ? (
+                            <button className="ke-btn ke-btn--sm ke-progress-card__cancel" onClick={close}>
+                                Cancel export
+                            </button>
+                        ) : null}
                     </div>
                 ) : null}
 

@@ -19,8 +19,8 @@ function Check({ id, checked, onChange, required, children }) {
     return (
         <label className={`consent-box ${required ? 'required' : ''} ${checked ? 'checked' : ''}`} htmlFor={id}>
             <div className="consent-box__check">
-                <input id={id} type="checkbox" style={{ opacity: 0, position: 'absolute', cursor: 'pointer' }} checked={checked} onChange={(e) => onChange(e.target.checked)} />
-                {checked && '✓'}
+                <input id={id} type="checkbox" className="consent-box__input" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+                {checked ? <span className="consent-box__tick" aria-hidden="true">✓</span> : null}
             </div>
             <div className="consent-box__text">{children}</div>
         </label>

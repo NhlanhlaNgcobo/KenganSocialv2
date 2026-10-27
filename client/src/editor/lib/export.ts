@@ -150,8 +150,10 @@ export async function exportTimeline(onProgress: (p: ExportProgress) => void, si
 
     const run = async () => {
         onProgress({ stage: 'uploading', progress: 0, message: 'Uploading media' });
-        const uploadIds = await useMediaStore.getState().ensureUploaded(mediaIds, (done, total) =>
-            onProgress({ stage: 'uploading', progress: Math.round((done / total) * 100), message: `Uploading media ${done}/${total}` })
+        const uploadIds = await useMediaStore.getState().ensureUploaded(
+            mediaIds,
+            (done, total) => onProgress({ stage: 'uploading', progress: Math.round((done / total) * 100), message: `Uploading media ${done}/${total}` }),
+            signal
         );
         return editorApi.startRender(range ? { ...buildEditConfig(uploadIds), range } : buildEditConfig(uploadIds));
     };

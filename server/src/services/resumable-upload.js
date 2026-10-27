@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 
-export const CHUNK_BYTES = 8 * 1024 * 1024;
+// 2 MB: each piece finishes well within a proxy's 60-second request limit, even on slow mobile data.
+export const CHUNK_BYTES = 2 * 1024 * 1024;
 const DAY = 86400000;
 const hash = buffer => createHash('sha256').update(buffer).digest('hex');
 const reject = (status, message) => Object.assign(new Error(message), { status });

@@ -90,14 +90,14 @@ export interface AnalysisJob {
 }
 
 export const editorApi = {
-    async uploadSource(file: Blob, name: string): Promise<string> {
+    async uploadSource(file: Blob, name: string, signal?: AbortSignal): Promise<string> {
         if (file.size >= RESUMABLE_FROM_BYTES) {
             const named = file instanceof File ? file : new File([file], name, { type: file.type || 'video/mp4' });
-            return resumableUpload(named);
+            return resumableUpload(named, undefined, signal);
         }
         const form = new FormData();
         form.append('video', file, name);
-        const data = await apiClient('/video/manual-edit/upload', { method: 'POST', body: form });
+        const data = await apiClient('/video/manual-edit/upload', { method: 'POST', body: form, signal });
         return data.uploadId as string;
     },
 

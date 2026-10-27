@@ -524,3 +524,7 @@
 .clips-dev-notice strong {
     color: var(--text-primary);
 }
+
+.clips-upload__cancel {
+    margin-left: auto;
+}

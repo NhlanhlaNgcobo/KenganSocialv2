@@ -119,3 +119,19 @@
         padding: 18px;
     }
 }
+
+/* Beta note (TikTok Sandbox testers only) */
+.cp-beta {
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.04));
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.cp-beta strong {
+    color: var(--text-primary);
+}
