@@ -41,8 +41,12 @@ test('payment activation commits atomically, deduplicates and ignores older char
     } finally { db.collection = savedCollection; db.runTransaction = savedTransaction; }
 });
 
-test('paid entitlement expires without a cron; cancellation retains only the paid period', () => {
-    const ws = { plan: 'creator', paymentProvider: 'paystack', currentPeriodEnd: '2026-11-01T00:00:00Z', subscriptionStatus: 'non-renewing' };
+test('paid entitlement expires without a cron; cancellation retains only the paid period', (t) => {
+    // Outside the beta an expired plan falls back to Free; BETA_ACCESS=on (a local .env) would give the beta plan.
+    const savedBeta = process.env.BETA_ACCESS;
+    delete process.env.BETA_ACCESS;
+    t.after(() => { if (savedBeta === undefined) delete process.env.BETA_ACCESS; else process.env.BETA_ACCESS = savedBeta; });
+    const ws ={ plan: 'creator', paymentProvider: 'paystack', currentPeriodEnd: '2026-11-01T00:00:00Z', subscriptionStatus: 'non-renewing' };
     assert.equal(effectivePlan(ws, Date.parse('2026-10-31')), 'creator');
     assert.equal(effectivePlan(ws, Date.parse('2026-11-01')), 'starter');
     assert.equal(effectivePlan({ ...ws, currentPeriodEnd: null }), 'starter');

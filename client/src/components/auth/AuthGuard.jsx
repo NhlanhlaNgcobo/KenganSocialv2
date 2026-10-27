@@ -9,7 +9,7 @@ import { useAuth } from '../../context/AuthContext';
  * - onboarding finished and visiting /onboarding → /dashboard
  */
 export default function AuthGuard({ children }) {
-    const { user, profile, loading, needsOnboarding, needsConsent } = useAuth();
+    const { user, profile, loading, needsOnboarding, needsConsent, accessError, logout, capabilities } = useAuth();
     const { pathname, search, state } = useLocation();
     const onOnboarding = pathname.startsWith('/onboarding');
     const onConsent = pathname.startsWith('/consent');
@@ -24,6 +24,13 @@ export default function AuthGuard({ children }) {
 
     if (!user) {
         return <Navigate to="/login" replace />;
+    }
+
+    if (accessError) {
+        return <main className="auth-page"><section className="auth-card" role="alert">
+            <h1>Private beta</h1><p>{accessError}</p>
+            <button className="btn btn-primary" onClick={logout}>Sign out and use another account</button>
+        </section></main>;
     }
 
     if (needsConsent && !onConsent) {
@@ -45,5 +52,12 @@ export default function AuthGuard({ children }) {
         return <Navigate to="/dashboard" replace />;
     }
 
+    if (capabilities?.lockedPages?.some(path => pathname === path || pathname.startsWith(path + '/'))) {
+        return <main className="auth-page"><section className="auth-card">
+            <h1>Locked in beta</h1>
+            <p>This connected-platform feature is not enabled yet. Video editing, client approvals and calendar drafts are available.</p>
+            <a className="btn btn-primary" href="/dashboard">Back to dashboard</a>
+        </section></main>;
+    }
     return children;
 }

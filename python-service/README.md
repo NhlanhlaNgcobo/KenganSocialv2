@@ -28,7 +28,7 @@ venv\Scripts\activate
 ```
 
 ## Required runtime
-- Python 3.11+
+- Python 3.13 (matches the tested environment and Docker image)
 - FFmpeg on PATH
 - Firebase service account JSON referenced by `FIREBASE_SERVICE_ACCOUNT_PATH`
 

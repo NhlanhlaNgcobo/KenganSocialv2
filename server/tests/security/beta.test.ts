@@ -47,3 +47,43 @@ test('beta workspaces get beta quantities, the fast speech model and 15-minute v
     noteBeta(ws, false);
     assert.equal(usageLimit(ws, 'creator', 'clipAnalysis'), PLAN_LIMITS.creator.clipAnalysis);
 });
+
+test('BETA_PLATFORMS opens only the listed platforms for connecting and publishing', async () => {
+    const { betaFeatureLock, betaLockedPages, betaPublishAllowed, isBetaOAuthCallback } = await import('../../src/config/beta-features.js');
+    const call = (method: string, path: string, body: any = {}) => {
+        let status = 200;
+        betaFeatureLock({ method, path, body } as any, { status: (s: number) => ({ json: () => { status = s; } }) } as any, () => {});
+        return status;
+    };
+    withEnv({ BETA_ACCESS: 'on', BETA_PLATFORMS: undefined }, () => {
+        assert.equal(call('GET', '/connections'), 403, 'no beta platform: Connections stays locked');
+        assert.equal(betaPublishAllowed(['tiktok']), false);
+        assert.ok(betaLockedPages().includes('/dashboard/connections'));
+        assert.equal(isBetaOAuthCallback('/connections/tiktok/callback'), false);
+    });
+    withEnv({ BETA_ACCESS: 'on', BETA_PLATFORMS: 'tiktok' }, () => {
+        assert.equal(call('GET', '/connections'), 200);
+        assert.equal(call('GET', '/connections/tiktok/auth-url'), 200);
+        assert.equal(call('GET', '/connections/instagram/auth-url'), 403);
+        assert.equal(call('GET', '/connections/youtube/videos'), 403);
+        assert.equal(call('GET', '/workspaces/w1/connections'), 403, 'the older workspace route stays locked');
+        assert.ok(!betaLockedPages().includes('/dashboard/connections'));
+        assert.ok(betaLockedPages().includes('/dashboard/dm'));
+        assert.equal(betaPublishAllowed(['tiktok']), true);
+        assert.equal(betaPublishAllowed(['tiktok', 'instagram']), false, 'every platform in a post must be open');
+        assert.equal(betaPublishAllowed([]), false);
+        assert.equal(call('POST', '/schedule/create', { platforms: ['tiktok'], status: 'pending' }), 200);
+        assert.equal(call('POST', '/schedule/create', { platforms: ['instagram'], status: 'pending' }), 403);
+        assert.equal(call('POST', '/schedule/create', { platforms: ['instagram'], status: 'draft' }), 200, 'drafts are always allowed');
+        assert.equal(isBetaOAuthCallback('/connections/tiktok/callback'), true);
+        assert.equal(isBetaOAuthCallback('/connections/instagram/callback'), false);
+        assert.equal(isBetaOAuthCallback('/connections/tiktok/auth-url'), false);
+    });
+    withEnv({ BETA_ACCESS: 'on', BETA_PLATFORMS: 'tiktok,instagram,bogus' }, () => {
+        assert.equal(betaPublishAllowed(['instagram']), false, 'only tiktok and youtube can be opened in the beta');
+    });
+    withEnv({ BETA_ACCESS: undefined, BETA_PLATFORMS: undefined }, () => {
+        assert.equal(betaPublishAllowed(['instagram']), true, 'outside the beta nothing is locked');
+        assert.equal(isBetaOAuthCallback('/connections/tiktok/callback'), false);
+    });
+});

@@ -84,7 +84,7 @@ const NAV_GROUPS = [
 
 export default function Sidebar() {
     const [collapsed, setCollapsed] = useState(false);
-    const { user, profile, logout, plan } = useAuth();
+    const { user, profile, logout, plan, capabilities } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const photo = profile?.photoURL || user?.photoURL;
     const name = profile?.displayName || user?.displayName || 'Account';
@@ -143,12 +143,15 @@ export default function Sidebar() {
                             <NavLink
                                 key={item.path}
                                 to={item.path}
+                                aria-disabled={capabilities?.lockedPages?.includes(item.path) || undefined}
+                                onClick={e => { if (capabilities?.lockedPages?.includes(item.path)) e.preventDefault(); }}
                                 end={item.end}
                                 className={({ isActive }) => `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`}
                                 title={collapsed ? item.label : undefined}
                             >
                                 <item.icon size={17} strokeWidth={1.8} />
                                 {!collapsed && <span>{item.label}</span>}
+                                {!collapsed && capabilities?.lockedPages?.includes(item.path) ? <span className="sidebar__tag">Locked in beta</span> : null}
                                 {!collapsed && item.plans && !item.plans.includes(plan || 'starter') ? <span className="sidebar__tag">{item.tag}</span> : null}
                             </NavLink>
                         ))}

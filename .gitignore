@@ -86,3 +86,7 @@ oracle/
 *.key
 *.key.pub
 *.pem
+
+# Private beta invitation list (mounted into the server at deployment)
+deploy/hostinger/pilot-access.json
+server/config/pilot-access.json

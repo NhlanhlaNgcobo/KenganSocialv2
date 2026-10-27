@@ -9,7 +9,7 @@ import {
     updateProfile,
 } from 'firebase/auth';
 import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
-import { apiClient } from '../lib/api';
+import { apiClient, apiFetch, API_URL } from '../lib/api';
 import { PRIVACY, TERMS } from '../content/legal';
 
 const AuthContext = createContext(null);
@@ -32,8 +32,18 @@ function requiresOnboarding(profile) {
 }
 
 export function AuthProvider({ children }) {
+    const [capabilities, setCapabilities] = useState(null);
+    useEffect(() => {
+        let current = true;
+        apiFetch(`${API_URL}/features`).then(r => {
+            if (!r.ok) throw new Error('Feature configuration unavailable');
+            return r.json();
+        }).then(data => { if (current) setCapabilities(data); }).catch(() => {});
+        return () => { current = false; };
+    }, []);
     const [user, setUser] = useState(null);
     const [profile, setProfile] = useState(null);
+    const [accessError, setAccessError] = useState(null);
     const [workspace, setWorkspace] = useState(null);
     const [plan, setPlan] = useState('starter');
     // Without Firebase there is no session to wait for.
@@ -71,6 +81,7 @@ export function AuthProvider({ children }) {
 
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser);
+            setAccessError(null);
 
             if (!firebaseUser) {
                 clearSession();
@@ -89,6 +100,7 @@ export function AuthProvider({ children }) {
                         photoURL: firebaseUser.photoURL,
                     });
                 } catch (createErr) {
+                    if (createErr?.data?.code === 'PILOT_ACCESS_DENIED') setAccessError(createErr.message);
                     console.error('Failed to load or create profile:', createErr);
                     clearSession();
                 }
@@ -176,6 +188,8 @@ export function AuthProvider({ children }) {
         workspace,
         plan,
         loading,
+        accessError,
+        capabilities,
         needsOnboarding: requiresOnboarding(profile),
         needsConsent: requiresConsent(profile),
         acceptLegal,

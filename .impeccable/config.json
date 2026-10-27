@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "oversized-h1",
+        "value": "*",
+        "files": [
+          "docs/launch-plan/launch-plan.html"
+        ],
+        "createdAt": "2026-10-26T07:23:33.863Z",
+        "reason": "Claude: print-only A4 PDF document; the h1 is a 20pt document title, not a screen hero"
+      }
+    ]
+  }
+}

@@ -17,6 +17,7 @@ import {
     Megaphone,
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
+import { useAuth } from '../context/AuthContext';
 import { apiClient } from '../lib/api';
 import ConnectPermissions from '../components/connections/ConnectPermissions';
 import MetaAccountPicker from '../components/connections/MetaAccountPicker';
@@ -85,6 +86,10 @@ function normalizeConnection(raw) {
 
 export default function ConnectionsPage() {
     const { currentWorkspace } = useWorkspace();
+    const { capabilities } = useAuth();
+    // Beta: only the platforms the server opens (BETA_PLATFORMS) can be connected.
+    const betaOpen = capabilities?.beta ? capabilities.betaPlatforms || [] : null;
+    const lockedInBeta = (platform) => betaOpen !== null && !betaOpen.includes(platform);
     const [connections, setConnections] = useState([]);
     const [loading, setLoading] = useState(true);
     const [connecting, setConnecting] = useState(null);
@@ -234,6 +239,9 @@ export default function ConnectionsPage() {
 
             if (COMING_SOON_PLATFORMS.has(platformId) || !REAL_OAUTH_PLATFORMS.has(platformId)) {
                 throw new Error(`${PLATFORM_META[platformId]?.name || platformId} is coming soon.`);
+            }
+            if (lockedInBeta(platformId)) {
+                throw new Error(`${PLATFORM_META[platformId]?.name || platformId} is locked in beta.`);
             }
 
             const data = await apiClient(`/connections/${platformId}/auth-url`);
@@ -573,8 +581,8 @@ export default function ConnectionsPage() {
                                     >
                                         <option value="">Select Platform...</option>
                                         {ALL_PLATFORMS.map((platform) => (
-                                            <option key={platform} value={platform} disabled={COMING_SOON_PLATFORMS.has(platform)}>
-                                                {PLATFORM_META[platform].name}{COMING_SOON_PLATFORMS.has(platform) ? ' (coming soon)' : ''}
+                                            <option key={platform} value={platform} disabled={COMING_SOON_PLATFORMS.has(platform) || lockedInBeta(platform)}>
+                                                {PLATFORM_META[platform].name}{COMING_SOON_PLATFORMS.has(platform) ? ' (coming soon)' : lockedInBeta(platform) ? ' (locked in beta)' : ''}
                                             </option>
                                         ))}
                                     </select>
@@ -591,6 +599,7 @@ export default function ConnectionsPage() {
                         </div>
                     ))}
 
+                    {!lockedInBeta('youtube') && (
                     <section className="card youtube-studio">
                         <div className="youtube-studio__header">
                             <div>
@@ -780,6 +789,7 @@ export default function ConnectionsPage() {
                             </>
                         )}
                     </section>
+                    )}
                 </>
             )}
 

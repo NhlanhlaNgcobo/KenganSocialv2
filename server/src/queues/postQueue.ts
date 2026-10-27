@@ -15,6 +15,7 @@ import { decrypt } from '../utils/tokenEncryption';
 import { redis } from '../utils/redis';
 import { publicMediaUrl } from '../services/storage.service.js';
 import { getValidAccessToken } from '../routes/connections';
+import { betaPlatformMessage, betaPublishAllowed } from '../config/beta-features.js';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 // Reusing shared client
@@ -39,10 +40,11 @@ export const worker = new Worker('scheduled-posts', processJob, {
 
 async function processJob(job: Job<PublishPayload>) {
     const { postId, workspaceId, platforms, mediaUrl, caption, platformOptions } = job.data;
+    if (!betaPublishAllowed(platforms)) throw new Error(betaPlatformMessage());
 
     // Check if post still valid
     const postSnap = await db.collection('scheduled_posts').doc(postId).get();
-    if (!postSnap.exists || postSnap.data()?.status === 'cancelled') {
+    if (!postSnap.exists || postSnap.data()?.status !== 'pending') {
         return; // Job is stale, abort silently
     }
 
@@ -169,6 +171,7 @@ worker.on('failed', async (job, err) => {
 
 // Helper for enqueueing with specific configs
 export async function schedulePostJob(data: PublishPayload, delayMs: number): Promise<string> {
+    if (!betaPublishAllowed(data.platforms)) throw new Error(betaPlatformMessage());
     const job = await postQueue.add('post', data, {
         delay: delayMs,
         jobId: data.postId, // ensuring single id for mutability

@@ -8,7 +8,9 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { apiRateLimits } from './src/middleware/rateLimits.js';
 import path from 'path';
-import { initializeFirebaseAdmin } from './src/config/firebase.js';
+import { createPilotAccess, loadPilotEmails } from './src/middleware/pilotAccess.js';
+import { betaEnabled, betaFeatureLock, betaLockedPages, betaPlatforms, isBetaOAuthCallback } from './src/config/beta-features.js';
+import { getAuth, initializeFirebaseAdmin } from './src/config/firebase.js';
 import { getStorageDriver, LOCAL_UPLOAD_DIR } from './src/services/storage.service.js';
 
 // Initialize Firebase Admin SDK immediately
@@ -143,7 +145,15 @@ app.use(signMediaResponse);
 app.use('/api/private-media', privateMediaRoutes);
 app.use('/api/health', healthRoutes);
 // Feature switches the app needs before sign-in (e.g. whether YouTube link import is on).
-app.get('/api/features', (_req, res) => res.json({ youtubeLinkImport: features.youtubeLinkImport() }));
+app.get('/api/features', (_req, res) => res.json({ youtubeLinkImport: features.youtubeLinkImport(), beta: betaEnabled(), lockedPages: betaEnabled() ? betaLockedPages() : [], betaPlatforms: betaEnabled() ? betaPlatforms() : null, aiFeatures: aiFeatureStatus() }));
+// Recipients authenticate with the scoped, expiring review token, not a pilot account.
+app.use('/api/review', reviewRoutes);
+// The pilot protects authenticated APIs and anonymous processing routes.
+const pilotAccess = createPilotAccess(loadPilotEmails(), (token, revoked) => getAuth().verifyIdToken(token, revoked));
+// A beta platform's OAuth callback arrives from the platform without our token; its signed,
+// expiring state (issued only to an invited, signed-in owner or admin) is checked in the route.
+app.use('/api', (req, res, next) => (isBetaOAuthCallback(req.path) ? next() : pilotAccess(req, res, next)));
+app.use('/api', betaFeatureLock);
 app.use('/api/auth', authRoutes);
 // Landing page: one free starter clip per person, no account needed.
 app.use('/api/free-clip', freeClipRoutes);
@@ -183,12 +193,15 @@ app.use('/api/agency', agencyRoutes);
 // AI Edit: edit footage in the style of a reference video.
 app.use('/api/ai-edit', aiEditRoutes);
 // Public: client review links (access is the link token, no account).
-app.use('/api/review', reviewRoutes);
 app.use('/api/audiomack', audiomackRoutes);
 app.use('/api/lyrics', lyricsRoutes);
 
-// Start Background Jobs
-startAnalyticsCron();
+// Background jobs act on shared data (Firestore). BACKGROUND_JOBS=off lets a second copy of the
+// API (a local run against the live project) serve requests without recovering, retrying or
+// refreshing the live server's work: its clip recovery would fail projects the live server is
+// still rendering.
+const backgroundJobs = String(process.env.BACKGROUND_JOBS || 'on').toLowerCase() !== 'off';
+if (backgroundJobs) startAnalyticsCron();
 
 // ---------------------
 // 404 Handler
@@ -226,14 +239,15 @@ const server = app.listen(PORT, () => {
 
     // Scheduled posts publish through the BullMQ queue (src/queues/postQueue.ts); this re-queues
     // any pending post that is missing from it (e.g. saved while Redis was unreachable).
-    startPostRecovery();
+    if (backgroundJobs) startPostRecovery();
+    else console.log('[Jobs] BACKGROUND_JOBS=off: no post recovery, clip recovery, token refresh, trending or webhook jobs');
 
     // Clip projects and free clips run in this process only: anything still running when the
     // process stopped was lost, so fail it now (with allowance and free-clip claim given back).
-    recoverInterruptedClipProjects()
+    if (backgroundJobs) recoverInterruptedClipProjects()
         .then((n) => n && console.log(`[Clips] Marked ${n} interrupted project(s) as failed`))
         .catch((error) => console.warn('[Clips] Recovery skipped:', error.message));
-    recoverInterruptedFreeClips()
+    if (backgroundJobs) recoverInterruptedFreeClips()
         .then((n) => n && console.log(`[FreeClip] Released ${n} interrupted free clip(s)`))
         .catch((error) => console.warn('[FreeClip] Recovery skipped:', error.message));
 
@@ -248,14 +262,16 @@ const server = app.listen(PORT, () => {
             .catch((error) => console.error('[AI worker] Could not start in-process:', error.message));
     }
 
-    // Start OAuth token auto-refresh cron (every 6 hours)
-    startTokenRefreshCron();
+    if (backgroundJobs) {
+        // Start OAuth token auto-refresh cron (every 6 hours)
+        startTokenRefreshCron();
 
-    // Start Trending Content refresh (every 2 hours)
-    startTrendingCron();
+        // Start Trending Content refresh (every 2 hours)
+        startTrendingCron();
 
-    // Webhook retries and stale-event recovery (every minute), purge of old events (daily)
-    startWebhookWorker();
+        // Webhook retries and stale-event recovery (every minute), purge of old events (daily)
+        startWebhookWorker();
+    }
 
     // Old renders and uploads in the temp folder (hourly)
     startTempSweeper();

@@ -1,5 +1,5 @@
 # KenganSocial video service (FastAPI: transcription, clip analysis, face framing, YouTube import)
-FROM python:3.11-slim-bookworm
+FROM python:3.13-slim-bookworm
 
 # FFmpeg for decoding/encoding; libglib for OpenCV (headless build, no GUI libraries needed).
 RUN apt-get update && apt-get install -y --no-install-recommends \

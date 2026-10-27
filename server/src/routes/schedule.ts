@@ -8,6 +8,7 @@ const router = express.Router();
 
 import { withWorkspace } from '../middleware/withWorkspace';
 import { checkLimit, planRateLimit } from '../middleware/planGate';
+import { betaPlatformMessage, betaPublishAllowed } from '../config/beta-features.js';
 
 async function safeRemoveQueuedJob(postId: string) {
     try {
@@ -124,9 +125,9 @@ router.patch('/:id', withWorkspace, async (req: Request, res: Response) => {
             updates.scheduledAt = when;
         }
 
-        await docRef.update(updates);
-
         const next: any = { ...existing, ...updates };
+        if (next.status !== 'draft' && !betaPublishAllowed(next.platforms)) return res.status(403).json({ error: 'BETA_FEATURE_LOCKED', message: betaPlatformMessage() });
+        await docRef.update(updates);
         let queueResult: Record<string, unknown> = {};
         if (next.status === 'draft') {
             // Drafts never sit in the publish queue.
@@ -224,6 +225,9 @@ router.post('/publish-now/:id', withWorkspace, async (req: Request, res: Respons
 
         if (!postSnap.exists || postSnap.data()?.workspaceId !== workspaceId) {
             return res.status(404).json({ error: 'Post not found' });
+        }
+        if (!betaPublishAllowed(postSnap.data()?.platforms)) {
+            return res.status(403).json({ error: 'BETA_FEATURE_LOCKED', message: betaPlatformMessage() });
         }
 
         const now = new Date();
