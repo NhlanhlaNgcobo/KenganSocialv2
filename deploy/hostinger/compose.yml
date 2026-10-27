@@ -28,7 +28,9 @@ x-api: &api
     PAYFAST_MERCHANT_KEY: ''
     PAYFAST_PASSPHRASE: ''
     PAYSTACK_SECRET_KEY: ''
-    YOUTUBE_LINK_IMPORT: ''
+    # Testers can paste YouTube links (incl. /shorts/) in Clips, and connect and publish to TikTok.
+    YOUTUBE_LINK_IMPORT: 'on'
+    BETA_PLATFORMS: tiktok
     STORAGE_DRIVER: local
     CLIENT_URL: https://kengansocial.co.za
     FRONTEND_URL: https://kengansocial.co.za
