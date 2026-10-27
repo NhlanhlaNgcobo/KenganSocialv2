@@ -52,6 +52,12 @@ export async function analyzeVideo(videoPath, options = {}) {
         console.log('[Video Analyzer] ✅ Local Whisper transcription succeeded');
         return result;
     } catch (err) {
+        // No speech is an answer, not a failure: other services could only invent captions for it
+        // (Gemini's free tier also took minutes on a silent clip).
+        if (err.noSpeech) {
+            console.log('[Video Analyzer] No speech in the video: no captions');
+            return { ...generateLocalFallback(options.context), _source: 'no-speech' };
+        }
         console.warn(`[Video Analyzer] ❌ Local Whisper failed: ${err.message}`);
     }
 
@@ -95,7 +101,7 @@ async function analyzeWithLocalWhisper(videoPath) {
     }
 
     const words = data.words || [];
-    if (!words.length) throw new Error('No speech detected');
+    if (!words.length) throw Object.assign(new Error('No speech detected'), { noSpeech: true });
 
     // Group words into caption lines of up to 5 words, breaking on pauses and sentence ends.
     const transcription = [];
@@ -158,6 +164,7 @@ async function analyzeWithGemini(videoPath, options) {
     }
     parts.push({ text: prompt });
 
+    const GEMINI_TIMEOUT_MS = 60_000;
     // Google returns 503/429 when a model is overloaded and 404 when one is retired;
     // retry busy models, then fall through to other current ones.
     const models = [...new Set([GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-lite-latest'])];
@@ -165,7 +172,8 @@ async function analyzeWithGemini(videoPath, options) {
     for (const modelId of models) {
         for (let attempt = 0; attempt < 2; attempt += 1) {
             try {
-                const result = await genAI.getGenerativeModel({ model: modelId }).generateContent(parts);
+                // A time limit per call: the free tier sometimes takes minutes, and the user is waiting.
+                const result = await genAI.getGenerativeModel({ model: modelId }, { timeout: GEMINI_TIMEOUT_MS }).generateContent(parts);
                 return { ...parseJsonResponse(result.response.text()), _source: 'gemini' };
             } catch (err) {
                 lastError = err;
