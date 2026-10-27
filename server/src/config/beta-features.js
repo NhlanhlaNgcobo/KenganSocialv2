@@ -38,9 +38,13 @@ export function betaFeatureLock(req, res, next) {
     // /connections (list) and /connections/<open platform>/... stay open; other platforms are locked.
     const conn = /^\/connections(?:\/([a-z_]+))?(\/|$)/.exec(path);
     const lockedConnection = !!conn && (conn[1] ? !betaPlatforms().includes(conn[1]) : !betaPlatforms().length);
-    const integration = lockedConnection
+    // The Connections page lists, regroups and disconnects through /workspaces/:id/connections.
+    // With a beta platform open those stay usable; adding a record by hand (POST) stays locked.
+    const workspaceConnections = /^\/workspaces\/[^/]+\/connections(\/|$)/.test(path);
+    const lockedWorkspaceConnections = workspaceConnections && (!betaPlatforms().length || !['GET', 'HEAD', 'PUT', 'DELETE'].includes(req.method));
+    const integration = lockedConnection || lockedWorkspaceConnections
         || /^\/(dm|automation|leads|ads|analytics|webhooks|scheduler)(\/|$)/.test(path)
-        || /^\/workspaces\/[^/]+\/(connections|automations|leads|analytics)(\/|$)/.test(path);
+        || /^\/workspaces\/[^/]+\/(automations|leads|analytics)(\/|$)/.test(path);
     const payments = /^\/billing\//.test(path) && !['GET', 'HEAD'].includes(req.method);
     // Publishing a stored post (publish-now, PATCH to pending) is checked in routes/schedule.ts,
     // where the post's platforms are known; the queue checks again before anything is sent.

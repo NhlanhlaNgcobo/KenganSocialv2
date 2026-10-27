@@ -57,6 +57,7 @@ test('BETA_PLATFORMS opens only the listed platforms for connecting and publishi
     };
     withEnv({ BETA_ACCESS: 'on', BETA_PLATFORMS: undefined }, () => {
         assert.equal(call('GET', '/connections'), 403, 'no beta platform: Connections stays locked');
+        assert.equal(call('GET', '/workspaces/w1/connections'), 403);
         assert.equal(betaPublishAllowed(['tiktok']), false);
         assert.ok(betaLockedPages().includes('/dashboard/connections'));
         assert.equal(isBetaOAuthCallback('/connections/tiktok/callback'), false);
@@ -66,7 +67,11 @@ test('BETA_PLATFORMS opens only the listed platforms for connecting and publishi
         assert.equal(call('GET', '/connections/tiktok/auth-url'), 200);
         assert.equal(call('GET', '/connections/instagram/auth-url'), 403);
         assert.equal(call('GET', '/connections/youtube/videos'), 403);
-        assert.equal(call('GET', '/workspaces/w1/connections'), 403, 'the older workspace route stays locked');
+        assert.equal(call('GET', '/workspaces/w1/connections'), 200, 'the Connections page lists accounts here');
+        assert.equal(call('PUT', '/workspaces/w1/connections/c1'), 200, 'regroup into a folder');
+        assert.equal(call('DELETE', '/workspaces/w1/connections/c1'), 200, 'disconnect');
+        assert.equal(call('POST', '/workspaces/w1/connections'), 403, 'adding a record by hand stays locked');
+        assert.equal(call('GET', '/workspaces/w1/automations'), 403);
         assert.ok(!betaLockedPages().includes('/dashboard/connections'));
         assert.ok(betaLockedPages().includes('/dashboard/dm'));
         assert.equal(betaPublishAllowed(['tiktok']), true);
