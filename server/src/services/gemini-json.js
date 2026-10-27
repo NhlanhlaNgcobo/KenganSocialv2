@@ -100,8 +100,10 @@ async function viaGemini(parts, temperature) {
     for (const model of models) {
         for (let attempt = 0; attempt < 2; attempt += 1) {
             try {
+                // A time limit per call: a hung request otherwise held a clip project for minutes
+                // before the next provider was tried (measured 27 Oct: 6 minutes, then "fetch failed").
                 const result = await genAI
-                    .getGenerativeModel({ model, generationConfig: { responseMimeType: 'application/json', temperature } })
+                    .getGenerativeModel({ model, generationConfig: { responseMimeType: 'application/json', temperature } }, { timeout: 45_000 })
                     .generateContent(parts);
                 const text = result.response.text().replace(/^```json\s*|```$/g, '').trim();
                 return JSON.parse(text);

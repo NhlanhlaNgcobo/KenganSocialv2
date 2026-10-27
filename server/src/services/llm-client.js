@@ -13,6 +13,9 @@ import { freeFallbackEnabled, POLLINATIONS_MODEL, pollinationsChatClient } from 
  * authentication error from a placeholder key.
  */
 
+// The SDK default (10 minutes, 2 retries) could leave a user waiting up to half an hour on one hung call.
+const LIMITS = { timeout: 60_000, maxRetries: 1 };
+
 function pickProvider() {
     if (process.env.OPENROUTER_API_KEY) {
         return {
@@ -22,17 +25,18 @@ function pickProvider() {
                 apiKey: process.env.OPENROUTER_API_KEY,
                 baseURL: 'https://openrouter.ai/api/v1',
                 defaultHeaders: { 'HTTP-Referer': process.env.CLIENT_URL || 'https://kengansocial.app', 'X-Title': 'KenganSocial' },
+                ...LIMITS,
             }),
         };
     }
     if (process.env.OPENAI_API_KEY) {
-        return { name: 'openai', model: 'gpt-4o-mini', client: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) };
+        return { name: 'openai', model: 'gpt-4o-mini', client: new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...LIMITS }) };
     }
     if (process.env.GEMINI_API_KEY) {
         return {
             name: 'gemini',
             model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
-            client: new OpenAI({ apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/' }),
+            client: new OpenAI({ apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/', ...LIMITS }),
         };
     }
     if (freeFallbackEnabled()) {
