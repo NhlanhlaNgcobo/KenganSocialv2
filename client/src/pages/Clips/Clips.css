@@ -528,3 +528,9 @@
 .clips-upload__cancel {
     margin-left: auto;
 }
+
+.clips-beta-limits {
+    max-width: 420px;
+    margin-top: 4px;
+    line-height: 1.45;
+}

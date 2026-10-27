@@ -215,7 +215,7 @@ export default function ContentStudioPage() {
         const isImage = file.type.startsWith('image/');
         if (!isVideo && !isImage) { setError('Upload a video or image file.'); return; }
         if (file.size > MAX_VIDEO_BYTES) {
-            setError(`That file is ${Math.round(file.size / (1024 * 1024))} MB. The limit is 100 MB, so trim or compress it first. For long videos, use Clips.`);
+            setError(`That file is ${Math.round(file.size / (1024 * 1024))} MB. New post takes up to 100 MB; Clips takes videos up to 2 GB and turns them into Shorts.`);
             return;
         }
         setError('');
@@ -606,7 +606,7 @@ export default function ContentStudioPage() {
                                                 onChange={(e) => { if (e.target.files?.[0]) handleMediaUpload(e.target.files[0]); }} hidden />
                                             <div className="dropzone-icon"><Video size={36} /></div>
                                             <p>Drop your video here or <span>browse</span></p>
-                                            <span className="dropzone-hint">MP4 or MOV up to 100 MB, or an image</span>
+                                            <span className="dropzone-hint">MP4 or MOV up to 100 MB, or an image. Bigger or longer videos (up to 2 GB): use <Link to="/dashboard/clips" onClick={(e) => e.stopPropagation()}>Clips</Link>.</span>
                                         </div>
                                     )}
                                 </div>

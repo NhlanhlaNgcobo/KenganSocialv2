@@ -78,7 +78,7 @@ function NewProject({ onCreated, onOpen }) {
     const set = (patch) => setOptions((o) => ({ ...o, ...patch }));
     // Checked before uploading so nobody uploads a 2 GB video only to be told their plan has no clips.
     // The server still enforces the limit.
-    const { plan } = useAuth();
+    const { plan, capabilities } = useAuth();
     const locked = (PLAN_LIMITS[plan] || PLAN_LIMITS.starter).clipAnalysis === 0;
 
     // A video dropped on the home page arrives in navigation state.
@@ -258,6 +258,12 @@ function NewProject({ onCreated, onOpen }) {
                                 <Upload size={22} />
                                 <strong>Drop a video here or click to choose</strong>
                                 <small>MP4, MOV or WebM up to 2 GB. Longer videos with speech give the best clips.</small>
+                                {capabilities?.beta ? (
+                                    <small className="clips-beta-limits">
+                                        Beta: videos up to 15 minutes. Big files (even 1 GB) are fine: they upload in small pieces, so a weak
+                                        connection won’t lose your progress. Keep this tab open until the upload finishes.
+                                    </small>
+                                ) : null}
                             </>
                         )}
                     </div>
