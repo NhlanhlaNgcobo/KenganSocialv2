@@ -6,6 +6,7 @@ import { META_ADS_TUTORIAL } from '../components/tutorial/metaAdsTutorial';
 import { apiClient } from '../lib/api';
 import { useWorkspace } from '../context/WorkspaceContext';
 import './Ads.css';
+import { confirmDialog } from '../lib/dialogs';
 
 const PRESETS = [
     ['today', 'Today'],
@@ -95,7 +96,7 @@ export default function AdsPage() {
     const toggleStatus = async (c) => {
         const next = c.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
         const verb = next === 'PAUSED' ? 'Pause' : 'Resume';
-        if (!window.confirm(`${verb} "${c.name}"? ${next === 'PAUSED' ? 'Its ads stop delivering and spending.' : 'Its ads start delivering and spending again.'}`)) return;
+        if (!(await confirmDialog(`${verb} "${c.name}"? ${next === 'PAUSED' ? 'Its ads stop delivering and spending.' : 'Its ads start delivering and spending again.'}`, { confirmLabel: verb }))) return;
         setBusyId(c.id);
         setError('');
         setNotice('');
@@ -117,7 +118,7 @@ export default function AdsPage() {
             return;
         }
         const minor = Math.round(value * 100);
-        if (!window.confirm(`Change the daily budget of "${c.name}" from ${money(fromMinor(c.dailyBudget))} to ${money(value)}?`)) return;
+        if (!(await confirmDialog(`Change the daily budget of "${c.name}" from ${money(fromMinor(c.dailyBudget))} to ${money(value)}?`, { confirmLabel: 'Change budget' }))) return;
         setBusyId(c.id);
         setError('');
         setNotice('');

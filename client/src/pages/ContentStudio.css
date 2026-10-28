@@ -1147,3 +1147,13 @@
     object-fit: cover;
     border-radius: var(--radius-md);
 }
+/* Touch screens: editor tabs and the Mobile/Desktop preview switch. */
+@media (pointer: coarse) {
+    .studio-tab {
+        min-height: 44px;
+    }
+
+    .preview-tab {
+        min-height: 40px;
+    }
+}

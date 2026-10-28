@@ -13,6 +13,7 @@ import { SourcePicker } from './SourcePicker';
 import { useMediaStore } from '../../stores/media-store';
 import { PresetSearch, matchesPreset } from './PresetSearch';
 import { TemplateGallery } from './TemplateGallery';
+import { confirmDialog } from '../../../lib/dialogs';
 
 function Badge({ children }: { children: React.ReactNode }) {
     return <span className="ke-tpl__badge">{children}</span>;
@@ -84,7 +85,7 @@ function AutoCutTemplates() {
     const apply = async () => {
         if (!sourceMediaId || controller.current) return;
         const hasEdits = useTimelineStore.getState().tracks.some((t) => t.isMain && t.elements.length > 0);
-        if (hasEdits && !window.confirm(`Apply “${selected.name}”? It replaces the clips on your main track (Ctrl+Z restores them).`)) return;
+        if (hasEdits && !(await confirmDialog(`Apply “${selected.name}”? It replaces the clips on your main track (Ctrl+Z restores them).`, { confirmLabel: 'Apply template' }))) return;
         controller.current = new AbortController();
         setRunning({ stage: 'Starting', progress: 0 });
         try {

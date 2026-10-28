@@ -251,28 +251,62 @@
     color: var(--text-primary);
 }
 
-/* Phones: an icon rail that never covers the page. */
+.sidebar__close {
+    margin-left: auto;
+}
+
+/* Phones: a drawer opened from the top bar (DashboardLayout), full labels, thumb-sized rows.
+   Hidden with visibility as well, so its links can't be tabbed to while it's off screen. */
 @media (max-width: 768px) {
     .sidebar {
-        width: var(--sidebar-collapsed);
+        width: min(304px, 86vw);
+        z-index: 950;
+        transform: translateX(-100%);
+        visibility: hidden;
+        transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 280ms;
+        padding-bottom: env(safe-area-inset-bottom);
+        background: var(--glass-sheen), var(--bg-solid, var(--sidebar-bg));
     }
 
-    .sidebar__logo-text,
-    .sidebar__workspace,
-    .sidebar__group-title,
-    .sidebar__link span,
-    .sidebar__user-info {
-        display: none;
+    .sidebar--open {
+        transform: none;
+        visibility: visible;
+        transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.55);
+    }
+
+    .sidebar__logo {
+        height: 60px;
+        padding: 0 8px 0 18px;
+    }
+
+    .sidebar__nav {
+        gap: 18px;
     }
 
     .sidebar__link {
-        justify-content: center;
-        padding: 0;
+        height: 44px;
+        font-size: 0.95rem;
+    }
+
+    .sidebar__icon-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    .sidebar__collapse {
+        display: none;
     }
 
     .sidebar__footer-actions {
-        flex-direction: column;
-        align-items: center;
+        justify-content: space-between;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar,
+    .sidebar--open {
+        transition: none;
     }
 }
 

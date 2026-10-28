@@ -24,6 +24,7 @@ import { apiClient } from '../lib/api';
 import ConnectPermissions from '../components/connections/ConnectPermissions';
 import MetaAccountPicker from '../components/connections/MetaAccountPicker';
 import './Connections.css';
+import { confirmDialog, promptDialog } from '../lib/dialogs';
 
 const PLATFORM_META = {
     // The TikTok mark is monochrome, so it follows the theme's text colour.
@@ -208,8 +209,8 @@ export default function ConnectionsPage() {
         }
     };
 
-    const handleAddFolder = () => {
-        const name = (prompt('Name the client folder (e.g. the client or brand name). Move connected accounts into it with "Move to Folder".') || '').trim();
+    const handleAddFolder = async () => {
+        const name = ((await promptDialog('Move connected accounts into it with "Move to Folder".', { title: 'Name the client folder', placeholder: 'Client or brand name', confirmLabel: 'Create folder' })) || '').trim();
         if (name && !customFolders.includes(name)) {
             const next = [...customFolders, name];
             setCustomFolders(next);
@@ -273,7 +274,7 @@ export default function ConnectionsPage() {
 
     const handleDisconnect = async (connection) => {
         const name = PLATFORM_META[connection.platform]?.name || connection.platform;
-        if (!window.confirm(`Disconnect ${name} (@${connection.username})? Scheduled posts and automations for this account will stop working until you reconnect.`)) {
+        if (!(await confirmDialog(`Disconnect ${name} (@${connection.username})? Scheduled posts and automations for this account will stop working until you reconnect.`, { confirmLabel: 'Disconnect', danger: true }))) {
             return;
         }
         try {
@@ -362,7 +363,7 @@ export default function ConnectionsPage() {
     };
 
     const handleDeleteYoutubeVideo = async (videoId) => {
-        if (!window.confirm('Delete this YouTube video permanently?')) {
+        if (!(await confirmDialog('Delete this YouTube video permanently?', { confirmLabel: 'Delete', danger: true }))) {
             return;
         }
 

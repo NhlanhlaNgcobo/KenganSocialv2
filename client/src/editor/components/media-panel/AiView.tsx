@@ -11,6 +11,7 @@ import { useTimelineStore } from '../../stores/timeline-store';
 import { useUiStore } from '../../stores/ui-store';
 import type { AspectRatio, VideoFilter } from '../../types';
 import { SourcePicker } from './SourcePicker';
+import { confirmDialog } from '../../../lib/dialogs';
 
 interface StylePreset {
     id: string;
@@ -83,7 +84,7 @@ export function AiView() {
     const running = status === 'running' && mode !== 'subtitles';
 
     const start = async (m: 'viral' | 'auto-edit') => {
-        if (m === 'auto-edit' && !window.confirm('Auto-edit replaces the clips on your main track with the best moments. Continue? (You can undo.)')) return;
+        if (m === 'auto-edit' && !(await confirmDialog('Auto-edit replaces the clips on your main track with the best moments. You can undo it.', { confirmLabel: 'Auto-edit' }))) return;
         try {
             notify(await run(m), 'success');
         } catch (e) {

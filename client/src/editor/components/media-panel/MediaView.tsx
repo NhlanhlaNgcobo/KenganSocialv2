@@ -9,6 +9,7 @@ import { getCanvasSize, useProjectStore } from '../../stores/project-store';
 import { useTimelineStore } from '../../stores/timeline-store';
 import { useUiStore } from '../../stores/ui-store';
 import { DRAG_MIME, type MediaItem } from '../../types';
+import { confirmDialog } from '../../../lib/dialogs';
 
 const TYPE_ICONS = { video: Video, image: ImageIcon, audio: Music };
 
@@ -64,9 +65,9 @@ export function MediaView() {
         notify(`Added as an overlay (${label}). Drag it on the preview, or pick a layout in Properties.`, 'success');
     };
 
-    const remove = (item: MediaItem) => {
+    const remove = async (item: MediaItem) => {
         const used = useTimelineStore.getState().tracks.some((t) => t.elements.some((e) => e.type === 'media' && e.mediaId === item.id));
-        if (used && !window.confirm(`"${item.name}" is used on the timeline. Remove it and its clips?`)) return;
+        if (used && !(await confirmDialog(`"${item.name}" is used on the timeline. Remove it and its clips?`, { confirmLabel: 'Remove', danger: true }))) return;
         if (used) useTimelineStore.getState().removeElementsForMedia(item.id);
         if (projectKey) removeItem(item.id, projectKey);
     };

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiClient } from '../lib/api';
+import { confirmDialog } from '../lib/dialogs';
 
 /**
  * Private pilot admin (Firebase claim `pilotAdmin`, enforced by the server): invites, members,
@@ -44,7 +45,7 @@ export default function PilotAdminPage() {
         }
     };
     const act = async (path, confirmText) => {
-        if (confirmText && !window.confirm(confirmText)) return;
+        if (confirmText && !(await confirmDialog(confirmText, { confirmLabel: 'Revoke', danger: true }))) return;
         try {
             await apiClient(path, { method: 'POST' });
             load();

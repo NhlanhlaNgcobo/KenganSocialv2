@@ -1274,6 +1274,9 @@
     position: relative;
     flex: 1;
     cursor: pointer;
+    /* A finger dragging along the ruler scrubs; without this the browser takes it as a scroll
+       and cancels the scrub. The tracks below still scroll the timeline. */
+    touch-action: none;
 }
 
 .ke-ruler {
@@ -1544,6 +1547,7 @@
     clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
     pointer-events: auto;
     cursor: ew-resize;
+    touch-action: none;
 }
 
 .ke-snapline {
@@ -2774,4 +2778,228 @@
     display: block;
     margin-top: 6px;
     opacity: 0.75;
+}
+
+/* ---------- Phone (landscape) ----------
+   CapCut-style: tool rail | preview, timeline across the bottom, Media and Edit as drawers
+   over the preview. Sizes are for thumbs: 44px targets throughout. */
+.ke-root--phone .ke-header.is-compact {
+    height: 44px;
+    padding: 0 max(8px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left));
+    border-bottom: 1px solid var(--ke-border);
+}
+
+.ke-header.is-compact .ke-header__saved,
+.ke-header.is-compact .ke-btn__label {
+    display: none;
+}
+
+.ke-header.is-compact .ke-header__name {
+    width: auto;
+    max-width: 34vw;
+    height: 36px;
+}
+
+.ke-header.is-compact .ke-icon-btn,
+.ke-header.is-compact .ke-btn {
+    min-width: 44px;
+    height: 36px;
+}
+
+.ke-header.is-compact .ke-icon-btn:first-child {
+    width: 44px;
+}
+
+.ke-phone {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.ke-phone__main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+.ke-phone__rail {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: calc(60px + env(safe-area-inset-left));
+    padding: 8px 6px 8px calc(6px + env(safe-area-inset-left));
+    border-right: 1px solid var(--ke-border);
+    background: var(--ke-panel);
+}
+
+.ke-phone__rail button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 52px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--ke-text-2);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.ke-phone__rail button:active {
+    background: var(--ke-panel-3);
+}
+
+.ke-phone__rail button.is-active {
+    background: var(--ke-accent-soft);
+    color: var(--ke-text);
+}
+
+.ke-phone__stage {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-right: env(safe-area-inset-right);
+}
+
+.ke-phone__stage > .ke-preview,
+.ke-phone__stage > :first-child {
+    flex: 1;
+    min-height: 0;
+}
+
+.ke-phone__scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.ke-phone__sheet {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    width: min(400px, 56vw);
+    background: var(--ke-panel);
+    box-shadow: 0 16px 48px -12px rgba(0, 0, 0, 0.6);
+    visibility: hidden;
+    transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 260ms;
+    overflow: hidden;
+}
+
+.ke-phone__sheet.is-left {
+    left: 0;
+    border-right: 1px solid var(--ke-border);
+    transform: translateX(-100%);
+}
+
+.ke-phone__sheet.is-right {
+    right: 0;
+    border-left: 1px solid var(--ke-border);
+    transform: translateX(100%);
+}
+
+.ke-phone__sheet.is-open {
+    visibility: visible;
+    transform: none;
+    transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ke-phone__sheet > * {
+    flex: 1;
+    min-height: 0;
+}
+
+.ke-phone__timeline {
+    flex: none;
+    height: clamp(124px, 40%, 220px);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--ke-border);
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.ke-phone__timeline > * {
+    flex: 1;
+    min-height: 0;
+}
+
+/* Portrait phone: ask for landscape. */
+.ke-rotate {
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 32px 28px;
+    text-align: center;
+}
+
+.ke-rotate__back {
+    position: absolute;
+    top: max(8px, env(safe-area-inset-top));
+    left: 8px;
+    width: 44px;
+    height: 44px;
+}
+
+.ke-rotate__icon {
+    color: var(--ke-text-2);
+    animation: ke-rotate-hint 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes ke-rotate-hint {
+    0%, 30% { transform: rotate(0deg); }
+    55%, 85% { transform: rotate(-90deg); }
+    100% { transform: rotate(0deg); }
+}
+
+.ke-rotate h1 {
+    margin: 8px 0 0;
+    font-size: 20px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+
+.ke-rotate p {
+    max-width: 30ch;
+    margin: 0;
+    color: var(--ke-text-2);
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+.ke-rotate__go {
+    margin-top: 12px;
+    height: 44px;
+    padding: 0 20px;
+    font-size: 15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ke-rotate__icon {
+        animation: none;
+    }
+
+    .ke-phone__sheet,
+    .ke-phone__sheet.is-open {
+        transition: none;
+    }
+}
+
+/* Dropdown lists match the always-dark editor (the app rule follows the app theme). */
+.ke-root select option,
+.ke-root select optgroup {
+    background-color: var(--ke-panel-2);
+    color: var(--ke-text);
 }

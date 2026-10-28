@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CloudUpload, Loader2, Sparkles, Trash2 } from 'lucide-react';
 import { marketingApi } from '../../lib/marketing-api';
+import { confirmDialog } from '../../lib/dialogs';
 
 /**
  * Reference library: the brand's own designs and photos. The AI tags each image and learns a
@@ -61,7 +62,7 @@ export default function ReferenceLibrary({ aiAvailable, kit, onKitChange, onCoun
     };
 
     const remove = async (id) => {
-        if (!window.confirm('Remove this image from your references?')) return;
+        if (!(await confirmDialog('Remove this image from your references?', { confirmLabel: 'Remove', danger: true }))) return;
         setRefs((list) => list.filter((r) => r.id !== id));
         try {
             await marketingApi.removeReference(id);

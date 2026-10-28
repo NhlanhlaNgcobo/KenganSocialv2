@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 
 import './index.css';
+import DialogHost from './components/dialog/DialogHost';
 
 import LandingPage from './pages/LandingPage';
 const PricingPage = lazy(() => import('./pages/PricingPage'));
@@ -132,6 +133,7 @@ function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </Suspense>
+            <DialogHost />
           </WorkspaceProvider>
         </AuthProvider>
       </ThemeProvider>

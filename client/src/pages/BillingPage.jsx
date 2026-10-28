@@ -5,6 +5,7 @@ import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
 import { BILLING_EMAIL, PLAN_RANK, fetchPlanCatalog, formatZar } from '../utils/planLimits';
 import './Billing.css';
+import { confirmDialog } from '../lib/dialogs';
 
 const USAGE_ROWS = [
     { key: 'posts', label: 'Scheduled posts' },
@@ -91,7 +92,7 @@ export default function BillingPage() {
     };
 
     const cancelSubscription = async () => {
-        if (!window.confirm('Cancel automatic renewal? You keep access until the end of your paid period.')) return;
+        if (!(await confirmDialog('Cancel automatic renewal? You keep access until the end of your paid period.', { confirmLabel: 'Cancel renewal', cancelLabel: 'Keep renewal', danger: true }))) return;
         setCheckoutError('');
         try {
             const result = await apiClient('/billing/cancel-subscription', { method: 'POST' });

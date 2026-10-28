@@ -226,6 +226,14 @@ select {
   color: inherit;
 }
 
+/* The open list of a <select> is drawn by the browser: on Windows it stays white while the
+   options inherit the field's light text, which makes them unreadable. Colour them explicitly. */
+select option,
+select optgroup {
+  background-color: var(--bg-solid);
+  color: var(--text-primary);
+}
+
 img {
   max-width: 100%;
   display: block;
@@ -1192,4 +1200,29 @@ input[type='radio'] {
     background: var(--success);
     border-color: var(--success);
     color: #fff;
+}
+
+/* ---------------------
+   Touch screens: thumb-sized buttons, and 16px form text so iOS Safari doesn't zoom the page
+   when a field is focused. Mouse and trackpad keep the compact sizes. The editor sizes its own
+   controls.
+   --------------------- */
+@media (pointer: coarse) {
+  .btn,
+  .btn-sm,
+  .btn-icon {
+    min-height: 44px;
+  }
+
+  .btn-icon {
+    min-width: 44px;
+  }
+
+  .segmented button {
+    min-height: 40px;
+  }
+
+  :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), select, textarea):not(.ke-root *) {
+    font-size: max(16px, 1em);
+  }
 }

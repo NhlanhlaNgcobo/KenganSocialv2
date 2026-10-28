@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { APPROVAL_PLANS } from '../../utils/planLimits';
@@ -29,6 +29,7 @@ import {
     Sun,
     UserCircle,
     Users,
+    X,
     Zap,
     Target,
 } from 'lucide-react';
@@ -82,8 +83,21 @@ const NAV_GROUPS = [
     },
 ];
 
-export default function Sidebar() {
-    const [collapsed, setCollapsed] = useState(false);
+/**
+ * Desktop: fixed sidebar that can collapse to an icon rail.
+ * Phones (`phone`): a drawer with full labels, shown while `open`; `onClose(returnFocus)` hides it.
+ */
+export default function Sidebar({ phone = false, open = false, onClose = () => {} }) {
+    const [collapsedPref, setCollapsed] = useState(false);
+    const collapsed = collapsedPref && !phone;
+    const closeButton = useRef(null);
+    useEffect(() => {
+        if (open) closeButton.current?.focus();
+    }, [open]);
+    // Picking a page on a phone closes the drawer.
+    const closeOnPhone = () => {
+        if (phone) onClose();
+    };
     const { user, profile, logout, plan, capabilities } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const photo = profile?.photoURL || user?.photoURL;
@@ -101,9 +115,18 @@ export default function Sidebar() {
     };
 
     return (
-        <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
+        <aside
+            id="app-sidebar"
+            className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''} ${open ? 'sidebar--open' : ''}`}
+            aria-label={phone ? 'Menu' : undefined}
+        >
             <div className="sidebar__logo">
                 <KenganLogo size={26} showWordmark={!collapsed} />
+                {phone ? (
+                    <button ref={closeButton} type="button" className="sidebar__icon-btn sidebar__close" onClick={() => onClose(true)} aria-label="Close menu">
+                        <X size={18} />
+                    </button>
+                ) : null}
             </div>
 
             {canSwitch && !collapsed ? (
@@ -144,7 +167,7 @@ export default function Sidebar() {
                                 key={item.path}
                                 to={item.path}
                                 aria-disabled={capabilities?.lockedPages?.includes(item.path) || undefined}
-                                onClick={e => { if (capabilities?.lockedPages?.includes(item.path)) e.preventDefault(); }}
+                                onClick={e => { if (capabilities?.lockedPages?.includes(item.path)) e.preventDefault(); else closeOnPhone(); }}
                                 end={item.end}
                                 className={({ isActive }) => `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`}
                                 title={collapsed ? item.label : undefined}
@@ -175,10 +198,10 @@ export default function Sidebar() {
                     <button type="button" className="sidebar__icon-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
                         {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
                     </button>
-                    <NavLink to="/dashboard/settings" className="sidebar__icon-btn" title="Settings" aria-label="Settings">
+                    <NavLink to="/dashboard/settings" onClick={closeOnPhone} className="sidebar__icon-btn" title="Settings" aria-label="Settings">
                         <Settings size={16} />
                     </NavLink>
-                    <NavLink to="/dashboard/billing" className="sidebar__icon-btn" title="Plan and billing" aria-label="Plan and billing">
+                    <NavLink to="/dashboard/billing" onClick={closeOnPhone} className="sidebar__icon-btn" title="Plan and billing" aria-label="Plan and billing">
                         <CreditCard size={16} />
                     </NavLink>
                     <button type="button" className="sidebar__icon-btn" onClick={logout} title="Log out" aria-label="Log out">
@@ -186,7 +209,7 @@ export default function Sidebar() {
                     </button>
                     <button
                         type="button"
-                        className="sidebar__icon-btn"
+                        className="sidebar__icon-btn sidebar__collapse"
                         onClick={() => setCollapsed(!collapsed)}
                         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}

@@ -16,6 +16,7 @@ import { Link } from 'react-router-dom';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
 import './Automation.css';
+import { confirmDialog } from '../lib/dialogs';
 
 // Keep in step with server/src/controllers/automation.controller.js.
 const TRIGGER_TYPES = [
@@ -161,7 +162,7 @@ export default function AutomationPage() {
 
     const deleteAutomation = async (id) => {
         const rule = automations.find(a => a.id === id);
-        if (!window.confirm(`Delete the automation "${rule?.name || 'this automation'}"? This cannot be undone.`)) return;
+        if (!(await confirmDialog(`Delete the automation "${rule?.name || 'this automation'}"? This cannot be undone.`, { confirmLabel: 'Delete', danger: true }))) return;
         try {
             await apiClient(`/workspaces/${currentWorkspace.id}/automations/${id}`, {
                 method: 'DELETE',

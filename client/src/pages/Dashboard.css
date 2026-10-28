@@ -392,3 +392,13 @@
 .home-empty p {
     margin: 0;
 }
+
+/* Touch screens: the small "Calendar →" style links get a taller hit area without moving the text. */
+@media (pointer: coarse) {
+    .home-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        margin-block: -12px;
+    }
+}

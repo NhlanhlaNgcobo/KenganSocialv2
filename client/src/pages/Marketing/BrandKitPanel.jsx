@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Download, Globe, ImagePlus, Loader2, Trash2, X } from 'lucide-react';
 import { contrast, loadGoogleFont, marketingApi } from '../../lib/marketing-api';
+import { confirmDialog } from '../../lib/dialogs';
 
 const ROLES = [
     { id: 'primary', label: 'Primary' },
@@ -132,7 +133,7 @@ export default function BrandKitPanel({ data, onSaved }) {
     };
 
     const removeLogo = async (variant) => {
-        if (!window.confirm('Remove this logo?')) return;
+        if (!(await confirmDialog('Remove this logo?', { confirmLabel: 'Remove', danger: true }))) return;
         setLogoBusy(variant);
         try {
             const result = await marketingApi.removeLogo(variant);

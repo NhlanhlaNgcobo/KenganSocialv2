@@ -14,7 +14,9 @@ import { MediaPanel } from './components/media-panel/MediaPanel';
 import { PreviewPanel } from './components/preview/PreviewPanel';
 import { PropertiesPanel } from './components/properties/PropertiesPanel';
 import { Timeline } from './components/timeline/Timeline';
+import { PhoneLayout, RotatePrompt } from './components/phone/PhoneLayout';
 import { Toast } from './components/Toast';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useEditorShortcuts } from './hooks/use-editor-shortcuts';
 import { getElementEnd } from './lib/time';
 import { useAiStore } from './stores/ai-store';
@@ -61,10 +63,17 @@ if (perfEnabled && typeof window !== 'undefined') {
     (window as unknown as { __keBench: unknown }).__keBench = { media: useMediaStore, timeline: useTimelineStore, playback: usePlaybackStore, project: useProjectStore };
 }
 
+// Touch screens up to phone size get the phone editor (landscape), or a rotate prompt in portrait.
+// Tablets and narrow desktop windows keep the desktop layout.
+const PHONE_EDITOR = '(pointer: coarse) and (max-width: 1000px) and (max-height: 1000px)';
+const PORTRAIT = '(orientation: portrait)';
+
 export default function Editor() {
     const { user } = useAuth();
     const status = useProjectStore((s) => s.status);
     const exportOpen = useUiStore((s) => s.exportOpen);
+    const phone = useMediaQuery(PHONE_EDITOR);
+    const portrait = useMediaQuery(PORTRAIT);
 
     useEditorShortcuts();
 
@@ -100,6 +109,20 @@ export default function Editor() {
             <div className="ke-root ke-loading">
                 <Loader2 size={22} className="ke-spin" />
                 <span>Loading your project…</span>
+            </div>
+        );
+    }
+
+    if (phone && portrait) return <RotatePrompt />;
+
+    if (phone) {
+        return (
+            <div className="ke-root ke-root--phone">
+                <EditorHeader compact />
+                <PhoneLayout />
+                <ExportDialog />
+                <AiEditStudio />
+                <Toast />
             </div>
         );
     }

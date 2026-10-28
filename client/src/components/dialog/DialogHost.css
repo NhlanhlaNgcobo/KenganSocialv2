@@ -1,0 +1,86 @@
+/* Confirm / prompt dialogs (lib/dialogs.js). Above every page, the editor included. */
+.kd-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(5, 4, 10, 0.6);
+    animation: kd-fade 160ms ease-out;
+}
+
+.kd-dialog {
+    width: 100%;
+    max-width: 420px;
+    padding: 22px 22px 18px;
+    border: 1px solid var(--border-glass, var(--border-primary));
+    border-radius: var(--radius-xl);
+    background: var(--glass-sheen), var(--bg-solid);
+    box-shadow: var(--glass-edge), 0 24px 64px -16px rgba(0, 0, 0, 0.55);
+    color: var(--text-primary);
+    animation: kd-rise 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kd-title {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.kd-message {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.55;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.kd-title + .kd-message {
+    font-size: 0.9rem;
+}
+
+.kd-input {
+    width: 100%;
+    margin-top: 14px;
+}
+
+.kd-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+@media (max-width: 480px) {
+    .kd-actions {
+        flex-direction: column-reverse;
+    }
+
+    .kd-actions .btn {
+        width: 100%;
+    }
+}
+
+@keyframes kd-fade {
+    from {
+        opacity: 0;
+    }
+}
+
+@keyframes kd-rise {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.98);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .kd-overlay,
+    .kd-dialog {
+        animation: none;
+    }
+}

@@ -28,6 +28,7 @@ import { useWorkspace } from '../context/WorkspaceContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import './Settings.css';
+import { confirmDialog } from '../lib/dialogs';
 
 /** Resizes an image file to a square JPEG data URL small enough to store on the profile. */
 function resizeToAvatar(file, size = 256) {
@@ -224,7 +225,7 @@ export default function SettingsPage() {
     };
 
     const handleRemove = async (member) => {
-        if (!window.confirm(`Remove ${member.name} from this workspace?`)) return;
+        if (!(await confirmDialog(`Remove ${member.name} from this workspace?`, { confirmLabel: 'Remove', danger: true }))) return;
         setRemovingId(member.uid);
         setTeamMsg({ type: '', text: '' });
         try {

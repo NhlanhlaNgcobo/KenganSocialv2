@@ -27,6 +27,7 @@ import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../lib/api';
 import './Calendar.css';
 import { TikTokConsent, TikTokPostSettings, tiktokProblem, useTikTokCreatorInfo, useVideoSeconds, YouTubePostSettings, youtubeProblem, type TikTokOptions, type YouTubeOptions } from './PlatformPostSettings';
+import { confirmDialog } from '../../lib/dialogs';
 
 type PostStatus = 'pending' | 'published' | 'failed' | 'partial' | 'draft' | 'cancelled';
 
@@ -488,13 +489,14 @@ export default function CalendarPage() {
         );
     };
 
-    const publishNow = (post: ScheduledPost) => {
-        if (!window.confirm('Publish this post to all its platforms now?')) return;
+    const publishNow = async (post: ScheduledPost) => {
+        if (!(await confirmDialog('Publish this post to all its platforms now?', { confirmLabel: 'Publish now' }))) return;
         runDetailAction('publish', () => apiClient(`/schedule/publish-now/${post.id}`, { method: 'POST' }), 'Publishing started.');
     };
 
-    const cancelPost = (post: ScheduledPost) => {
-        if (!window.confirm(post.status === 'draft' ? 'Delete this draft?' : 'Cancel this scheduled post? It will not be published.')) return;
+    const cancelPost = async (post: ScheduledPost) => {
+        const draft = post.status === 'draft';
+        if (!(await confirmDialog(draft ? 'Delete this draft?' : 'Cancel this scheduled post? It will not be published.', { confirmLabel: draft ? 'Delete draft' : 'Cancel post', cancelLabel: 'Keep it', danger: true }))) return;
         runDetailAction('cancel', () => apiClient(`/schedule/${post.id}`, { method: 'DELETE' }), post.status === 'draft' ? 'Draft deleted.' : 'Post cancelled.');
     };
 
@@ -980,9 +982,9 @@ export default function CalendarPage() {
                             {modalStep < 3 ? (
                                 <button
                                     className="btn btn-primary"
-                                    onClick={() => {
+                                    onClick={async () => {
                                         const problem = modalStep === 2 ? platformSettingsProblem('pending') : '';
-                                        if (problem && !window.confirm(`${problem}\n\nContinue anyway? You can still save a draft, but scheduling needs this.`)) {
+                                        if (problem && !(await confirmDialog(`${problem}\n\nYou can still save a draft, but scheduling needs this.`, { title: 'Continue anyway?', confirmLabel: 'Continue anyway' }))) {
                                             setFormError(problem);
                                             return;
                                         }

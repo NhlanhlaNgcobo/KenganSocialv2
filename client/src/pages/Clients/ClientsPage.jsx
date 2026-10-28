@@ -8,6 +8,7 @@ import AssetPanel, { StatusBadge } from './AssetPanel';
 import ClientModal from './ClientModal';
 import SendReviewModal from './SendReviewModal';
 import './Clients.css';
+import { confirmDialog } from '../../lib/dialogs';
 
 /**
  * Clients & approvals: each client brand has a video library; videos go to the client on a review
@@ -332,7 +333,7 @@ function ClientsWorkspace() {
     };
 
     const revoke = async (r) => {
-        if (!window.confirm(`Switch off "${r.title}"? The client will no longer be able to open it.`)) return;
+        if (!(await confirmDialog(`Switch off "${r.title}"? The client will no longer be able to open it.`, { confirmLabel: 'Switch off', danger: true }))) return;
         try {
             await agencyApi.revokeReview(r.id);
             setReviews((list) => list.map((x) => (x.id === r.id ? { ...x, revoked: true } : x)));

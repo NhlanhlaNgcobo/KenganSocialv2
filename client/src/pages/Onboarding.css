@@ -521,6 +521,10 @@
 }
 
 .onboarding-page .plan-card__popular-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
     position: absolute;
     top: -12px;
     left: 50%;
@@ -673,7 +677,8 @@
 }
 
 .welcome-modal {
-    background: var(--bg-secondary);
+    /* Solid: --bg-secondary is a 3.5% tint meant for surfaces on the page, not over it. */
+    background: var(--glass-sheen), var(--bg-solid);
     border: 1px solid var(--border-accent);
     border-radius: var(--radius-xl);
     padding: 40px;
@@ -685,8 +690,16 @@
 }
 
 .welcome-modal__emoji {
-    font-size: 3rem;
-    margin-bottom: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+    margin-bottom: 18px;
+    border-radius: 18px;
+    border: 1px solid var(--border-accent);
+    background: var(--accent-soft);
+    color: var(--accent-text);
 }
 
 .welcome-modal h2 {

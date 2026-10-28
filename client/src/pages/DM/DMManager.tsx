@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../lib/api';
 import { Settings2, Inbox, Send, ToggleLeft, ToggleRight, Trash2, Check, X, RefreshCw, PenSquare, Loader2, MessagesSquare, Lock, Clock } from 'lucide-react';
 import './DMManager.css';
+import { confirmDialog } from '../../lib/dialogs';
 
 interface Automation {
     id: string;
@@ -151,7 +152,7 @@ export default function DMManager() {
     };
 
     const handleDeleteAuto = async (a: Automation) => {
-        if (!window.confirm(`Delete the auto-reply for "${a.keyword || a.trigger}"? This cannot be undone.`)) return;
+        if (!(await confirmDialog(`Delete the auto-reply for "${a.keyword || a.trigger}"? This cannot be undone.`, { confirmLabel: 'Delete', danger: true }))) return;
         setActionError('');
         setBusyId(a.id);
         try {

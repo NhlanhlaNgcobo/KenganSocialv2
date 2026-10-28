@@ -3,6 +3,7 @@ import { Check, Copy, Download, ImagePlus, Loader2, Plus, RefreshCw, Trash2, Wan
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { marketingApi, pollUntilDone } from '../../lib/marketing-api';
+import { confirmDialog } from '../../lib/dialogs';
 
 const SOURCES = [
     { id: 'website', label: 'My website' },
@@ -340,7 +341,7 @@ function CarouselEditor({ carousel, setCarousel, onDeleted, onError }) {
                     <button className="btn btn-secondary btn-sm" onClick={() => run('download', async () => { for (const [i, s] of slides.entries()) await downloadUrl(s.renderUrl, `${carousel.title || 'carousel'}-${i + 1}.png`); })} disabled={!!busy}>
                         {busy === 'download' ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Download all
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => window.confirm('Delete this carousel?') && run('delete', async () => { await marketingApi.deleteCarousel(carousel.id); onDeleted(); })} disabled={!!busy} aria-label="Delete carousel">
+                    <button className="btn btn-ghost btn-sm" onClick={async () => (await confirmDialog('Delete this carousel?', { confirmLabel: 'Delete', danger: true })) && run('delete', async () => { await marketingApi.deleteCarousel(carousel.id); onDeleted(); })} disabled={!!busy} aria-label="Delete carousel">
                         <Trash2 size={14} />
                     </button>
                 </div>

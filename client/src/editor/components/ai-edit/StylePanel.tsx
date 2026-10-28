@@ -3,6 +3,7 @@ import { Film, Link2, Loader2, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { previewFont } from '../../constants';
 import type { StyleProfile } from '../../lib/ai-edit';
 import { useAiEditStore } from '../../stores/ai-edit-store';
+import { confirmDialog } from '../../../lib/dialogs';
 
 const LOOK_SWATCH: Record<string, string> = {
     natural: 'linear-gradient(135deg,#c9a27e,#6b8fa8)',
@@ -92,7 +93,7 @@ function StyleItem({ style, selected, onSelect, onDelete }: { style: StyleProfil
                     title="Delete this style"
                     onClick={(e) => {
                         e.stopPropagation();
-                        if (window.confirm(`Delete the style “${style.name}”?`)) onDelete();
+                        void confirmDialog(`Delete the style “${style.name}”?`, { confirmLabel: 'Delete', danger: true }).then((ok) => ok && onDelete());
                     }}
                 >
                     <Trash2 size={14} />

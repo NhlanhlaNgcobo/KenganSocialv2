@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarPlus, Check, CheckCircle2, Copy, Download, Loader2, Lock, MessageSquare, Pin, RotateCcw, Send, Trash2, Upload, X } from 'lucide-react';
 import { agencyApi, formatTimecode, PLATFORM_LABELS, STATUS_META, uploadLibraryVideo } from '../../lib/agency-api';
+import { confirmDialog } from '../../lib/dialogs';
 
 /** Calendar platform ids. */
 const CALENDAR_PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube'];
@@ -121,8 +122,8 @@ export default function AssetPanel({ assetId, clients, onClose, onChanged, onDel
     };
 
     /** Sends an approved (or changes-requested) video back to the client: clears the decision. */
-    const reopen = () => {
-        if (!window.confirm('Reopen this video for review? The current approval is cleared and the client can decide again.')) return;
+    const reopen = async () => {
+        if (!(await confirmDialog('Reopen this video for review? The current approval is cleared and the client can decide again.', { confirmLabel: 'Reopen' }))) return;
         run('reopen', async () => {
             const { asset: next } = await agencyApi.updateAsset(asset.id, { status: 'in_review' });
             onChanged(next);
@@ -168,8 +169,8 @@ export default function AssetPanel({ assetId, clients, onClose, onChanged, onDel
             });
         });
 
-    const remove = () => {
-        if (!window.confirm(`Delete "${asset.title}" and all its versions and comments? Review links will stop showing it.`)) return;
+    const remove = async () => {
+        if (!(await confirmDialog(`Delete "${asset.title}" and all its versions and comments? Review links will stop showing it.`, { confirmLabel: 'Delete', danger: true }))) return;
         run('delete', async () => {
             await agencyApi.deleteAsset(asset.id);
             onDeleted(asset.id);
@@ -263,7 +264,7 @@ export default function AssetPanel({ assetId, clients, onClose, onChanged, onDel
                         <button type="button" className="btn btn-primary" onClick={() => onSend([asset])}>
                             <Send size={15} /> {reviews.some((r) => !r.revoked) ? 'Send again' : 'Send for approval'}
                         </button>
-                        <button type="button" className={`btn ${approvedNow ? 'btn-primary' : 'btn-secondary'}`} onClick={() => (approvedNow || window.confirm('This version is not approved yet. Schedule it anyway?')) && schedule()} disabled={busy === 'schedule'}>
+                        <button type="button" className={`btn ${approvedNow ? 'btn-primary' : 'btn-secondary'}`} onClick={async () => (approvedNow || (await confirmDialog('This version is not approved yet. Schedule it anyway?', { confirmLabel: 'Schedule anyway' }))) && schedule()} disabled={busy === 'schedule'}>
                             {busy === 'schedule' ? <Loader2 size={15} className="spin" /> : <CalendarPlus size={15} />} Schedule
                         </button>
                         <a className="btn btn-ghost" href={v?.url} download target="_blank" rel="noreferrer" aria-label="Download">

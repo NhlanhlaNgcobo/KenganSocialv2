@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
+import { PartyPopper, Star } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { apiClient } from '../lib/api';
@@ -388,7 +390,7 @@ function StepPlan({ onComplete, onBack }) {
                             className={`plan-card ${plan.popular ? 'popular' : ''}`}
                         >
                             {plan.popular && (
-                                <div className="plan-card__popular-badge">⭐ Most Popular</div>
+                                <div className="plan-card__popular-badge"><Star size={11} fill="currentColor" strokeWidth={0} aria-hidden="true" /> Most Popular</div>
                             )}
                             <div className="plan-card__name">{plan.name}</div>
                             <div className="plan-card__price">
@@ -435,11 +437,13 @@ function StepPlan({ onComplete, onBack }) {
 
 // ─── Welcome Modal ─────────────────────────────────────────────────────────────
 function WelcomeModal({ name, onClose }) {
-    return (
+    // Rendered on <body>: inside the animated onboarding card, `position: fixed` would cover
+    // only the card and the page would show through around it.
+    return createPortal(
         <div className="welcome-modal-overlay">
-            <div className="welcome-modal animate-fade-in">
-                <div className="welcome-modal__emoji">🎉</div>
-                <h2>Welcome to KenganSocial, {name?.split(' ')[0] || 'Creator'}!</h2>
+            <div className="welcome-modal animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title">
+                <div className="welcome-modal__emoji" aria-hidden="true"><PartyPopper size={28} strokeWidth={1.75} /></div>
+                <h2 id="welcome-modal-title">Welcome to KenganSocial, {name?.split(' ')[0] || 'Creator'}!</h2>
                 <p>
                     Your workspace is live. Here's how to hit the ground running in
                     the next 5 minutes.
@@ -471,7 +475,8 @@ function WelcomeModal({ name, onClose }) {
                     Take me to my Dashboard →
                 </button>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 

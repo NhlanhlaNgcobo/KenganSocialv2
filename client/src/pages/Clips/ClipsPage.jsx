@@ -11,6 +11,7 @@ import { clipsApi, formatTime, uploadVideo } from '../../lib/clips-api';
 import { useEditorStore } from '../../stores/editorStore';
 import { PLAN_DISPLAY_NAMES, PLAN_LIMITS } from '../../utils/planLimits';
 import './Clips.css';
+import { confirmDialog } from '../../lib/dialogs';
 
 /**
  * Clips: upload a long video and get ranked short clips, reframed with captions,
@@ -372,7 +373,7 @@ function ProjectView({ id, onBack }) {
     }, [id]);
 
     const remove = async () => {
-        if (!window.confirm('Delete this project and its clips?')) return;
+        if (!(await confirmDialog('Delete this project and its clips?', { confirmLabel: 'Delete', danger: true }))) return;
         try {
             await clipsApi.remove(id);
             onBack();
@@ -554,6 +555,10 @@ function ClipCard({ clip, ratio, platform, sourceUploadId }) {
                 <span className={`clip-card__score ${scoreTier(clip.score)}`} title="Editorial estimate, not a prediction of views or retention">
                     {Number.isFinite(clip.score) ? clip.score : 'Review'}
                 </span>
+                {/* On the video itself, so saving is one tap while watching. */}
+                <button type="button" className="clip-card__save" onClick={download} disabled={!!busy} aria-label={`Download ${clip.title} to this device`} title="Download to this device">
+                    {busy === 'download' ? <Loader2 size={18} className="spin" /> : <Download size={18} />}
+                </button>
             </div>
 
             <div className="clip-card__body">
@@ -596,6 +601,9 @@ function ClipCard({ clip, ratio, platform, sourceUploadId }) {
                     <button className="btn btn-primary btn-sm" onClick={schedule} disabled={!!busy}>
                         {busy === 'schedule' ? <Loader2 size={14} className="spin" /> : <CalendarPlus size={14} />} Schedule
                     </button>
+                    <button className="btn btn-secondary btn-sm" onClick={download} disabled={!!busy}>
+                        {busy === 'download' ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Download
+                    </button>
                     <button className="btn btn-secondary btn-sm" onClick={edit} disabled={!!busy}>
                         {busy === 'edit' ? <Loader2 size={14} className="spin" /> : <Scissors size={14} />} Edit
                     </button>
@@ -605,9 +613,6 @@ function ClipCard({ clip, ratio, platform, sourceUploadId }) {
                         </button>
                     ) : null}
                     <SaveToLibraryButton downloadUrl={clip.downloadUrl} title={clip.title} caption={clip.caption || ''} />
-                    <button className="btn btn-ghost btn-sm" onClick={download} disabled={!!busy} aria-label="Download">
-                        {busy === 'download' ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
-                    </button>
                 </div>
             </div>
             {thumbnail ? (

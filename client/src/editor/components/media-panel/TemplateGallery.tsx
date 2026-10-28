@@ -10,6 +10,7 @@ import { useMediaStore } from '../../stores/media-store';
 import { useTimelineStore } from '../../stores/timeline-store';
 import { useUiStore } from '../../stores/ui-store';
 import { TemplatePreview } from './TemplatePreview';
+import { confirmDialog, promptDialog } from '../../../lib/dialogs';
 
 function downloadJson(template: KenganTemplate) {
     const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' });
@@ -51,7 +52,7 @@ export function TemplateGallery() {
     const use = async () => {
         if (!selected || busy) return;
         const hasEdits = useTimelineStore.getState().tracks.some((t) => t.isMain && t.elements.length > 0);
-        if (hasEdits && !window.confirm(`Use “${selected.name}”? It replaces the clips on your main track (Ctrl+Z restores them).`)) return;
+        if (hasEdits && !(await confirmDialog(`Use “${selected.name}”? It replaces the clips on your main track (Ctrl+Z restores them).`, { confirmLabel: 'Use template' }))) return;
         setBusy(true);
         try {
             const built = await buildTemplate(selected, { assignments, params, musicId: selected.music ? musicId || null : null });
@@ -64,8 +65,8 @@ export function TemplateGallery() {
         }
     };
 
-    const saveCurrent = () => {
-        const name = window.prompt('Name this template', 'My template');
+    const saveCurrent = async () => {
+        const name = await promptDialog('Name this template', { defaultValue: 'My template' });
         if (name === null) return;
         try {
             const { template, onBeats } = timelineToTemplate({ name });
@@ -231,8 +232,8 @@ export function TemplateGallery() {
                         {isSaved(selected.id) ? (
                             <button
                                 className="ke-btn ke-btn--sm"
-                                onClick={() => {
-                                    if (!window.confirm(`Delete “${selected.name}” from this browser?`)) return;
+                                onClick={async () => {
+                                    if (!(await confirmDialog(`Delete “${selected.name}” from this browser?`, { confirmLabel: 'Delete', danger: true }))) return;
                                     deleteTemplate(selected.id);
                                     setSaved(savedTemplates());
                                     setSelectedId(null);

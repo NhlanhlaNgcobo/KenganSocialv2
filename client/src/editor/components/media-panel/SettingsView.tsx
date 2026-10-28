@@ -2,6 +2,7 @@ import { FilePlus2 } from 'lucide-react';
 import { CANVAS_SIZES } from '../../constants';
 import { useProjectStore } from '../../stores/project-store';
 import type { AspectRatio } from '../../types';
+import { confirmDialog } from '../../../lib/dialogs';
 
 const RATIOS: { value: AspectRatio; label: string }[] = [
     { value: '9:16', label: 'Vertical 9:16 — TikTok, Reels, Shorts' },
@@ -61,7 +62,7 @@ export function SettingsView() {
             <button
                 className="ke-btn ke-btn--block ke-btn--danger"
                 onClick={() => {
-                    if (window.confirm('Start a new project? This clears the current timeline and media from this browser.')) newProject();
+                    void confirmDialog('Start a new project? This clears the current timeline and media from this browser.', { confirmLabel: 'Start new project', danger: true }).then((ok) => ok && newProject());
                 }}
             >
                 <FilePlus2 size={15} /> New project

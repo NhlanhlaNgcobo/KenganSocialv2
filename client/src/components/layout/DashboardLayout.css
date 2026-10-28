@@ -28,14 +28,69 @@
     margin-left: var(--sidebar-collapsed);
 }
 
+/* Phone top bar: opens the sidebar drawer. Hidden on wider screens. */
+.dashboard__topbar {
+    display: none;
+}
+
+.dashboard__scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 940;
+    background: rgba(0, 0, 0, 0.5);
+    animation: dashboard-scrim-in 200ms ease-out;
+}
+
+@keyframes dashboard-scrim-in {
+    from {
+        opacity: 0;
+    }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
-    .dashboard__main {
-        margin-left: var(--sidebar-collapsed);
+    .dashboard__main,
+    .sidebar--collapsed ~ .dashboard__main {
+        margin-left: 0;
+    }
+
+    .dashboard__topbar {
+        position: sticky;
+        top: 0;
+        z-index: 90;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 56px;
+        padding: 0 12px 0 6px;
+        background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+        border-bottom: 1px solid var(--border-primary);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
+    }
+
+    .dashboard__menu {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: var(--radius-md);
+        color: var(--text-primary);
+    }
+
+    .dashboard__menu:active {
+        background: var(--bg-hover);
     }
 
     .dashboard__content {
-        padding: 20px 16px;
+        padding: 20px 16px 40px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard__scrim {
+        animation: none;
     }
 }
 /* Shown when the workspace can't be loaded (e.g. the API can't be reached). */

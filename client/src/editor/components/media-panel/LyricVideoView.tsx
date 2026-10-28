@@ -30,6 +30,7 @@ import { useTimelineStore } from '../../stores/timeline-store';
 import { useUiStore } from '../../stores/ui-store';
 import type { MediaElement, MediaItem } from '../../types';
 import { CaptionSample } from './CaptionSample';
+import { confirmDialog } from '../../../lib/dialogs';
 
 type Background = { kind: 'loop'; preset: LoopPreset } | { kind: 'stock'; asset: StockAsset } | null;
 type Method = 'paste' | 'sync' | 'tap' | 'file' | 'ai';
@@ -254,7 +255,7 @@ export function LyricVideoView() {
             if (!analysis?.lines.length) throw new Error('Add the lyrics first.');
             const store = useTimelineStore.getState();
             const main = store.tracks.find((t) => t.isMain);
-            if (main?.elements.length && !window.confirm('Replace the clips on the main video track with the looping background?')) return;
+            if (main?.elements.length && !(await confirmDialog('Replace the clips on the main video track with the looping background?', { confirmLabel: 'Replace' }))) return;
             const item = await addBackgroundItem();
             const songEnd = getElementEnd(song);
             const scale = coverScale(item.width || 0, item.height || 0, canvas.width, canvas.height);

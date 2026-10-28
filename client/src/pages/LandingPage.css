@@ -1096,7 +1096,10 @@
     flex-direction: column;
   }
 
+  /* A card, not a band: keep it off the screen edges like every other card. */
   .lp-final {
+    width: auto;
+    margin-inline: 16px;
     padding: 48px 20px;
   }
 
@@ -1701,5 +1704,24 @@
   .lp-fx__phone,
   .lp-fx__badge {
     animation: none;
+  }
+}
+
+/* Touch screens: caption chips and footer links get thumb-sized hit areas. */
+@media (pointer: coarse) {
+  .lp-captions__names button {
+    min-height: 44px;
+    padding-inline: 14px;
+  }
+
+  .lp-footer nav {
+    gap: 0 8px;
+  }
+
+  .lp-footer nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline: 6px;
   }
 }
