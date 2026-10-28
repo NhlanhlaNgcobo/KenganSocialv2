@@ -2,7 +2,7 @@
  * Video/audio elements kept in sync with the playback clock.
  * Pattern from OpenCut's VideoPlayer/AudioPlayer (MIT).
  */
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { previewFilter } from '../../lib/grade';
 import { isNeutralColor } from '../../lib/color-pipeline.js';
 import { useProjectStore } from '../../stores/project-store';
@@ -10,6 +10,7 @@ import { GradedCanvas, useLut, webgl2Available } from './GradedCanvas';
 import { PLAYBACK_EVENTS, setMediaStalled, usePlaybackStore } from '../../stores/playback-store';
 import type { ChromaKey, MediaElement } from '../../types';
 import { perfRender, perfWatchVideo } from '../../lib/perf';
+import { previewV2 } from '../../lib/preview-engine';
 
 interface Props {
     kind: 'video' | 'audio';
@@ -26,7 +27,8 @@ interface Props {
     chromaKey?: ChromaKey | null;
 }
 
-export function MediaLayer({ kind, src, element, trackMuted, active, extendHead = 0, extendTail = 0, extraFilter = '', chromaKey = null }: Props) {
+/** Memoised: re-renders only when its own props or the playback settings it reads change. */
+export const MediaLayer = memo(function MediaLayer({ kind, src, element, trackMuted, active, extendHead = 0, extendTail = 0, extraFilter = '', chromaKey = null }: Props) {
     perfRender('MediaLayer');
     const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
     const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
@@ -54,8 +56,19 @@ export function MediaLayer({ kind, src, element, trackMuted, active, extendHead 
     useEffect(() => {
         const media = ref.current;
         if (!media) return undefined;
+        // v2: while a seek is still decoding, keep only the latest target and apply it when the
+        // first one lands. Seeking again mid-seek cancels it, so a fast scrub never shows a frame.
+        let pending: number | null = null;
         const onSeek = (e: Event) => {
-            media.currentTime = toSourceTime((e as CustomEvent).detail.time);
+            const target = toSourceTime((e as CustomEvent).detail.time);
+            if (previewV2 && media.seeking) pending = target;
+            else media.currentTime = target;
+        };
+        const onSeeked = () => {
+            if (pending === null) return;
+            const target = pending;
+            pending = null;
+            if (Math.abs(media.currentTime - target) > 0.001) media.currentTime = target;
         };
         const onUpdate = (e: Event) => {
             // Let a pending seek land: seeking again would cancel it and freeze the picture.
@@ -74,7 +87,9 @@ export function MediaLayer({ kind, src, element, trackMuted, active, extendHead 
         };
         window.addEventListener(PLAYBACK_EVENTS.seek, onSeek);
         window.addEventListener(PLAYBACK_EVENTS.update, onUpdate);
+        media.addEventListener('seeked', onSeeked);
         return () => {
+            media.removeEventListener('seeked', onSeeked);
             window.removeEventListener(PLAYBACK_EVENTS.seek, onSeek);
             window.removeEventListener(PLAYBACK_EVENTS.update, onUpdate);
         };
@@ -153,4 +168,4 @@ export function MediaLayer({ kind, src, element, trackMuted, active, extendHead 
             {onCanvas ? <GradedCanvas source={videoEl} lut={graded ? lut : null} chromaKey={keyed ? chromaKey : null} className="ke-preview__media" style={{ visibility: active ? 'visible' : 'hidden', filter }} /> : null}
         </>
     );
-}
+});

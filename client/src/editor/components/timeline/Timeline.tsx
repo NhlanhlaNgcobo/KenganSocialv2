@@ -13,6 +13,7 @@ import { TimelineElement } from './TimelineElement';
 import { TimelineRuler } from './TimelineRuler';
 import { TimelineToolbar } from './TimelineToolbar';
 import { perfRender } from '../../lib/perf';
+import { previewV2 } from '../../lib/preview-engine';
 
 const LABEL_W = TIMELINE.TRACK_LABEL_WIDTH;
 const RULER_H = 28;
@@ -24,7 +25,8 @@ export function Timeline() {
     const tracks = useTimelineStore((s) => s.tracks);
     const selected = useTimelineStore((s) => s.selected);
     const totalDuration = useTimelineStore((s) => s.getTotalDuration());
-    const currentTime = usePlaybackStore((s) => s.currentTime);
+    // v2: the timeline doesn't re-render per playback frame; LivePlayhead moves itself.
+    const currentTime = usePlaybackStore((s) => (previewV2 ? 0 : s.currentTime));
     const isPlaying = usePlaybackStore((s) => s.isPlaying);
     const zoom = useUiStore((s) => s.zoom);
     const setZoom = useUiStore((s) => s.setZoom);
@@ -54,7 +56,7 @@ export function Timeline() {
     // Keep the playhead in view while playing.
     useEffect(() => {
         const el = scrollRef.current;
-        if (!el || !isPlaying) return;
+        if (!el || !isPlaying || previewV2) return;
         const x = currentTime * pps;
         const visibleStart = el.scrollLeft;
         const visibleEnd = el.scrollLeft + el.clientWidth - LABEL_W;
@@ -291,12 +293,43 @@ export function Timeline() {
                         Drop here to add on a new track
                     </div>
 
-                    <div className="ke-playhead" style={{ left: LABEL_W + currentTime * pps }}>
-                        <div className="ke-playhead__head" onPointerDown={startScrub} />
-                    </div>
+                    {previewV2 ? (
+                        <LivePlayhead pps={pps} scrollRef={scrollRef} onScrub={startScrub} />
+                    ) : (
+                        <div className="ke-playhead" style={{ left: LABEL_W + currentTime * pps }}>
+                            <div className="ke-playhead__head" onPointerDown={startScrub} />
+                        </div>
+                    )}
                     {snapLine !== null ? <div className="ke-snapline" style={{ left: LABEL_W + snapLine * pps }} /> : null}
                 </div>
             </div>
+        </div>
+    );
+}
+
+/**
+ * v2 playhead: follows the playback clock through a direct style update (no React render per frame)
+ * and keeps itself in view while playing.
+ */
+function LivePlayhead({ pps, scrollRef, onScrub }: { pps: number; scrollRef: React.RefObject<HTMLDivElement | null>; onScrub: (e: React.PointerEvent) => void }) {
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const place = (time: number, playing: boolean) => {
+            if (ref.current) ref.current.style.left = `${LABEL_W + time * pps}px`;
+            const el = scrollRef.current;
+            if (!el || !playing) return;
+            const x = time * pps;
+            if (x > el.scrollLeft + el.clientWidth - LABEL_W - 40 || x < el.scrollLeft) el.scrollLeft = Math.max(0, x - 80);
+        };
+        const { currentTime, isPlaying } = usePlaybackStore.getState();
+        place(currentTime, isPlaying);
+        return usePlaybackStore.subscribe((s, prev) => {
+            if (s.currentTime !== prev.currentTime || s.isPlaying !== prev.isPlaying) place(s.currentTime, s.isPlaying);
+        });
+    }, [pps, scrollRef]);
+    return (
+        <div ref={ref} className="ke-playhead" style={{ left: LABEL_W + usePlaybackStore.getState().currentTime * pps }}>
+            <div className="ke-playhead__head" onPointerDown={onScrub} />
         </div>
     );
 }
