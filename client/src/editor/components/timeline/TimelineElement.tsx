@@ -9,6 +9,7 @@ import { usePlaybackStore } from '../../stores/playback-store';
 import { useTimelineStore } from '../../stores/timeline-store';
 import { useUiStore } from '../../stores/ui-store';
 import type { MediaElement, TimelineElement as El, TimelineTrack } from '../../types';
+import { perfRender } from '../../lib/perf';
 
 const waveformCache = new Map<string, Promise<number[]>>();
 
@@ -39,6 +40,7 @@ type Gesture =
     | { kind: 'trim-left' | 'trim-right'; startX: number; orig: El; minStart: number; maxEnd: number };
 
 export const TimelineElement = memo(function TimelineElement({ element, track, pixelsPerSecond, isSelected, onSnapLine }: Props) {
+    perfRender('TimelineElement');
     const media = useMediaStore((s) => (element.type === 'media' ? s.items.find((i) => i.id === element.mediaId) : undefined));
     const [preview, setPreviewState] = useState<{ start: number; dy: number; targetTrackId: string } | null>(null);
     const previewRef = useRef<typeof preview>(null);

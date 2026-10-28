@@ -21,6 +21,7 @@ import { MediaLayer } from './MediaLayer';
 import { useEnhanceStore } from '../../stores/enhance-store';
 import { captionFrame } from '../../lib/caption-motion.js';
 import { ExactPreviewButton, ExactPreviewOverlay } from './ExactPreview';
+import { perfRender } from '../../lib/perf';
 
 /** Vignette masks (data URLs) by settings and canvas shape; the export builds the same mask. */
 const vignetteCache = new Map<string, string>();
@@ -96,6 +97,7 @@ function UnplayableNotice({ mediaId }: { mediaId: string }) {
 const PRELOAD_SECONDS = 2.5;
 
 export function PreviewPanel() {
+    perfRender('PreviewPanel');
     const tracks = useTimelineStore((s) => s.tracks);
     const selected = useTimelineStore((s) => s.selected);
     const selectElement = useTimelineStore((s) => s.selectElement);

@@ -24,6 +24,7 @@ import { getCanvasSize, startAutosave, useProjectStore } from './stores/project-
 import { useTimelineStore } from './stores/timeline-store';
 import { useUiStore } from './stores/ui-store';
 import './editor.css';
+import { perfEnabled } from './lib/perf';
 
 /** Applies anything other pages queued for the editor (Content Studio upload, Trending template). */
 async function consumeHandoff(projectKey: string) {
@@ -53,6 +54,11 @@ async function consumeHandoff(projectKey: string) {
 
 function ResizeHandle({ direction }: { direction: 'horizontal' | 'vertical' }) {
     return <PanelResizeHandle className={`ke-resize is-${direction}`} />;
+}
+
+// Benchmark hook (scripts/bench-editor.mjs): only with editor diagnostics on (?perf=1).
+if (perfEnabled && typeof window !== 'undefined') {
+    (window as unknown as { __keBench: unknown }).__keBench = { media: useMediaStore, timeline: useTimelineStore, playback: usePlaybackStore, project: useProjectStore };
 }
 
 export default function Editor() {

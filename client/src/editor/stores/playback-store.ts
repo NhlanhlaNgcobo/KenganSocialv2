@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { DEFAULT_FPS } from '../constants';
 import { useTimelineStore } from './timeline-store';
+import { perfSeekStart } from '../lib/perf';
 
 export const PLAYBACK_EVENTS = {
     seek: 'editor-playback-seek',
@@ -113,6 +114,7 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
         },
         toggle: () => (get().isPlaying ? get().pause() : get().play()),
         seek: (time) => {
+            perfSeekStart();
             const end = Math.max(contentDuration(), 0);
             const clamped = Math.max(0, Math.min(end || time, time));
             set({ currentTime: clamped });

@@ -1,3 +1,4 @@
+import { perfBackendCall } from '../editor/lib/perf';
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export const NETWORK_ERROR = "Can't reach KenganSocial right now. Check your internet connection and try again in a moment.";
@@ -35,6 +36,7 @@ export function buildApiError(errorData, status) {
  * with code 'NETWORK_ERROR'. A cancelled request keeps its own error.
  */
 export async function apiFetch(url, init) {
+    perfBackendCall(String(url).replace(/^https?:\/\/[^/]+/, ''));
     try {
         const isRead = !init?.method || ['GET', 'HEAD'].includes(init.method.toUpperCase());
         const timeout = isRead ? AbortSignal.timeout(30000) : null;

@@ -9,6 +9,7 @@ import { useProjectStore } from '../../stores/project-store';
 import { GradedCanvas, useLut, webgl2Available } from './GradedCanvas';
 import { PLAYBACK_EVENTS, setMediaStalled, usePlaybackStore } from '../../stores/playback-store';
 import type { ChromaKey, MediaElement } from '../../types';
+import { perfRender, perfWatchVideo } from '../../lib/perf';
 
 interface Props {
     kind: 'video' | 'audio';
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export function MediaLayer({ kind, src, element, trackMuted, active, extendHead = 0, extendTail = 0, extraFilter = '', chromaKey = null }: Props) {
+    perfRender('MediaLayer');
     const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
     const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
     const luts = useProjectStore((s) => s.luts);
@@ -136,6 +138,7 @@ export function MediaLayer({ kind, src, element, trackMuted, active, extendHead 
             <video
                 ref={(el) => {
                     (ref as React.MutableRefObject<HTMLVideoElement | null>).current = el;
+                    perfWatchVideo(el);
                     if (el !== videoEl) setVideoEl(el);
                 }}
                 src={src}

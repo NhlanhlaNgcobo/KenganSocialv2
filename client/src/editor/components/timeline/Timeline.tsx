@@ -12,6 +12,7 @@ import { DRAG_MIME, type DragData, type MediaElement, type MediaItem, type Timel
 import { TimelineElement } from './TimelineElement';
 import { TimelineRuler } from './TimelineRuler';
 import { TimelineToolbar } from './TimelineToolbar';
+import { perfRender } from '../../lib/perf';
 
 const LABEL_W = TIMELINE.TRACK_LABEL_WIDTH;
 const RULER_H = 28;
@@ -19,6 +20,7 @@ const RULER_H = 28;
 const TRACK_ICONS = { media: Film, text: Type, audio: Music };
 
 export function Timeline() {
+    perfRender('Timeline');
     const tracks = useTimelineStore((s) => s.tracks);
     const selected = useTimelineStore((s) => s.selected);
     const totalDuration = useTimelineStore((s) => s.getTotalDuration());
