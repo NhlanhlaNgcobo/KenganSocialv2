@@ -1,0 +1,242 @@
+{
+  "label": "cpu4-v2-r2",
+  "at": "2026-10-28T16:23:13.489Z",
+  "browser": "chrome-headless-shell.exe",
+  "headless": true,
+  "cpuThrottle": 4,
+  "preview": "v2",
+  "app": "http://localhost:4173",
+  "scenarios": {
+    "1080p single clip (play 8 s)": {
+      "seconds": 8.02,
+      "rafFps": 51.2,
+      "presentedFps": 29.4,
+      "droppedFrames": 1,
+      "decodedFrames": 240,
+      "longTasks": 0,
+      "longTaskMs": 0,
+      "seekMs": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "rendersPerSecond": {
+        "PreviewPanel": 0.1,
+        "MediaLayer": 0.4,
+        "Timeline": 0.1
+      },
+      "renders": {
+        "PreviewPanel": 1,
+        "MediaLayer": 3,
+        "Timeline": 1
+      },
+      "backendCalls": {},
+      "heap": {
+        "usedMB": 7.5,
+        "limitMB": 4132
+      },
+      "mediaBytesDownloaded": 0,
+      "videoElements": 1,
+      "playheadAdvanced": 8
+    },
+    "4K clip in preview (play 8 s)": {
+      "seconds": 8.05,
+      "rafFps": 32.3,
+      "presentedFps": 28,
+      "droppedFrames": 0,
+      "decodedFrames": 240,
+      "longTasks": 4,
+      "longTaskMs": 231,
+      "seekMs": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "rendersPerSecond": {
+        "PreviewPanel": 0.1,
+        "MediaLayer": 0.4,
+        "Timeline": 0.1
+      },
+      "renders": {
+        "PreviewPanel": 1,
+        "MediaLayer": 3,
+        "Timeline": 1
+      },
+      "backendCalls": {},
+      "heap": {
+        "usedMB": 8.2,
+        "limitMB": 4132
+      },
+      "mediaBytesDownloaded": 0,
+      "videoElements": 1,
+      "playheadAdvanced": 8.01
+    },
+    "multi-track: video + music + 4 texts (play 8 s)": {
+      "seconds": 8.04,
+      "rafFps": 48.4,
+      "presentedFps": 25.5,
+      "droppedFrames": 1,
+      "decodedFrames": 240,
+      "longTasks": 5,
+      "longTaskMs": 660,
+      "seekMs": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "rendersPerSecond": {
+        "PreviewPanel": 1.5,
+        "MediaLayer": 0.5,
+        "Timeline": 0.1,
+        "PreviewLayer": 1
+      },
+      "renders": {
+        "PreviewPanel": 12,
+        "MediaLayer": 4,
+        "Timeline": 1,
+        "PreviewLayer": 8
+      },
+      "backendCalls": {},
+      "heap": {
+        "usedMB": 8,
+        "limitMB": 4132
+      },
+      "mediaBytesDownloaded": 0,
+      "videoElements": 1,
+      "playheadAdvanced": 8.02
+    },
+    "10 scrubs (1080p, paused)": {
+      "seconds": 1.49,
+      "rafFps": 34.1,
+      "presentedFps": 6.7,
+      "droppedFrames": 0,
+      "decodedFrames": 358,
+      "longTasks": 3,
+      "longTaskMs": 278,
+      "seekMs": {
+        "count": 10,
+        "p50": 144.6,
+        "p95": 197,
+        "max": 197
+      },
+      "rendersPerSecond": {},
+      "renders": {},
+      "backendCalls": {},
+      "heap": {
+        "usedMB": 8,
+        "limitMB": 4132
+      },
+      "mediaBytesDownloaded": 0,
+      "videoElements": 1
+    },
+    "repeated edits: 60 trims + 60 text edits": {
+      "seconds": 3.35,
+      "rafFps": 35.8,
+      "presentedFps": 5.4,
+      "droppedFrames": 0,
+      "decodedFrames": 804,
+      "longTasks": 3,
+      "longTaskMs": 235,
+      "seekMs": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "rendersPerSecond": {
+        "PreviewPanel": 35.8,
+        "PreviewLayer": 71.6,
+        "MediaLayer": 53.7,
+        "Timeline": 35.8,
+        "TimelineElement": 35.8
+      },
+      "renders": {
+        "PreviewPanel": 120,
+        "PreviewLayer": 240,
+        "MediaLayer": 180,
+        "Timeline": 120,
+        "TimelineElement": 120
+      },
+      "backendCalls": {},
+      "heap": {
+        "usedMB": 9.9,
+        "limitMB": 4132
+      },
+      "mediaBytesDownloaded": 0,
+      "videoElements": 1,
+      "editMsPer": 27.89,
+      "heapBefore": {
+        "usedMB": 8.1,
+        "limitMB": 4132
+      }
+    },
+    "long project: 20 cuts + 300 captions (play 8 s)": {
+      "seconds": 8.05,
+      "rafFps": 27.3,
+      "presentedFps": 25.7,
+      "droppedFrames": 1,
+      "decodedFrames": 236,
+      "longTasks": 2,
+      "longTaskMs": 127,
+      "seekMs": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "rendersPerSecond": {
+        "PreviewPanel": 22.6,
+        "MediaLayer": 1.5,
+        "Timeline": 0.1,
+        "PreviewLayer": 72.9
+      },
+      "renders": {
+        "PreviewPanel": 182,
+        "MediaLayer": 12,
+        "Timeline": 1,
+        "PreviewLayer": 587
+      },
+      "backendCalls": {},
+      "heap": {
+        "usedMB": 10.7,
+        "limitMB": 4132
+      },
+      "mediaBytesDownloaded": 0,
+      "videoElements": 1,
+      "playheadAdvanced": 7.85
+    }
+  },
+  "device": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.8080.0 Safari/537.36",
+    "cores": 6,
+    "deviceMemoryGB": 8,
+    "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "webCodecs": true,
+    "rvfc": true
+  },
+  "media": [
+    {
+      "name": "h264_1080p.mp4",
+      "type": "video",
+      "duration": 30,
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "name": "h264_4k.mp4",
+      "type": "video",
+      "duration": 15,
+      "width": 3840,
+      "height": 2160
+    },
+    {
+      "name": "music.m4a",
+      "type": "audio",
+      "duration": 30
+    }
+  ],
+  "pageErrors": []
+}
