@@ -3,6 +3,7 @@ import { GEMINI_MODEL } from '../config/ai-models.js';
 import { extractJsonObject, requestOpenRouterText } from './openrouter.js';
 import { freeFallbackEnabled, requestPollinationsText } from './pollinations-text.js';
 import { jsonrepair } from 'jsonrepair';
+import { ollamaChat, ollamaEnabled } from './ollama-client.js';
 
 /**
  * Asks a model for JSON. Used by the clip finder, repurposing and launch storyboards.
@@ -17,6 +18,7 @@ import { jsonrepair } from 'jsonrepair';
 const OPENROUTER_JSON_MODEL = process.env.AI_JSON_MODEL || 'anthropic/claude-haiku-4.5';
 
 function providerOrder() {
+    if (ollamaEnabled()) return ['ollama']; // self-hosted only, no paid fallback
     const configured = (process.env.AI_JSON_PROVIDERS || 'openrouter,gemini')
         .split(',')
         .map((p) => p.trim().toLowerCase())
@@ -93,6 +95,28 @@ async function viaPollinations(parts, temperature) {
     throw lastError;
 }
 
+/** Self-hosted Qwen through Ollama: text parts only (the pilot model has no vision). */
+async function viaOllama(parts, temperature) {
+    const text = parts.filter((p) => p.text).map((p) => p.text).join('\n\n');
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const { text: reply } = await ollamaChat({
+            temperature,
+            json: true,
+            messages: [
+                { role: 'system', content: 'You reply with a single complete, valid JSON object and nothing else. No markdown fences. Keep string values concise.' },
+                { role: 'user', content: text },
+            ],
+        });
+        try {
+            return lenientJson(extractJsonObject(reply));
+        } catch (error) {
+            lastError = error; // content is not logged
+        }
+    }
+    throw lastError;
+}
+
 async function viaGemini(parts, temperature) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const models = [...new Set([GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-lite-latest'])];
@@ -125,6 +149,7 @@ export async function generateJson(parts, { temperature = 0.9 } = {}) {
     for (const provider of providers) {
         try {
             if (provider === 'openrouter') return await viaOpenRouter(parts, temperature);
+            if (provider === 'ollama') return await viaOllama(parts, temperature);
             if (provider === 'pollinations') return await viaPollinations(parts, temperature);
             return await viaGemini(parts, temperature);
         } catch (error) {

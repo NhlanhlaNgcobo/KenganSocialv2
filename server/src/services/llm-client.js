@@ -1,5 +1,6 @@
 import { OpenAI } from 'openai';
 import { freeFallbackEnabled, POLLINATIONS_MODEL, pollinationsChatClient } from './pollinations-text.js';
+import { ollamaChatClient, ollamaEnabled, ollamaSettings } from './ollama-client.js';
 
 /**
  * One OpenAI-compatible chat client for the whole server.
@@ -17,6 +18,8 @@ import { freeFallbackEnabled, POLLINATIONS_MODEL, pollinationsChatClient } from 
 const LIMITS = { timeout: 60_000, maxRetries: 1 };
 
 function pickProvider() {
+    // Self-hosted (AI_PROVIDER=ollama): used alone, never falls back to a paid provider.
+    if (ollamaEnabled()) return { name: 'ollama', model: ollamaSettings().model, client: ollamaChatClient() };
     if (process.env.OPENROUTER_API_KEY) {
         return {
             name: 'openrouter',

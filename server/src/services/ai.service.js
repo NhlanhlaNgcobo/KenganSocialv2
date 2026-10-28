@@ -4,6 +4,7 @@ import { GEMINI_MODEL } from '../config/ai-models.js';
 import { requestOpenRouterText } from './openrouter.js';
 import { generateImage, imageGenerationAvailable } from './marketing/image-gen.js';
 import { uploadFile } from './storage.service.js';
+import { ollamaChat, ollamaEnabled } from './ollama-client.js';
 
 export const IMAGE_GENERATION_UNAVAILABLE = "Image generation isn't set up yet (add POLLINATIONS_API_KEY, free, or OPENROUTER_API_KEY).";
 
@@ -87,6 +88,19 @@ export async function generateContent(type, userPrompt, options = {}) {
     const systemPrompt = SYSTEM_PROMPTS[type] || SYSTEM_PROMPTS.caption;
 
     const fullPrompt = buildPrompt(systemPrompt, userPrompt, options);
+
+    // Self-hosted (AI_PROVIDER=ollama): the only provider, no paid fallback.
+    if (ollamaEnabled()) {
+        const { text } = await ollamaChat({
+            temperature: 0.8,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: fullPrompt },
+            ],
+        });
+        if (!text) throw Object.assign(new Error('The AI returned an empty answer. Try again.'), { status: 502 });
+        return { result: text, provider: 'ollama' };
+    }
 
     // --- OpenRouter first when configured (fastest and most reliable here) ---
     if (process.env.OPENROUTER_API_KEY) {

@@ -1,0 +1,54 @@
+# 10-user private pilot overlay (KenganSocial_OpenSource_MVP_Build_Brief.md §5).
+# NOT applied by default. After profiling free RAM on the VPS (Qwen3 1.7B needs ~2 GB resident):
+#
+#   docker compose -f compose.yml -f compose.pilot.yml up -d
+#   docker compose -f compose.yml -f compose.pilot.yml exec ollama ollama pull qwen3:1.7b
+#
+# Rollback: run with compose.yml alone (AI goes back to the previous provider order, invites off).
+#
+# Ollama is internal only: no `ports:`, reachable from api/ai-worker as http://ollama:11434.
+services:
+  api:
+    environment:
+      PILOT_MODE: 'true'
+      PILOT_MAX_USERS: '10'
+      AI_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen3:1.7b
+      AI_CONCURRENCY: '1'
+      EXPORT_CONCURRENCY: '1'
+      # No external free fallback either: self-hosted only.
+      AI_FREE_FALLBACK: 'off'
+    depends_on:
+      ollama: { condition: service_started }
+  ai-worker:
+    environment:
+      PILOT_MODE: 'true'
+      AI_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen3:1.7b
+      AI_CONCURRENCY: '1'
+      AI_FREE_FALLBACK: 'off'
+
+  ollama:
+    image: ollama/ollama:0.12.6
+    restart: unless-stopped
+    logging: { driver: json-file, options: { max-size: '10m', max-file: '3' } }
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ollama-models:/root/.ollama
+    # Caps, not reservations. Leaves headroom for the API, video service and other apps on the box.
+    mem_limit: 3g
+    cpus: 1.0
+    healthcheck:
+      test: ['CMD', 'ollama', 'list']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  ollama-models:

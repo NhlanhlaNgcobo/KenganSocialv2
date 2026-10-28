@@ -9,6 +9,7 @@ import {
 } from '../services/video.service.js';
 import { renderVerticalVideo, secondsToFrames } from '../services/render.service.js';
 import { uploadFile } from '../services/storage.service.js';
+import { ollamaEnabled, ollamaHealth } from '../services/ollama-client.js';
 import fs from 'fs';
 import { consumeUsage, noteBeta, noteTrial, noteUnlimited, refundUsage, usageLimit } from '../middleware/planGate.ts';
 import { readyUsageRedis } from '../utils/usageRedis.ts';
@@ -177,9 +178,11 @@ export async function generateMediaRequest(req, res) {
  * GET /api/ai/status
  * Which optional AI features are configured on this server.
  */
-export function getAiStatus(_req, res) {
+export async function getAiStatus(_req, res) {
     // aiFeatures: which optional AI features are switched on (LAUNCH_AI_FEATURES), so the app can say "coming soon".
-    res.json({ imageGeneration: mediaGenerationAvailable(), aiFeatures: aiFeatureStatus() });
+    // textProvider: 'ollama' with its health when self-hosted (AI_PROVIDER=ollama).
+    const text = ollamaEnabled() ? { textProvider: 'ollama', textAi: await ollamaHealth() } : {};
+    res.json({ imageGeneration: mediaGenerationAvailable(), aiFeatures: aiFeatureStatus(), ...text });
 }
 
 // -------------------------------------------------------
