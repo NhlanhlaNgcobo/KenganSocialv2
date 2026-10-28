@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { renderMedia, renderStill, selectComposition } from '@remotion/renderer';
-import { getBundle, retryBrowserStart } from '../brag/render.js';
+import { getBundle, renderConcurrency, retryBrowserStart } from '../brag/render.js';
 
 const RENDER_DIR = path.join(os.tmpdir(), 'kengan-renders');
 
@@ -53,7 +53,7 @@ export async function renderProductAd({ draft, settings, music = null, beats = [
             crf: 18,
             pixelFormat: 'yuv420p',
             timeoutInMilliseconds: 120000,
-            concurrency: Number(process.env.RENDER_CONCURRENCY) || 2,
+            concurrency: renderConcurrency(Number(process.env.RENDER_CONCURRENCY) || 2),
             onProgress: ({ progress }) => onProgress(progress),
         })
     );

@@ -14,6 +14,15 @@ const ENTRY = path.resolve(__dirname, '../../remotion/launch/index.jsx');
 const RENDER_DIR = path.join(os.tmpdir(), 'kengan-renders');
 if (!fs.existsSync(RENDER_DIR)) fs.mkdirSync(RENDER_DIR, { recursive: true });
 
+/**
+ * Remotion refuses a concurrency above the cores it can use. A CPU-capped container (the beta
+ * API has 1.5 CPUs) reports 1, so a fixed 2 failed every render there.
+ */
+export function renderConcurrency(wanted) {
+    const cores = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
+    return Math.max(1, Math.min(wanted, cores));
+}
+
 let bundlePromise = null;
 /** One Remotion bundle for launch videos, tutorials and product ads. */
 export function getBundle() {
@@ -137,7 +146,7 @@ export async function renderLaunchVideo({ plan, source, format, music, sfx = {},
         // Tutorial frames hold full-page app screenshots; rendering several tabs at once can exhaust
         // Chrome's memory ("Target closed" / ERR_INSUFFICIENT_RESOURCES), so they render one tab at a time.
         // RENDER_CONCURRENCY overrides both.
-        concurrency: Number(process.env.RENDER_CONCURRENCY) || (kind === 'tutorial' ? 1 : 2),
+        concurrency: renderConcurrency(Number(process.env.RENDER_CONCURRENCY) || (kind === 'tutorial' ? 1 : 2)),
         onProgress: ({ progress }) => onProgress(progress),
     }));
 
