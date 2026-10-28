@@ -17,19 +17,48 @@ export function loadPilotEmails(file = path.resolve('config/pilot-access.json'))
     return emails;
 }
 
-export function createPilotAccess(emails, verifyToken) {
-    return async (req, res, next) => {
-        if (!emails) return next();
+/**
+ * The pilot gate for /api. Two ways in, either is enough:
+ *  - the legacy email list (config/pilot-access.json), and/or
+ *  - PILOT_MODE=true invite membership (`member.isActive(uid)`, see services/pilot-invites.ts).
+ * With neither configured the gate is off. `member.enabled()` is read per request so the switch
+ * can be flipped without code changes.
+ */
+export function createPilotAccess(emails, verifyToken, member = null) {
+    const cache = new Map(); // uid -> { ok, at }: membership checks are cached for a minute
+    const CACHE_MS = 60_000;
+    const memberOk = async (uid) => {
+        const hit = cache.get(uid);
+        if (hit && Date.now() - hit.at < CACHE_MS) return hit.ok;
+        const ok = !!(await member.isActive(uid));
+        cache.set(uid, { ok, at: Date.now() });
+        if (cache.size > 5000) cache.delete(cache.keys().next().value);
+        return ok;
+    };
+    const gate = async (req, res, next) => {
+        const invites = !!member?.enabled();
+        if (!emails && !invites) return next();
         const header = req.headers.authorization || '';
         if (!/^Bearer \S+$/.test(header)) return res.status(401).json({
-            code: 'PILOT_SIGN_IN', error: 'This beta is invitation-only. Sign in with your invited Google account.'
+            code: 'PILOT_SIGN_IN', error: 'This beta is invitation-only. Sign in with your invited account.'
         });
         let user;
         try { user = await verifyToken(header.slice(7), true); }
         catch { return res.status(401).json({ code: 'INVALID_TOKEN', error: 'Your sign-in could not be verified. Sign in again.' }); }
-        if (!user.email_verified || !emails.has(String(user.email || '').toLowerCase())) {
-            return res.status(403).json({ code: 'PILOT_ACCESS_DENIED', error: 'This beta is invitation-only. Use Google sign-in with the account you were invited with.' });
+        if (!user.email_verified) {
+            return res.status(403).json({ code: 'PILOT_EMAIL_UNVERIFIED', error: 'Verify your email address (or use Google sign-in) to join the beta.' });
         }
-        next();
+        if (emails?.has(String(user.email || '').toLowerCase())) return next();
+        if (invites) {
+            let ok = false;
+            try { ok = await memberOk(user.uid); }
+            catch { return res.status(503).json({ code: 'PILOT_CHECK_FAILED', error: "We couldn't check your beta access. Try again in a minute." }); }
+            if (ok) return next();
+            return res.status(403).json({ code: 'PILOT_INVITE_REQUIRED', error: 'This beta is invitation-only. Enter your invite code to join.' });
+        }
+        return res.status(403).json({ code: 'PILOT_ACCESS_DENIED', error: 'This beta is invitation-only. Use Google sign-in with the account you were invited with.' });
     };
+    /** Forget a cached answer (after a redeem or revoke in this process). */
+    gate.forget = (uid) => cache.delete(uid);
+    return gate;
 }

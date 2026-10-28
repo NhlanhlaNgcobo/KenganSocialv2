@@ -4,6 +4,7 @@ import { readyUsageRedis } from '../utils/usageRedis';
 import { RESERVE_USAGE, REFUND_USAGE } from '../services/usage-reservation';
 import { BETA_LIMITS, BETA_MAX_SOURCE_MINUTES, MAX_SOURCE_MINUTES, PLAN_LIMITS, PlanFeature, TRIAL_LIMITS, TRIAL_MEDIA_PLAN } from '../utils/planLimits';
 import { getMonth, endOfMonth } from '../utils/dateUtils';
+import { pilotCap, utcDay } from '../config/pilot';
 
 export type UsageResult = { ok: boolean; status: number; body: Record<string, any> };
 const ALLOWED: UsageResult = { ok: true, status: 200, body: {} };
@@ -44,6 +45,15 @@ export const isBeta = (workspaceId: string) => betas.has(workspaceId);
 /** The monthly allowance for a feature: the plan's, or the trial or beta cap while one applies. */
 export function usageLimit(workspaceId: string, plan: string, feature: PlanFeature): number {
     if (unlimitedWorkspaces.has(workspaceId)) return -1;
+    const base = baseUsageLimit(workspaceId, plan, feature);
+    // Private pilot (PILOT_MODE=true): the pilot cap applies on top; the lower one wins.
+    const cap = pilotCap(workspaceId, feature);
+    if (cap === undefined || base === 0) return base;
+    if (cap === -1) return base;
+    return base === -1 ? cap : Math.min(base, cap);
+}
+
+function baseUsageLimit(workspaceId: string, plan: string, feature: PlanFeature): number {
     const limit = (PLAN_LIMITS as any)[plan]?.[feature] ?? 0;
     if (betas.has(workspaceId)) {
         if (limit === 0) return 0;
@@ -98,7 +108,23 @@ export async function consumeUsage(workspaceId: string, plan: string, feature: P
     const key = `${limit === -1 ? 'agency_usage' : 'usage'}:${workspaceId}:${feature}:${getMonth()}`;
     try {
         const redis = await readyUsageRedis();
+        // Pilot: AI text also has a daily cap (UTC day), reserved first and given back if the
+        // monthly reservation then fails.
+        const daily = feature === 'aiCalls' ? pilotCap(workspaceId, 'aiCallsDaily') : undefined;
+        const { day, end } = utcDay();
+        const dayKey = `usage:${workspaceId}:aiCalls:day:${day}`;
+        if (daily !== undefined && daily !== -1) {
+            const [dayOk, dayUsed] = await redis.eval(RESERVE_USAGE, 1, dayKey, amount, daily, end) as [number, number];
+            if (!dayOk) {
+                return {
+                    ok: false,
+                    status: 429,
+                    body: { error: 'DAILY_LIMIT_EXCEEDED', message: `You've used ${dayUsed} of your ${daily} AI generations today. The count resets at 00:00 UTC.`, feature, limit: daily, current: dayUsed, needed: amount, resetsAt: new Date(end * 1000).toISOString() },
+                };
+            }
+        }
         const [allowed, current] = await redis.eval(RESERVE_USAGE, 1, key, amount, limit, endOfMonth()) as [number, number];
+        if (!allowed && daily !== undefined && daily !== -1) await redis.eval(REFUND_USAGE, 1, dayKey, amount);
         if (!allowed) {
             return {
                 ok: false,
@@ -139,6 +165,8 @@ export async function refundUsage(workspaceId: string, plan: string, feature: Pl
     try {
         const redis = await readyUsageRedis();
         await redis.eval(REFUND_USAGE, 1, `usage:${workspaceId}:${feature}:${getMonth()}`, Math.max(1, Math.ceil(units)));
+        const daily = feature === 'aiCalls' ? pilotCap(workspaceId, 'aiCallsDaily') : undefined;
+        if (daily !== undefined && daily !== -1) await redis.eval(REFUND_USAGE, 1, `usage:${workspaceId}:aiCalls:day:${utcDay().day}`, Math.max(1, Math.ceil(units)));
     } catch (err) {
         console.error('[PlanGate] Refund failed:', err);
     }

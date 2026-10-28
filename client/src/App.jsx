@@ -49,6 +49,7 @@ const ClipsPage = lazy(() => import('./pages/Clips/ClipsPage'));
 const RepurposePage = lazy(() => import('./pages/Repurpose/RepurposePage'));
 const MarketingPage = lazy(() => import('./pages/Marketing/MarketingPage'));
 const ClientsPage = lazy(() => import('./pages/Clients/ClientsPage'));
+const PilotAdminPage = lazy(() => import('./pages/PilotAdminPage'));
 const ReviewPage = lazy(() => import('./pages/Review/ReviewPage'));
 
 function App() {
@@ -122,6 +123,8 @@ function App() {
                 <Route path="repurpose" element={<RepurposePage />} />
                 <Route path="marketing" element={<MarketingPage />} />
                 <Route path="clients" element={<ClientsPage />} />
+                {/* Private pilot admin (server checks the pilotAdmin claim) */}
+                <Route path="pilot-admin" element={<PilotAdminPage />} />
                 {/* Video editor moved to /editor for full-screen layout */}
               </Route>
 

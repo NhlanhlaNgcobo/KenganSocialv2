@@ -9,6 +9,11 @@ import morgan from 'morgan';
 import { apiRateLimits } from './src/middleware/rateLimits.js';
 import path from 'path';
 import { createPilotAccess, loadPilotEmails } from './src/middleware/pilotAccess.js';
+import { createPilotRouter } from './src/routes/pilot';
+import { pilotMode } from './src/config/pilot';
+import { isActiveMember } from './src/services/pilot-invites';
+import { pilotOverviewExtras } from './src/services/pilot-overview';
+import { db as firestoreDb } from './src/utils/firestore';
 import { betaEnabled, betaFeatureLock, betaLockedPages, betaPlatforms, isBetaOAuthCallback } from './src/config/beta-features.js';
 import { getAuth, initializeFirebaseAdmin } from './src/config/firebase.js';
 import { getStorageDriver, LOCAL_UPLOAD_DIR } from './src/services/storage.service.js';
@@ -145,11 +150,20 @@ app.use(signMediaResponse);
 app.use('/api/private-media', privateMediaRoutes);
 app.use('/api/health', healthRoutes);
 // Feature switches the app needs before sign-in (e.g. whether YouTube link import is on).
-app.get('/api/features', (_req, res) => res.json({ youtubeLinkImport: features.youtubeLinkImport(), beta: betaEnabled(), lockedPages: betaEnabled() ? betaLockedPages() : [], betaPlatforms: betaEnabled() ? betaPlatforms() : null, aiFeatures: aiFeatureStatus() }));
+app.get('/api/features', (_req, res) => res.json({ youtubeLinkImport: features.youtubeLinkImport(), beta: betaEnabled(), lockedPages: betaEnabled() ? betaLockedPages() : [], betaPlatforms: betaEnabled() ? betaPlatforms() : null, aiFeatures: aiFeatureStatus(), pilot: pilotMode() }));
 // Recipients authenticate with the scoped, expiring review token, not a pilot account.
 app.use('/api/review', reviewRoutes);
 // The pilot protects authenticated APIs and anonymous processing routes.
-const pilotAccess = createPilotAccess(loadPilotEmails(), (token, revoked) => getAuth().verifyIdToken(token, revoked));
+const verifyIdToken = (token, revoked) => getAuth().verifyIdToken(token, revoked);
+const pilotAccess = createPilotAccess(loadPilotEmails(), verifyIdToken, { enabled: pilotMode, isActive: (uid) => isActiveMember(firestoreDb, uid) });
+// Invite redemption and pilot admin tools check the token themselves (an invitee isn't a member yet).
+app.use('/api/pilot', createPilotRouter({
+    db: firestoreDb,
+    verifyToken: verifyIdToken,
+    forget: (uid) => pilotAccess.forget(uid),
+    revokeSessions: (uid) => getAuth().revokeRefreshTokens(uid),
+    overviewExtras: pilotOverviewExtras,
+}));
 // A beta platform's OAuth callback arrives from the platform without our token; its signed,
 // expiring state (issued only to an invited, signed-in owner or admin) is checked in the route.
 app.use('/api', (req, res, next) => (isBetaOAuthCallback(req.path) ? next() : pilotAccess(req, res, next)));

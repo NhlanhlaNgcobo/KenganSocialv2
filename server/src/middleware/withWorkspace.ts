@@ -4,6 +4,7 @@ import { db } from '../utils/firestore';
 import { applyDevPlanOverride } from '../utils/devPlan';
 import { effectivePlan, onBeta, trialEndsAt } from '../utils/trial';
 import { noteBeta, noteTrial, noteUnlimited } from './planGate';
+import { notePilotOverrides } from '../config/pilot';
 import { enforceWorkspaceAccess, workspaceRole } from './workspaceAccess';
 
 async function resolveWorkspaceForUser(uid: string, requestedWorkspaceId?: string) {
@@ -95,6 +96,7 @@ export async function withWorkspace(req: Request, res: Response, next: NextFunct
         noteTrial(resolvedWorkspace.id, (req as any).plan === resolvedWorkspace.plan ? resolvedWorkspace.trialEndsAt : null);
         noteUnlimited(resolvedWorkspace.id, !!(resolvedWorkspace as any).unlimited);
         noteBeta(resolvedWorkspace.id, (req as any).plan === resolvedWorkspace.plan && !!(resolvedWorkspace as any).beta);
+        notePilotOverrides(resolvedWorkspace.id, (resolvedWorkspace as any).pilotLimits);
         (req as any).workspaceRole = resolvedWorkspace.role;
         return enforceWorkspaceAccess(req, res, next);
     } catch (err: any) {

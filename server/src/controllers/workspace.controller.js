@@ -1,5 +1,6 @@
 import { getAuth, getFirestore } from '../config/firebase.js';
 import { FieldValue } from 'firebase-admin/firestore';
+import { pilotMode } from '../config/pilot';
 
 /**
  * Get every workspace the authenticated user can open: the ones they own plus the ones they
@@ -57,6 +58,12 @@ export async function createWorkspace(req, res) {
 
         if (name.length < 3 || name.length > 50) {
             return res.status(400).json({ error: 'Workspace names are 3–50 characters.' });
+        }
+
+        // Pilot: one workspace per tester, so per-workspace quotas can't be multiplied.
+        if (pilotMode()) {
+            const owned = await db.collection('workspaces').where('ownerId', '==', uid).limit(1).get();
+            if (!owned.empty) return res.status(403).json({ code: 'PILOT_ONE_WORKSPACE', error: 'During the beta each tester has one workspace.' });
         }
 
         const now = new Date().toISOString();

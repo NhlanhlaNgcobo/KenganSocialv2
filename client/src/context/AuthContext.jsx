@@ -11,8 +11,10 @@ import {
 import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
 import { apiClient, apiFetch, API_URL } from '../lib/api';
 import { PRIVACY, TERMS } from '../content/legal';
+import { clearInviteCode } from '../lib/pilotInvite';
 
 const AuthContext = createContext(null);
+
 
 /** True when a signed-in user hasn't accepted the current Terms and Privacy Policy (first sign-in or after an update). */
 function requiresConsent(profile) {
@@ -44,6 +46,8 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [profile, setProfile] = useState(null);
     const [accessError, setAccessError] = useState(null);
+    // Private pilot: signed in, but this account hasn't redeemed an invite yet.
+    const [needsInvite, setNeedsInvite] = useState(false);
     const [workspace, setWorkspace] = useState(null);
     const [plan, setPlan] = useState('starter');
     // Without Firebase there is no session to wait for.
@@ -82,6 +86,7 @@ export function AuthProvider({ children }) {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser);
             setAccessError(null);
+            setNeedsInvite(false);
 
             if (!firebaseUser) {
                 clearSession();
@@ -100,7 +105,9 @@ export function AuthProvider({ children }) {
                         photoURL: firebaseUser.photoURL,
                     });
                 } catch (createErr) {
-                    if (createErr?.data?.code === 'PILOT_ACCESS_DENIED') setAccessError(createErr.message);
+                    const code = createErr?.data?.code;
+                    if (code === 'PILOT_INVITE_REQUIRED') setNeedsInvite(true);
+                    else if (code === 'PILOT_ACCESS_DENIED' || code === 'PILOT_EMAIL_UNVERIFIED') setAccessError(createErr.message);
                     console.error('Failed to load or create profile:', createErr);
                     clearSession();
                 }
@@ -111,6 +118,24 @@ export function AuthProvider({ children }) {
 
         return () => unsubscribe();
     }, [clearSession, ensureProfile, refreshProfile]);
+
+    /** Redeems a pilot invite code for the signed-in account, then loads (or creates) the profile. */
+    const redeemInvite = async (code) => {
+        await apiClient('/pilot/redeem', { method: 'POST', body: JSON.stringify({ code }) });
+        clearInviteCode();
+        setNeedsInvite(false);
+        setLoading(true);
+        try {
+            await refreshProfile();
+        } catch {
+            await ensureProfile({
+                displayName: auth?.currentUser?.displayName || auth?.currentUser?.email?.split('@')[0],
+                photoURL: auth?.currentUser?.photoURL,
+            }).catch((err) => setAccessError(err.message));
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const login = async (email, password) => {
         if (!auth) throw new Error('Firebase is not configured');
@@ -189,6 +214,8 @@ export function AuthProvider({ children }) {
         plan,
         loading,
         accessError,
+        needsInvite,
+        redeemInvite,
         capabilities,
         needsOnboarding: requiresOnboarding(profile),
         needsConsent: requiresConsent(profile),

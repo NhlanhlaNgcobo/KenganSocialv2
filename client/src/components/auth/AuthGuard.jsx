@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import PilotInviteForm from './PilotInviteForm';
 
 /**
  * Signed-in routes. Waits for the profile before deciding, then:
@@ -9,7 +10,7 @@ import { useAuth } from '../../context/AuthContext';
  * - onboarding finished and visiting /onboarding → /dashboard
  */
 export default function AuthGuard({ children }) {
-    const { user, profile, loading, needsOnboarding, needsConsent, accessError, logout, capabilities } = useAuth();
+    const { user, profile, loading, needsOnboarding, needsConsent, accessError, needsInvite, logout, capabilities } = useAuth();
     const { pathname, search, state } = useLocation();
     const onOnboarding = pathname.startsWith('/onboarding');
     const onConsent = pathname.startsWith('/consent');
@@ -26,6 +27,8 @@ export default function AuthGuard({ children }) {
         // Remember where they were going (e.g. a shared ?connect=tiktok link) for after sign-in.
         return <Navigate to="/login" replace state={{ from: `${pathname}${search}` }} />;
     }
+
+    if (needsInvite) return <PilotInviteForm />;
 
     if (accessError) {
         return <main className="auth-page"><section className="auth-card" role="alert">
