@@ -6,8 +6,13 @@ const BETA_PLATFORM_IDS = ['tiktok', 'youtube'];
 export const betaPlatforms = () =>
     String(process.env.BETA_PLATFORMS || '').split(',').map((p) => p.trim().toLowerCase()).filter((p) => BETA_PLATFORM_IDS.includes(p));
 
-/** True when publishing to every one of `platforms` is allowed (always, outside the beta). */
+/**
+ * True when publishing to every one of `platforms` is allowed: inside PUBLISH_APPROVED_PLATFORMS
+ * when that is set, and inside BETA_PLATFORMS during the beta (always, otherwise).
+ */
 export const betaPublishAllowed = (platforms) => {
+    const approved = String(process.env.PUBLISH_APPROVED_PLATFORMS || '').split(',').map((p) => p.trim().toLowerCase()).filter(Boolean);
+    if (approved.length && !(Array.isArray(platforms) && platforms.length > 0 && platforms.every((p) => approved.includes(String(p).toLowerCase())))) return false;
     if (!betaEnabled()) return true;
     const open = betaPlatforms();
     return Array.isArray(platforms) && platforms.length > 0 && platforms.every((p) => open.includes(String(p).toLowerCase()));
@@ -37,7 +42,8 @@ export function betaFeatureLock(req, res, next) {
     const path = req.path;
     // /connections (list) and /connections/<open platform>/... stay open; other platforms are locked.
     const conn = /^\/connections(?:\/([a-z_]+))?(\/|$)/.exec(path);
-    const lockedConnection = !!conn && (conn[1] ? !betaPlatforms().includes(conn[1]) : !betaPlatforms().length);
+    // /connections/availability is read-only status for every network, so it stays open.
+    const lockedConnection = !!conn && conn[1] !== 'availability' && (conn[1] ? !betaPlatforms().includes(conn[1]) : !betaPlatforms().length);
     // The Connections page lists, regroups and disconnects through /workspaces/:id/connections.
     // With a beta platform open those stay usable; adding a record by hand (POST) stays locked.
     const workspaceConnections = /^\/workspaces\/[^/]+\/connections(\/|$)/.test(path);

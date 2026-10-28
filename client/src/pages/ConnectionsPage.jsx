@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import PublishAvailability from '../components/connections/PublishAvailability';
 import {
     Instagram,
     Facebook,
@@ -427,6 +428,7 @@ export default function ConnectionsPage() {
                 </div>
             ) : (
                 <>
+                    <PublishAvailability workspaceId={currentWorkspace?.id} />
                     <div className="page-header">
                         <h3 style={{ marginTop: '32px' }}>Workspace Folders</h3>
                     </div>

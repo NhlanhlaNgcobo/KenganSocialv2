@@ -6,6 +6,10 @@ import crypto from 'crypto';
 import cron from 'node-cron';
 import { db } from '../utils/firestore';
 import { encrypt, decrypt } from '../utils/tokenEncryption';
+import { consumeState, redisNonceClaimer, safeOAuthError, signState as signOAuthState } from '../services/oauth-state';
+import { readyUsageRedis } from '../utils/usageRedis';
+import { availabilityFor } from '../services/publish-availability';
+import { usageLimit } from '../middleware/planGate';
 import { FieldValue } from 'firebase-admin/firestore';
 import { publishToYouTube } from '../services/publishers/youtube';
 import { deleteConnection } from '../services/data-deletion.service';
@@ -149,32 +153,31 @@ function ensureOAuthConfig(platform: Platform) {
     return cfg;
 }
 
-// OAuth state is signed and expires, so a callback can only attach an account to the
-// workspace that started the sign-in (a forged state naming another workspace is refused).
-const STATE_TTL_MS = 15 * 60 * 1000;
+// OAuth state is signed, expires, names the user + workspace + platform that started the sign-in,
+// and works once (services/oauth-state.ts). The callback also re-checks that this user may still
+// manage connections for that workspace.
 function stateKey() {
     const key = env('TOKEN_ENCRYPTION_KEY');
     if (!key) throw new Error('TOKEN_ENCRYPTION_KEY_NOT_SET');
     return key;
 }
-function signState(data: { workspaceId: string; platform: string }) {
-    const payload = Buffer.from(JSON.stringify({ ...data, exp: Date.now() + STATE_TTL_MS, n: crypto.randomBytes(8).toString('hex') })).toString('base64url');
-    const sig = crypto.createHmac('sha256', stateKey()).update(payload).digest('base64url');
-    return `${payload}.${sig}`;
-}
-function verifyState(state: string | undefined): { workspaceId: string; platform: string } {
-    const [payload, sig] = String(state || '').split('.');
-    if (!payload || !sig) throw new Error('INVALID_OAUTH_STATE');
-    const expected = crypto.createHmac('sha256', stateKey()).update(payload).digest('base64url');
-    if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) throw new Error('INVALID_OAUTH_STATE');
-    const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
-    if (!data.exp || data.exp < Date.now()) throw new Error('EXPIRED_OAUTH_STATE');
+const claimNonce = redisNonceClaimer(readyUsageRedis);
+async function verifyCallbackState(state: string | undefined, platforms: string[]): Promise<{ workspaceId: string; platform: string }> {
+    const data = await consumeState(stateKey(), state, platforms, claimNonce);
+    if (data.uid) {
+        const ws = await db.collection('workspaces').doc(data.workspaceId).get();
+        if (!ws.exists) throw new Error('OAUTH_WORKSPACE_GONE');
+        if (ws.data()?.ownerId !== data.uid) {
+            const member = await ws.ref.collection('members').doc(data.uid).get();
+            if (!member.exists || !['owner', 'admin'].includes(member.data()?.role)) throw new Error('OAUTH_NOT_ALLOWED');
+        }
+    }
     return data;
 }
 
-function buildOAuthUrl(platform: Platform, workspaceId: string) {
+function buildOAuthUrl(platform: Platform, workspaceId: string, uid: string) {
     const cfg = ensureOAuthConfig(platform);
-    const state = signState({ workspaceId, platform });
+    const state = signOAuthState(stateKey(), { workspaceId, platform, uid });
 
     const params = new URLSearchParams({
         client_id: cfg.clientId(),
@@ -297,22 +300,41 @@ async function youtubeApiRequest<T = any>(
     return response.data;
 }
 
+/**
+ * Connected accounts per workspace (plan/beta/pilot `connections` limit). Reconnecting a platform
+ * that is already connected is always allowed.
+ */
+async function connectionCapCheck(req: Request, res: Response, next: NextFunction) {
+    const workspaceId = (req as any).workspaceId;
+    const limit = usageLimit(workspaceId, (req as any).plan || 'starter', 'connections');
+    if (limit === -1) return next();
+    try {
+        const snap = await db.collection('workspaces').doc(workspaceId).collection('connections').get();
+        const ids = snap.docs.map((d) => d.id);
+        if (ids.includes(req.params.platform) || ids.length < limit) return next();
+        return res.status(402).json({ error: 'CONNECTION_LIMIT', message: `You can connect up to ${limit} accounts. Disconnect one to add another.`, limit });
+    } catch (err: any) {
+        console.error('[Connections] cap check failed:', err?.message);
+        return res.status(503).json({ error: 'TRY_AGAIN', message: "We couldn't check your connections. Try again." });
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //   OAUTH INITIATION  GET /api/connections/:platform/auth
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/:platform/auth', withWorkspace, requireWorkspaceRole('owner', 'admin'), (req: Request, res: Response) => {
+router.get('/:platform/auth', withWorkspace, requireWorkspaceRole('owner', 'admin'), connectionCapCheck, (req: Request, res: Response) => {
     const platform = req.params.platform as Platform;
     if (!OAUTH_CONFIG[platform]) return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
 
     const workspaceId = (req as any).workspaceId;
     try {
-        res.redirect(buildOAuthUrl(platform, workspaceId));
+        res.redirect(buildOAuthUrl(platform, workspaceId, (req as any).uid));
     } catch (error: any) {
         return res.status(500).json({ error: error.message || 'OAUTH_NOT_CONFIGURED' });
     }
 });
 
-router.get('/:platform/auth-url', withWorkspace, requireWorkspaceRole('owner', 'admin'), (req: Request, res: Response) => {
+router.get('/:platform/auth-url', withWorkspace, requireWorkspaceRole('owner', 'admin'), connectionCapCheck, (req: Request, res: Response) => {
     const platform = req.params.platform as Platform;
     if (!OAUTH_CONFIG[platform]) {
         return res.status(404).json({ error: 'UNKNOWN_PLATFORM' });
@@ -320,7 +342,7 @@ router.get('/:platform/auth-url', withWorkspace, requireWorkspaceRole('owner', '
 
     try {
         const workspaceId = (req as any).workspaceId;
-        return res.json({ url: buildOAuthUrl(platform, workspaceId) });
+        return res.json({ url: buildOAuthUrl(platform, workspaceId, (req as any).uid) });
     } catch (error: any) {
         return res.status(500).json({ error: error.message || 'OAUTH_NOT_CONFIGURED' });
     }
@@ -332,7 +354,7 @@ router.get('/:platform/auth-url', withWorkspace, requireWorkspaceRole('owner', '
 router.get('/youtube/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = verifyState(state);
+        const { workspaceId } = await verifyCallbackState(state, ['youtube']);
         const cfg = OAUTH_CONFIG.youtube;
 
         // Exchange code for tokens
@@ -374,7 +396,7 @@ router.get('/youtube/callback', async (req: Request, res: Response) => {
 
         res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?connected=youtube`);
     } catch (err) {
-        console.error('[YouTube callback]', err);
+        console.error('[YouTube callback]', safeOAuthError(err));
         res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?error=youtube`);
     }
 });
@@ -613,7 +635,7 @@ function metaCallback(platform: MetaPlatform) {
         try {
             const { code, state, error } = req.query as Record<string, string>;
             if (error) return back(`error=${platform}&reason=cancelled`); // the person declined on Facebook
-            const { workspaceId } = verifyState(state);
+            const { workspaceId } = await verifyCallbackState(state, [platform]);
             const login = await metaLoginFromCode(platform, code);
             const candidates = await metaCandidates(platform, login.userToken);
             if (!candidates.length) return back(`error=${platform}&reason=${NO_CANDIDATES_REASON[platform]}`);
@@ -633,7 +655,7 @@ function metaCallback(platform: MetaPlatform) {
             });
             back(`select=${platform}`);
         } catch (err: any) {
-            console.error(`[Meta ${platform} callback]`, err.response?.data || err.message);
+            console.error(`[Meta ${platform} callback]`, safeOAuthError(err));
             back(`error=${platform}`);
         }
     };
@@ -733,7 +755,7 @@ router.post('/:platform/webhooks', withWorkspace, requireWorkspaceRole('owner', 
 router.get('/tiktok/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query as Record<string, string>;
-        const { workspaceId } = verifyState(state);
+        const { workspaceId } = await verifyCallbackState(state, ['tiktok']);
         const cfg = OAUTH_CONFIG.tiktok;
 
         // Exchange code — TikTok uses client_key, not client_id
@@ -774,7 +796,7 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
 
         res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?connected=tiktok`);
     } catch (err) {
-        console.error('[TikTok callback]', err);
+        console.error('[TikTok callback]', safeOAuthError(err));
         res.redirect(`${env('CLIENT_URL') || 'http://localhost:5173'}/dashboard/connections?error=tiktok`);
     }
 });
@@ -782,6 +804,19 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 //   GET /api/connections  — list all (metadata only, no raw tokens)
 // ─────────────────────────────────────────────────────────────────────────────
+// What each network can do here: connect, publish, or export-and-post-manually (separate from "connected").
+router.get('/availability', withWorkspace, async (req: Request, res: Response) => {
+    const workspaceId = (req as any).workspaceId;
+    const snap = await db.collection('workspaces').doc(workspaceId).collection('connections').get();
+    const byPlatform = new Map(snap.docs.map((d) => [d.id, d.data()]));
+    const platforms = (Object.keys(OAUTH_CONFIG) as Platform[]).map((p) => {
+        const cfg = OAUTH_CONFIG[p];
+        const conn = byPlatform.get(p);
+        return availabilityFor(p, { configured: !!(cfg.clientId() && cfg.clientSecret()), connection: conn ? { status: conn.status } : null });
+    });
+    res.json({ platforms: [...platforms, availabilityFor('linkedin', { configured: false }), availabilityFor('x', { configured: false })] });
+});
+
 router.get('/', withWorkspace, async (req: Request, res: Response) => {
     const workspaceId = (req as any).workspaceId;
     const snap = await db

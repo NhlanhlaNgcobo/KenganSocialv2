@@ -198,15 +198,21 @@ export async function recoverPendingPosts(): Promise<number> {
         if (await postQueue.getJob(doc.id)) continue;
         const data = doc.data();
         const when = data.scheduledAt?.toDate ? data.scheduledAt.toDate() : new Date(data.scheduledAt);
-        await schedulePostJob({
-            postId: doc.id,
-            workspaceId: data.workspaceId,
-            platforms: data.platforms || [],
-            mediaUrl: data.mediaUrl || '',
-            caption: data.caption || '',
-            platformOptions: data.platformOptions || {},
-        }, Math.max(0, (when?.getTime?.() || Date.now()) - Date.now()));
-        requeued += 1;
+        try {
+            await schedulePostJob({
+                postId: doc.id,
+                workspaceId: data.workspaceId,
+                platforms: data.platforms || [],
+                mediaUrl: data.mediaUrl || '',
+                caption: data.caption || '',
+                platformOptions: data.platformOptions || {},
+            }, Math.max(0, (when?.getTime?.() || Date.now()) - Date.now()));
+            requeued += 1;
+        } catch (err: any) {
+            // One post that can't be queued (e.g. its platform isn't open for publishing) must not
+            // stop the others from being recovered.
+            console.warn(`[PostQueue] could not re-queue ${doc.id}:`, err?.message);
+        }
     }
     return requeued;
 }

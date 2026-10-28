@@ -7,7 +7,8 @@ import { postQueue, schedulePostJob } from '../queues/postQueue';
 const router = express.Router();
 
 import { withWorkspace } from '../middleware/withWorkspace';
-import { checkLimit, planRateLimit } from '../middleware/planGate';
+import { checkLimit, planRateLimit, refundUsage } from '../middleware/planGate';
+import crypto from 'crypto';
 import { betaPlatformMessage, betaPublishAllowed } from '../config/beta-features.js';
 
 async function safeRemoveQueuedJob(postId: string) {
@@ -48,8 +49,26 @@ async function safeSchedulePost(data: any, delay: number) {
     }
 }
 
+/**
+ * Idempotency-Key on create: the same key from the same workspace returns the post it already made
+ * (a double-click or a retried request schedules once, and is charged once).
+ */
+async function scheduleIdempotency(req: Request, res: Response, next: NextFunction) {
+    const key = req.get('idempotency-key');
+    if (key === undefined) return next();
+    if (!/^[A-Za-z0-9_-]{8,100}$/.test(key)) return res.status(400).json({ error: 'INVALID_IDEMPOTENCY_KEY' });
+    const workspaceId = (req as any).workspaceId;
+    const postId = `post_k_${crypto.createHash('sha256').update(`${workspaceId}:${key}`).digest('hex').slice(0, 32)}`;
+    (req as any).idempotentPostId = postId;
+    const existing = await db.collection('scheduled_posts').doc(postId).get();
+    if (existing.exists && existing.data()?.workspaceId === workspaceId) {
+        return res.json({ success: true, postId, duplicate: true, message: 'Already scheduled' });
+    }
+    next();
+}
+
 // POST /api/schedule/create
-router.post('/create', withWorkspace, planRateLimit(), checkLimit('posts'), async (req: Request, res: Response) => {
+router.post('/create', withWorkspace, planRateLimit(), scheduleIdempotency, checkLimit('posts'), async (req: Request, res: Response) => {
     try {
         const workspaceId = (req as any).workspaceId;
         const { platforms, mediaUrl, caption, scheduledAt, platformOptions } = req.body;
@@ -64,7 +83,7 @@ router.post('/create', withWorkspace, planRateLimit(), checkLimit('posts'), asyn
             return res.status(400).json({ error: 'PLATFORMS_REQUIRED', message: 'Pick at least one platform.' });
         }
 
-        const postId = `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        const postId = (req as any).idempotentPostId || `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         const delay = Math.max(0, when.getTime() - Date.now());
 
         const data = {
@@ -79,7 +98,16 @@ router.post('/create', withWorkspace, planRateLimit(), checkLimit('posts'), asyn
             createdAt: FieldValue.serverTimestamp(),
         };
 
-        await db.collection('scheduled_posts').doc(postId).set(data);
+        try {
+            await db.collection('scheduled_posts').doc(postId).create(data);
+        } catch (createErr: any) {
+            // Same Idempotency-Key racing: the other request made it; give this one's unit back.
+            if ((req as any).idempotentPostId && (createErr?.code === 6 || /already exists/i.test(createErr?.message || ''))) {
+                await refundUsage(workspaceId, (req as any).plan || 'starter', 'posts');
+                return res.json({ success: true, postId, duplicate: true, message: 'Already scheduled' });
+            }
+            throw createErr;
+        }
         const queueResult = isDraft ? { queued: false } : await safeSchedulePost(data, delay);
 
         res.json({
