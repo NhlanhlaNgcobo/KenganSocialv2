@@ -215,3 +215,24 @@ test('quotas: pilot caps apply on top of plan caps, admin overrides win, AI has 
         process.env.PILOT_MODE = 'true';
     }
 });
+
+test('uploads: the pilot per-file cap refuses oversized declared sizes before storing anything', async () => {
+    process.env.PILOT_MODE = 'true';
+    process.env.PILOT_MAX_UPLOAD_MB = '200';
+    const { pilotUploadCap } = await import('../../src/middleware/pilotUpload.js');
+    const check = (json: boolean, size: number) => {
+        const res: any = { statusCode: 200, status(c: number) { this.statusCode = c; return this; }, json(b: any) { this.body = b; return this; } };
+        let passed = false;
+        const req: any = { body: json ? { size } : {}, is: (t: string) => (json && t === 'application/json'), get: () => String(size) };
+        pilotUploadCap(req, res, () => { passed = true; });
+        return passed ? 200 : res.statusCode;
+    };
+    const MB = 1024 * 1024;
+    assert.equal(check(true, 200 * MB), 200);
+    assert.equal(check(true, 200 * MB + 1), 413);
+    assert.equal(check(false, 200 * MB + 512 * 1024), 200, 'multipart framing allowance');
+    assert.equal(check(false, 202 * MB), 413);
+    process.env.PILOT_MODE = 'false';
+    assert.equal(check(true, 5000 * MB), 200, 'off: no pilot cap');
+    process.env.PILOT_MODE = 'true';
+});

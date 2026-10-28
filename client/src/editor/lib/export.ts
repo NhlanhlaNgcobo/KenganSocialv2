@@ -148,35 +148,45 @@ export async function exportTimeline(onProgress: (p: ExportProgress) => void, si
         throw new Error('Add something to the timeline before exporting.');
     }
 
-    const run = async () => {
+    // One key per export: a retry of the same request returns the same job instead of a second render.
+    const idempotencyKey = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const run = async (key: string) => {
         onProgress({ stage: 'uploading', progress: 0, message: 'Uploading media' });
         const uploadIds = await useMediaStore.getState().ensureUploaded(
             mediaIds,
             (done, total) => onProgress({ stage: 'uploading', progress: Math.round((done / total) * 100), message: `Uploading media ${done}/${total}` }),
             signal
         );
-        return editorApi.startRender(range ? { ...buildEditConfig(uploadIds), range } : buildEditConfig(uploadIds));
+        return editorApi.startRender(range ? { ...buildEditConfig(uploadIds), range } : buildEditConfig(uploadIds), key);
     };
 
     let jobId: string;
     try {
-        jobId = await run();
+        jobId = await run(idempotencyKey);
     } catch (error) {
         // The render server keeps uploads in memory, so a restart loses them. Re-upload once.
         if (/source .*not found/i.test((error as Error).message)) {
             useMediaStore.getState().invalidateUploads();
-            jobId = await run();
+            jobId = await run(`${idempotencyKey}-r`); // the uploads changed, so it's a new request
         } else {
             throw error;
         }
     }
 
-    const job = await pollJob(
-        () => editorApi.getRenderStatus(jobId),
-        (j) => onProgress({ stage: 'rendering', progress: j.progress || 0, message: 'Rendering video' }),
-        (j) => j.status === 'completed',
-        signal
-    );
+    // Closing the dialog / cancelling stops the server render too (and frees the export slot).
+    const stopServer = () => editorApi.cancelRender(jobId).catch(() => {});
+    signal?.addEventListener('abort', stopServer, { once: true });
+    let job;
+    try {
+        job = await pollJob(
+            () => editorApi.getRenderStatus(jobId),
+            (j) => onProgress({ stage: 'rendering', progress: j.progress || 0, message: j.status === 'queued' ? `Waiting for the renderer${j.queuePosition ? ` (#${j.queuePosition} in line)` : ''}` : 'Rendering video' }),
+            (j) => j.status === 'completed',
+            signal
+        );
+    } finally {
+        signal?.removeEventListener('abort', stopServer);
+    }
 
     onProgress({ stage: 'downloading', progress: 100, message: 'Downloading' });
     const blob = await editorApi.downloadRender(job.downloadUrl!);

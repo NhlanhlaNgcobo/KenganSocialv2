@@ -4,13 +4,15 @@ import {
     processManualEdit,
     getManualEditStatus,
     serveManualEditFile,
+    preflightManualEdit,
+    cancelManualEdit,
 } from '../controllers/manual-edit.controller.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { withWorkspace } from '../middleware/withWorkspace.ts';
 import { checkLimit } from '../middleware/planGate.ts';
-import { videoUnits } from '../utils/planLimits.ts';
 import multer from 'multer';
 import resumableRoutes from './resumable-upload.js';
+import { pilotUploadCap } from '../middleware/pilotUpload.js';
 import os from 'os';
 
 const upload = multer({
@@ -27,19 +29,18 @@ const router = express.Router();
 router.use(requireAuth, withWorkspace);
 
 // Upload a source video file — returns uploadId
-router.post('/upload', upload.single('video'), uploadSourceVideo);
+router.post('/upload', pilotUploadCap, upload.single('video'), uploadSourceVideo);
 
 // Large files in 8 MB chunks that survive dropped connections — also returns an uploadId
 router.use('/resumable', resumableRoutes);
 
 // Submit an edit config for processing — returns jobId
-// Each started 5 minutes of exported video counts once (a short preview range counts by its length).
-const exportUnits = (req) => {
-    const range = req.body?.range;
-    const seconds = range ? Number(range.end) - Number(range.start) : Number(req.body?.duration);
-    return videoUnits(seconds);
-};
-router.post('/', checkLimit('exports', exportUnits), processManualEdit);
+// Each started 5 minutes of exported video counts once (a short preview range counts by its length);
+// preflight validates, applies the pilot's length cap and sets req.exportUnits.
+router.post('/', preflightManualEdit, checkLimit('exports', (req) => req.exportUnits || 1), processManualEdit);
+
+// Stop a queued or running export
+router.post('/cancel/:jobId', cancelManualEdit);
 
 // Poll for processing status
 router.get('/status/:jobId', getManualEditStatus);

@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { uploadMedia } from '../controllers/media.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
+import { pilotUploadCap } from '../middleware/pilotUpload.js';
 
 const router = express.Router({ mergeParams: true });
 const upload = multer({
@@ -13,6 +14,6 @@ const upload = multer({
 router.use(requireAuth);
 router.use(requireRole('owner', 'admin', 'editor'));
 
-router.post('/upload', upload.single('file'), uploadMedia);
+router.post('/upload', pilotUploadCap, upload.single('file'), uploadMedia);
 
 export default router;

@@ -1105,7 +1105,7 @@ async function composite(basePath, spec, workDir, outPath, onProgress) {
         audioOut = '[aout]';
     }
 
-    if (!graph.length && !spec.range) {
+    if (!graph.length && !spec.range && !spec.output) {
         fs.copyFileSync(basePath, outPath);
         return;
     }
@@ -1122,6 +1122,10 @@ async function composite(basePath, spec, workDir, outPath, onProgress) {
         audioOut = '[arange]';
         window = [];
     }
+    if (spec.output) {
+        graph.push(`${videoOut.startsWith('[') ? videoOut : `[${videoOut}]`}scale=${spec.output.width}:${spec.output.height}:flags=lanczos,setsar=1[vsized]`);
+        videoOut = '[vsized]';
+    }
     args.push('-filter_complex', graph.join(';'));
     args.push('-map', videoOut, '-map', audioOut);
     args.push(...window, ...ENCODE_VIDEO, ...ENCODE_AUDIO, '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outPath);
@@ -1132,8 +1136,22 @@ async function composite(basePath, spec, workDir, outPath, onProgress) {
 // Entry point
 // ---------------------------------------------------------------------------
 
-export async function renderTimeline(config, ownerId, onProgress = () => {}) {
+/** Output size whose shorter side is at most `maxShort` (even numbers), or null when already smaller. */
+export function fitShortSide(width, height, maxShort) {
+    if (!maxShort || Math.min(width, height) <= maxShort) return null;
+    const k = maxShort / Math.min(width, height);
+    const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+    return { width: even(width * k), height: even(height * k) };
+}
+
+/**
+ * @param {object} [options]
+ * @param {number} [options.maxShortSide] cap the output's shorter side (e.g. 720 in the pilot). The
+ *   timeline is composed at the preset size, so text and overlays keep their places, then scaled.
+ */
+export async function renderTimeline(config, ownerId, onProgress = () => {}, options = {}) {
     const spec = normalizeTimelineConfig(config, ownerId);
+    spec.output = fitShortSide(spec.width, spec.height, options.maxShortSide);
     const workDir = fs.mkdtempSync(path.join(RENDER_DIR, 'job-'));
     const report = (fraction) => onProgress(Math.min(99, Math.round(fraction * 100)));
 

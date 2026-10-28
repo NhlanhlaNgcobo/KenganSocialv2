@@ -19,8 +19,10 @@ async function authHeaders(): Promise<Record<string, string>> {
 
 export interface RenderJobStatus {
     jobId: string;
-    status: 'processing' | 'completed' | 'failed';
+    status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
     progress: number;
+    /** Place in line while queued (1 = next). */
+    queuePosition?: number | null;
     downloadUrl: string | null;
     outputUploadId?: string | null;
     summary?: EnhanceSummary | null;
@@ -101,9 +103,14 @@ export const editorApi = {
         return data.uploadId as string;
     },
 
-    async startRender(config: unknown): Promise<string> {
-        const data = await apiClient('/video/manual-edit', { method: 'POST', body: config });
+    /** `idempotencyKey`: the same key returns the same job (a retried or double-clicked export). */
+    async startRender(config: unknown, idempotencyKey?: string): Promise<string> {
+        const data = await apiClient('/video/manual-edit', { method: 'POST', body: config, headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined });
         return data.jobId as string;
+    },
+
+    async cancelRender(jobId: string): Promise<void> {
+        await apiClient(`/video/manual-edit/cancel/${encodeURIComponent(jobId)}`, { method: 'POST' });
     },
 
     /** Re-encodes an upload the browser cannot show (ProRes and other camera formats) to MP4. */
@@ -178,6 +185,7 @@ export async function pollJob<T extends { status: string; error?: string | null 
         const job = await fetcher();
         onUpdate(job);
         if (job.status === 'failed') throw new Error(job.error || 'Job failed');
+        if (job.status === 'cancelled') throw new Error('Cancelled');
         if (isDone(job)) return job;
         await new Promise((r) => setTimeout(r, intervalMs));
     }

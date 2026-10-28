@@ -1,5 +1,22 @@
 import { spawn } from 'child_process';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
+
+/**
+ * Limits for every FFmpeg process started inside `withProcessLimits(...)` (an export, say): a
+ * deadline and a cancel signal. Nested helpers don't need to pass them on; the processes are
+ * killed when the job is cancelled or runs out of time.
+ */
+const limitsStore = new AsyncLocalStorage();
+export function withProcessLimits({ signal, deadline }, fn) {
+    return limitsStore.run({ signal, deadline }, fn);
+}
+export class ProcessLimitError extends Error {
+    constructor(code, message) {
+        super(message);
+        this.code = code;
+    }
+}
 
 export const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 export const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe';
@@ -9,9 +26,25 @@ export const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe';
  * are given and the args include `-progress pipe:1`, reports completion as 0..1.
  */
 export function run(bin, args, { cwd, duration, onProgress } = {}) {
+    const limits = limitsStore.getStore();
+    if (limits?.signal?.aborted) return Promise.reject(new ProcessLimitError('CANCELLED', 'The job was cancelled.'));
+    if (limits?.deadline && Date.now() >= limits.deadline) return Promise.reject(new ProcessLimitError('TIMEOUT', 'The job took too long and was stopped.'));
     return new Promise((resolve, reject) => {
         const started = Date.now();
         const child = spawn(bin, args, { cwd, windowsHide: true });
+        let stopped = null;
+        const stop = (err) => {
+            if (stopped) return;
+            stopped = err;
+            child.kill('SIGKILL');
+        };
+        const onAbort = () => stop(new ProcessLimitError('CANCELLED', 'The job was cancelled.'));
+        limits?.signal?.addEventListener('abort', onAbort, { once: true });
+        const timer = limits?.deadline ? setTimeout(() => stop(new ProcessLimitError('TIMEOUT', 'The job took too long and was stopped.')), Math.max(0, limits.deadline - Date.now())) : null;
+        const cleanup = () => {
+            if (timer) clearTimeout(timer);
+            limits?.signal?.removeEventListener('abort', onAbort);
+        };
         let stderr = '';
         let stdout = '';
         child.stdout.on('data', (chunk) => {
@@ -26,8 +59,13 @@ export function run(bin, args, { cwd, duration, onProgress } = {}) {
         child.stderr.on('data', (chunk) => {
             stderr = (stderr + chunk).slice(-8000);
         });
-        child.on('error', (err) => reject(new Error(`${path.basename(bin)} could not start: ${err.message}`)));
+        child.on('error', (err) => {
+            cleanup();
+            reject(new Error(`${path.basename(bin)} could not start: ${err.message}`));
+        });
         child.on('close', (code) => {
+            cleanup();
+            if (stopped) return reject(stopped);
             if (process.env.KENGAN_RENDER_DEBUG && path.basename(bin).startsWith('ffmpeg')) console.log(`[ffmpeg] ${((Date.now() - started) / 1000).toFixed(1)}s ${args.find((a) => /\.(mp4|m4a)$/.test(a) && !args[args.indexOf(a) - 1]?.startsWith('-i')) || args.slice(-1)[0]}`);
             if (code === 0) return resolve(stdout);
             // The cause is usually an early line ("Invalid argument" for a filter, a missing file);
