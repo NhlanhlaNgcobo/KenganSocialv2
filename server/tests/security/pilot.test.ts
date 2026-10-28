@@ -189,7 +189,7 @@ test('quotas: pilot caps apply on top of plan caps, admin overrides win, AI has 
         assert.equal(usageLimit(ws, 'agency', 'exports'), 15); // agency 80 -> pilot 15
         assert.equal(usageLimit(ws, 'nano', 'exports'), 8); // lower plan cap wins
         assert.equal(usageLimit(ws, 'starter', 'aiCalls'), 0); // locked stays locked
-        assert.equal(usageLimit(ws, 'agency', 'storageGB'), 500 / 1024);
+        assert.equal(usageLimit(ws, 'agency', 'storageGB'), 700 / 1024);
         notePilotOverrides(ws, { exports: 40 });
         assert.equal(usageLimit(ws, 'agency', 'exports'), 40);
         notePilotOverrides(ws, null);

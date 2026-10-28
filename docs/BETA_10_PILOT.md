@@ -35,7 +35,7 @@ Branch `feat/opensource-beta-10` (on top of `perf/browser-preview`) · 2026-10-2
 
 ### 2.2 Quotas (server-side, atomic, UTC)
 Pilot caps apply on top of plan/beta caps (lower wins), via the existing Redis Lua counters:
-exports 15/month · transcription 10 min/month · scheduled posts 20/month · connections 3 · storage 500 MB · **AI text 10/day** (new daily counter, reset 00:00 UTC, refunded with the monthly unit) · upload 200 MB/file · export 60 s, 720p.
+exports 21/month · transcription 14 min/month · scheduled posts 28/month · connections 4 · storage 700 MB · **AI text 14/day** (new daily counter, reset 00:00 UTC, refunded with the monthly unit) · upload 1 GB/file · export 84 s, 1080p.
 Admin override per workspace: server-only field `pilotLimits: { exports: 40, aiCallsDaily: 20, … }`; `unlimited: true` still removes caps.
 
 ### 2.3 Exports (`EXPORT_CONCURRENCY`, `EXPORT_TIMEOUT_S`)

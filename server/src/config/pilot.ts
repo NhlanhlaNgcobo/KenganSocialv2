@@ -26,15 +26,15 @@ export const pilotMode = () => process.env.PILOT_MODE === 'true';
 export function pilotConfig() {
     return {
         maxUsers: num('PILOT_MAX_USERS', 10),
-        maxStorageMB: num('PILOT_MAX_STORAGE_MB', 500),
-        maxUploadMB: num('PILOT_MAX_UPLOAD_MB', 200),
-        maxExportsPerMonth: num('PILOT_MAX_EXPORTS_PER_MONTH', 15),
-        maxExportDurationS: num('PILOT_MAX_EXPORT_DURATION_S', 60),
-        maxExportResolution: num('PILOT_MAX_EXPORT_RESOLUTION', 720),
-        maxAiTextPerDay: num('PILOT_MAX_AI_TEXT_PER_DAY', 10),
-        maxTranscriptionMinutesMonth: num('PILOT_MAX_TRANSCRIPTION_MINUTES_MONTH', 10),
-        maxScheduledPosts: num('PILOT_MAX_SCHEDULED_POSTS', 20),
-        maxConnections: num('PILOT_MAX_CONNECTIONS', 3),
+        maxStorageMB: num('PILOT_MAX_STORAGE_MB', 700),
+        maxUploadMB: num('PILOT_MAX_UPLOAD_MB', 1024),
+        maxExportsPerMonth: num('PILOT_MAX_EXPORTS_PER_MONTH', 21),
+        maxExportDurationS: num('PILOT_MAX_EXPORT_DURATION_S', 84),
+        maxExportResolution: num('PILOT_MAX_EXPORT_RESOLUTION', 1080),
+        maxAiTextPerDay: num('PILOT_MAX_AI_TEXT_PER_DAY', 14),
+        maxTranscriptionMinutesMonth: num('PILOT_MAX_TRANSCRIPTION_MINUTES_MONTH', 14),
+        maxScheduledPosts: num('PILOT_MAX_SCHEDULED_POSTS', 28),
+        maxConnections: num('PILOT_MAX_CONNECTIONS', 4),
     };
 }
 

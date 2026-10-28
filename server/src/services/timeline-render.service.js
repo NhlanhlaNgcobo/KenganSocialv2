@@ -1146,7 +1146,7 @@ export function fitShortSide(width, height, maxShort) {
 
 /**
  * @param {object} [options]
- * @param {number} [options.maxShortSide] cap the output's shorter side (e.g. 720 in the pilot). The
+ * @param {number} [options.maxShortSide] cap the output's shorter side (e.g. 1080 in the pilot). The
  *   timeline is composed at the preset size, so text and overlays keep their places, then scaled.
  */
 export async function renderTimeline(config, ownerId, onProgress = () => {}, options = {}) {
