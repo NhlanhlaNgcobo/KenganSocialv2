@@ -3,7 +3,7 @@ import { GEMINI_MODEL } from '../config/ai-models.js';
 import { extractJsonObject, requestOpenRouterText } from './openrouter.js';
 import { freeFallbackEnabled, requestPollinationsText } from './pollinations-text.js';
 import { jsonrepair } from 'jsonrepair';
-import { ollamaChat, ollamaEnabled } from './ollama-client.js';
+import { ollamaChat, ollamaEnabled, ollamaVision } from './ollama-client.js';
 
 /**
  * Asks a model for JSON. Used by the clip finder, repurposing and launch storyboards.
@@ -95,9 +95,12 @@ async function viaPollinations(parts, temperature) {
     throw lastError;
 }
 
-/** Self-hosted Qwen through Ollama: text parts only (the pilot model has no vision). */
+/** Self-hosted model through Ollama. Images go along only with OLLAMA_VISION=on (a vision model). */
 async function viaOllama(parts, temperature) {
     const text = parts.filter((p) => p.text).map((p) => p.text).join('\n\n');
+    const images = ollamaVision()
+        ? parts.filter((p) => p.inlineData?.data).map((p) => ({ type: 'image_url', image_url: { url: `data:${p.inlineData.mimeType};base64,${p.inlineData.data}` } }))
+        : [];
     let lastError;
     for (let attempt = 0; attempt < 2; attempt += 1) {
         const { text: reply } = await ollamaChat({
@@ -105,7 +108,7 @@ async function viaOllama(parts, temperature) {
             json: true,
             messages: [
                 { role: 'system', content: 'You reply with a single complete, valid JSON object and nothing else. No markdown fences. Keep string values concise.' },
-                { role: 'user', content: text },
+                { role: 'user', content: images.length ? [...images, { type: 'text', text }] : text },
             ],
         });
         try {

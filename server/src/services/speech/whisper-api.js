@@ -1,12 +1,16 @@
 /**
  * Whisper speech-to-text through an API: OpenRouter's /audio/transcriptions first (same key as
- * chat), then OpenAI's. Used by lyric videos and by clip projects for long videos.
+ * chat), then OpenAI's, then Groq's (open-weights Whisper, for testing). Used by lyric videos and by
+ * clip projects for long videos.
  * Limits: 25 MB per request and about a minute per call, so long audio is sent in pieces.
  */
 
 const PROVIDERS = {
     openrouter: { url: 'https://openrouter.ai/api/v1/audio/transcriptions', model: 'openai/whisper-1', key: () => process.env.OPENROUTER_API_KEY },
     openai: { url: 'https://api.openai.com/v1/audio/transcriptions', model: 'whisper-1', key: () => process.env.OPENAI_API_KEY },
+    // Open-weights Whisper large-v3 turbo on Groq (free tier available). Last, so setting a key
+    // for testing never changes which provider an existing setup uses.
+    groq: { url: 'https://api.groq.com/openai/v1/audio/transcriptions', model: 'whisper-large-v3-turbo', key: () => process.env.GROQ_API_KEY },
 };
 
 /** Configured providers, OpenRouter first. */

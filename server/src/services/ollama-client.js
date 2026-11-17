@@ -11,6 +11,8 @@
  *  OLLAMA_NUM_CTX          4096     context window (RAM grows with it)
  *  OLLAMA_MAX_INPUT_CHARS  12000    longer prompts are cut (short context keeps CPU time bounded)
  *  OLLAMA_TIMEOUT_MS       90000    per call
+ *  OLLAMA_VISION           off      "on" sends images to the model (needs a vision model, e.g. qwen3-vl:4b);
+ *                                   off: images are dropped, as text-only models reject them
  *  AI_CONCURRENCY          1        calls run one at a time on a CPU box; others wait in line
  *  AI_QUEUE_MAX            20       beyond this many waiting, calls fail fast with 503 AI_BUSY
  *
@@ -18,6 +20,7 @@
  */
 
 export const ollamaEnabled = () => String(process.env.AI_PROVIDER || '').toLowerCase() === 'ollama';
+export const ollamaVision = () => /^(on|true|1)$/i.test(process.env.OLLAMA_VISION || '');
 
 const int = (name, fallback) => {
     const n = Number(process.env[name]);
@@ -67,6 +70,15 @@ export function stripThinking(text) {
         .trim();
 }
 
+/** Base64 images in an OpenAI-style message (data URL image parts), for Ollama's `images` field. */
+function messageImages(content) {
+    if (!ollamaVision() || !Array.isArray(content)) return [];
+    return content
+        .map((p) => (p?.type === 'image_url' ? String(p.image_url?.url || p.image_url || '') : ''))
+        .map((url) => (/^data:image\/[\w.+-]+;base64,/.test(url) ? url.slice(url.indexOf(',') + 1) : ''))
+        .filter(Boolean);
+}
+
 /** Text content of an OpenAI-style message (string, or an array of parts; images are dropped). */
 function messageText(content) {
     if (typeof content === 'string') return content;
@@ -76,7 +88,10 @@ function messageText(content) {
 
 /** Keeps the system prompt and the end of the conversation within maxInputChars. */
 function fitMessages(messages, maxChars) {
-    const out = messages.map((m) => ({ role: m.role === 'developer' ? 'system' : m.role, content: messageText(m.content) }));
+    const out = messages.map((m) => {
+        const images = messageImages(m.content);
+        return { role: m.role === 'developer' ? 'system' : m.role, content: messageText(m.content), ...(images.length ? { images } : {}) };
+    });
     let total = out.reduce((n, m) => n + m.content.length, 0);
     for (const m of out) {
         if (total <= maxChars) break;

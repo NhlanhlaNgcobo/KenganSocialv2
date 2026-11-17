@@ -3,12 +3,14 @@ import { safeGet } from '../../utils/safe-fetch.js';
 import { problem } from './validation.js';
 import { AD_MOODS } from './catalog.js';
 import { COMING_SOON, aiFeature } from '../../config/ai-features.ts';
+import { listLocalVoices, localSpeech, localTtsEnabled } from '../speech/local-tts.js';
 
 const ELEVEN = 'https://api.elevenlabs.io/v1';
 const TREBLO = 'https://api.treblo.com/v1';
 
 export function providerStatus() {
-    return { voice: !!process.env.ELEVENLABS_API_KEY && aiFeature('voiceover'), music: !!process.env.TREBLO_API_KEY && aiFeature('aiMusic') };
+    // TTS_BASE_URL (local testing only) stands in for ElevenLabs.
+    return { voice: (!!process.env.ELEVENLABS_API_KEY || localTtsEnabled()) && aiFeature('voiceover'), music: !!process.env.TREBLO_API_KEY && aiFeature('aiMusic') };
 }
 async function request(url, init, provider, fetcher = fetch) {
     let response;
@@ -36,6 +38,10 @@ const VOICE_TTL = 60 * 60 * 1000;
 
 /** The account's voices with what the picker shows: gender, age, accent, use and a sample to play. */
 export async function listVoices(fetcher = fetch, { fresh = false } = {}) {
+    if (localTtsEnabled()) {
+        if (!aiFeature('voiceover')) throw problem(503, COMING_SOON);
+        return listLocalVoices();
+    }
     if (!fresh && voiceCache.voices && Date.now() - voiceCache.at < VOICE_TTL) return voiceCache.voices;
     const data = await request(`${ELEVEN}/voices`, { headers: { 'xi-api-key': key('ELEVENLABS_API_KEY') } }, 'ElevenLabs', fetcher);
     const voices = (data.voices || []).map(v => ({
@@ -47,6 +53,10 @@ export async function listVoices(fetcher = fetch, { fresh = false } = {}) {
     return voices;
 }
 export async function createSpeech(text, voiceId, fetcher = fetch) {
+    if (localTtsEnabled()) {
+        if (!aiFeature('voiceover')) throw problem(503, COMING_SOON);
+        return localSpeech(text, voiceId);
+    }
     const data = await request(`${ELEVEN}/text-to-speech/${encodeURIComponent(voiceId)}/with-timestamps`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'xi-api-key': key('ELEVENLABS_API_KEY') },
         body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
