@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test:security": "tsx --test tests/security/*.test.ts",
     "test:video-ads": "tsx --test tests/video-ads/*.test.*",
+    "test:marketing": "tsx --test tests/marketing/*.test.ts",
     "worker:ai-edit": "tsx src/workers/ai-edit.ts"
   },
   "dependencies": {

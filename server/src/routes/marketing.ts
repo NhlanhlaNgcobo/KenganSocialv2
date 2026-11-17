@@ -17,6 +17,8 @@ import { inChromeQueue } from '../services/marketing/chrome-queue.js';
 import { fail, requireEditor, requireWorkspace, route } from '../services/marketing/http';
 import carouselRoutes from './marketing-carousels';
 import videoAdRoutes from './marketing-video-ads';
+import adRoutes from './marketing-ads';
+import competitorRoutes from './marketing-competitors';
 import { aiFeature } from '../config/ai-features';
 
 /**
@@ -55,6 +57,8 @@ const upload = multer({
 router.use(withWorkspace, requireWorkspace);
 router.use('/carousels', carouselRoutes);
 router.use('/video-ads', videoAdRoutes);
+router.use('/ads', adRoutes);
+router.use('/competitors', competitorRoutes);
 
 const kitRef = (req: Request) => db.collection('workspaces').doc((req as any).workspaceId).collection('brandKit').doc('current');
 const refsCol = (req: Request) => db.collection('workspaces').doc((req as any).workspaceId).collection('brandReferences');

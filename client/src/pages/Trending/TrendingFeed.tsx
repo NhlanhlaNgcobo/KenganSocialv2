@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, Play, Bookmark, Clock, Flame, CheckCircle, Smartphone, Info, Search } from 'lucide-react';
+import { RefreshCw, Play, Bookmark, Clock, Flame, CheckCircle, Smartphone, Info, Search, GalleryHorizontal } from 'lucide-react';
 import { useEditorStore } from '../../stores/editorStore';
 import { apiClient } from '../../lib/api';
 import './TrendingFeed.css';
@@ -255,6 +255,13 @@ export default function TrendingFeed() {
                                     onClick={() => toggleSaved(card)}
                                 >
                                     <Bookmark size={17} fill={isSaved(card) ? 'currentColor' : 'none'} />
+                                </button>
+                                <button
+                                    className="btn btn-secondary btn-sm"
+                                    title="Turn this idea into an on-brand carousel"
+                                    onClick={() => navigate(`/dashboard/marketing?tab=create&topic=${encodeURIComponent(card.videoIdea.slice(0, 300))}&extra=${encodeURIComponent(`Open with this hook: ${card.hook}`.slice(0, 400))}`)}
+                                >
+                                    <GalleryHorizontal size={14} /> Carousel
                                 </button>
                                 <button className="btn btn-primary btn-sm" onClick={() => createNow(card)}>
                                     <Play size={14} fill="currentColor" /> Create now

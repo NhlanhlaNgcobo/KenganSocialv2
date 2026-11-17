@@ -41,7 +41,7 @@ export function normalizeSlide(s = {}) {
     };
 }
 
-function voiceBlock(voice) {
+export function voiceBlock(voice) {
     if (!voice?.summary) return 'No saved brand voice: write clearly and warmly, short sentences.';
     return [
         `Voice: ${voice.summary}`,
@@ -57,7 +57,7 @@ function voiceBlock(voice) {
         .join('\n');
 }
 
-function businessBlock(b) {
+export function businessBlock(b) {
     if (!b?.oneLiner && !b?.whatYouSell) return '';
     return [
         `Business: ${b.oneLiner || b.whatYouSell}`,

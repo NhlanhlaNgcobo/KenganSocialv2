@@ -1062,3 +1062,305 @@ small.is-error {
         grid-template-columns: 1fr;
     }
 }
+
+/* ---------- Image Ad Studio ---------- */
+.notice {
+    padding: 10px 14px;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    background: var(--bg-inset, var(--bg-card));
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.notice a {
+    color: var(--accent-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.ad-photo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+}
+
+.ad-photo img {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-sm, 6px);
+    object-fit: contain;
+    background: var(--bg-inset, transparent);
+    flex: none;
+}
+
+.ad-photo > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.ad-photo strong {
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ad-photo--empty {
+    justify-content: center;
+    min-height: 76px;
+    border-style: dashed;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.ad-photo--empty:hover,
+.ad-photo--empty:focus-within {
+    border-color: var(--border-accent);
+    color: var(--text-primary);
+}
+
+.ad-swipe-pick {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    gap: 8px;
+}
+
+.ad-swipe-pick button {
+    aspect-ratio: 1;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--bg-card);
+    opacity: 0.8;
+    transition: border-color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.ad-swipe-pick button:hover {
+    opacity: 1;
+}
+
+.ad-swipe-pick button.is-active {
+    border-color: var(--accent-primary);
+    opacity: 1;
+}
+
+.ad-swipe-pick img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.ad-credits {
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 14%, transparent);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.ad-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+}
+
+.ad-grid.is-9x16 {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.ad-card {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    overflow: hidden;
+}
+
+.ad-card__media {
+    position: relative;
+    background: var(--bg-inset, #000);
+}
+
+.ad-card__media img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.ad-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+}
+
+.ad-card__meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+}
+
+.chip.is-static {
+    cursor: default;
+}
+
+/* Kept beside the labels, not over the preview, so it never hides part of the design. */
+.ad-card__download {
+    margin-left: auto;
+}
+
+.ad-card__edit {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ad-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ad-copy__row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.ad-copy__row > div {
+    flex: 1;
+    min-width: 0;
+}
+
+.ad-copy__row p {
+    margin: 2px 0 0;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+/* ---------- Competitors ---------- */
+.marketing-competitors {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.competitor-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.competitor-form .input {
+    flex: 1 1 160px;
+    min-width: 0;
+}
+
+.competitor-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.competitor {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+}
+
+.competitor__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.competitor__head small {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.competitor__head strong {
+    flex: none;
+}
+
+.competitor__head .btn-icon {
+    margin-left: auto;
+}
+
+.competitor__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.competitor__links .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    text-decoration: none;
+}
+
+.swipe-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 14px;
+}
+
+.swipe {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    overflow: hidden;
+}
+
+.swipe img {
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    object-fit: cover;
+    background: var(--bg-inset, #000);
+}
+
+.swipe figcaption {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+}
+
+.swipe figcaption .marketing-actions {
+    justify-content: space-between;
+}
+
+.btn.is-disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}

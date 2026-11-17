@@ -5,6 +5,7 @@ import { apiClient, apiFetch, API_URL, buildApiError } from './api';
 
 const PLAN_MESSAGES = {
     FEATURE_LOCKED: 'This uses AI, which is part of the Nano plan and up. Upgrade in Billing to unlock it.',
+    UPGRADE_REQUIRED: 'This is part of the Nano plan and up. Upgrade in Billing to unlock it.',
     PLAN_LIMIT_EXCEEDED: "You've used this month's AI allowance. It resets on the 1st, or upgrade for more.",
 };
 
@@ -66,6 +67,26 @@ export const marketingApi = {
     updateSlide: (id, index, body) => call(`/marketing/carousels/${encodeURIComponent(id)}/slides/${index}`, { method: 'PATCH', body }),
     regenerateImage: (id, index, body = {}) => call(`/marketing/carousels/${encodeURIComponent(id)}/slides/${index}/image`, { method: 'POST', body }),
     deleteCarousel: (id) => call(`/marketing/carousels/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+    adOptions: () => call('/marketing/ads/options'),
+    adSets: () => call('/marketing/ads'),
+    adSet: (id) => call(`/marketing/ads/${encodeURIComponent(id)}`),
+    createAdSet: (form) => call('/marketing/ads', { method: 'POST', body: form }),
+    updateAd: (id, index, body) => call(`/marketing/ads/${encodeURIComponent(id)}/ads/${index}`, { method: 'PATCH', body }),
+    adVariations: (id, count = 3) => call(`/marketing/ads/${encodeURIComponent(id)}/variations`, { method: 'POST', body: { count } }),
+    deleteAdSet: (id) => call(`/marketing/ads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+    competitors: () => call('/marketing/competitors'),
+    addCompetitor: (body) => call('/marketing/competitors', { method: 'POST', body }),
+    removeCompetitor: (id) => call(`/marketing/competitors/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    addSwipes(files, { competitor = '', note = '' } = {}) {
+        const form = new FormData();
+        [...files].forEach((f) => form.append('files', f));
+        form.append('competitor', competitor);
+        form.append('note', note);
+        return call('/marketing/competitors/swipes', { method: 'POST', body: form });
+    },
+    removeSwipe: (id) => call(`/marketing/competitors/swipes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };
 
 /** Polls a job-like fetcher until status is no longer "running". */

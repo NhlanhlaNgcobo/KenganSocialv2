@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BarChart3, CheckCircle2, Circle, Globe, GraduationCap, LayoutGrid, Loader2, Megaphone, Palette, Swords, Wand2 } from 'lucide-react';
+import { BarChart3, CheckCircle2, Circle, Globe, GraduationCap, Image as ImageIcon, LayoutGrid, Loader2, Megaphone, Palette, Swords, Wand2 } from 'lucide-react';
 import GuidedTutorial, { useTutorial } from '../../components/tutorial/GuidedTutorial';
 import { MARKETING_TUTORIAL } from '../../components/tutorial/marketingTutorial';
 import { useAuth } from '../../context/AuthContext';
@@ -10,7 +10,9 @@ import BrandVoicePanel from './BrandVoicePanel';
 import ReferenceLibrary from './ReferenceLibrary';
 import BrandPreview from './BrandPreview';
 import BusinessProfilePanel from './BusinessProfilePanel';
+import AdStudio from './AdStudio';
 import CarouselStudio from './CarouselStudio';
+import CompetitorsPanel from './CompetitorsPanel';
 import VideoAdStudio from './VideoAdStudio';
 import WebsiteSetup from './WebsiteSetup';
 import './Marketing.css';
@@ -24,6 +26,7 @@ const TABS = [
     { id: 'overview', label: 'Overview', icon: LayoutGrid },
     { id: 'brand', label: 'Brand', icon: Palette },
     { id: 'create', label: 'Create', icon: Wand2 },
+    { id: 'image-ads', label: 'Image Ads', icon: ImageIcon },
     { id: 'video-ads', label: 'Video Ads', icon: Megaphone },
     { id: 'competitors', label: 'Competitors', icon: Swords },
     { id: 'website', label: 'Website', icon: Globe },
@@ -31,10 +34,6 @@ const TABS = [
 ];
 
 const COMING = {
-    competitors: {
-        title: 'Competitor research',
-        text: "Benchmark your Instagram and YouTube against competitors, see their top posts this month, get an AI brief on their offers and positioning, open their live ads in the official ad libraries, and keep a swipe file of ads you like.",
-    },
     website: {
         title: 'Website insights',
         text: 'Paste your website to get Google speed and SEO scores, real-visitor Core Web Vitals, an SEO checklist, broken links, your tech stack and a top-5 list of fixes, all tracked over time.',
@@ -72,7 +71,7 @@ export default function MarketingPage() {
         };
     }, []);
 
-    const go = (id) => setParams(id === 'overview' ? {} : { tab: id });
+    const go = (id, extra = {}) => setParams(id === 'overview' ? {} : { tab: id, ...extra });
     const makeCarousels = () => setParams({ tab: 'create', source: 'website' });
 
     return (
@@ -80,7 +79,7 @@ export default function MarketingPage() {
             <header className="page-head">
                 <div>
                     <h1>Marketing</h1>
-                    <p>Your brand in one place. Create carousels and narrated product ads from your website or product photos.</p>
+                    <p>Your brand in one place. Create carousels, image ads and video ads from your website or product photos, and learn from your competitors.</p>
                 </div>
                 <button className="btn btn-secondary gt-open" onClick={tutorial.show}>
                     <GraduationCap size={16} /> How it works
@@ -121,8 +120,10 @@ export default function MarketingPage() {
                 </div>
             ) : null}
 
-            {data && tab === 'create' ? <CarouselStudio kit={data.kit} initialSource={params.get('source') === 'website' || data.kit.website ? 'website' : 'topic'} /> : null}
+            {data && tab === 'create' ? <CarouselStudio key={params.get('topic') || 'carousel'} kit={data.kit} initialSource={params.get('topic') ? 'topic' : params.get('source') === 'website' || data.kit.website ? 'website' : 'topic'} initialTopic={params.get('topic') || ''} initialExtra={params.get('extra') || ''} /> : null}
+            {data && tab === 'image-ads' ? <AdStudio key={params.get('swipe') || 'new'} kit={data.kit} initialSwipeId={params.get('swipe')} /> : null}
             {data && tab === 'video-ads' ? <VideoAdStudio kit={data.kit} /> : null}
+            {data && tab === 'competitors' ? <CompetitorsPanel go={go} /> : null}
 
             {data && COMING[tab] ? <ComingNext {...COMING[tab]} onBrand={() => go('brand')} brandScore={data.completeness.score} /> : null}
         </div>
@@ -185,8 +186,9 @@ function Overview({ data, go, onSetupDone, onMakeCarousels }) {
             <div className="marketing-cards">
                 {[
                     { id: 'create', icon: Wand2, title: 'Create carousels', text: 'On-brand slides from your website, a topic or text.', live: plan !== 'starter' },
+                    { id: 'image-ads', icon: ImageIcon, title: 'Create image ads', text: 'Several angles to test, in every size, from a product photo. Ad text included.', live: plan !== 'starter' },
                     { id: 'video-ads', icon: Megaphone, title: 'Create video ads', text: 'Your product in 3D from your photos. Voiceover, music that fits, 10 to 25 seconds.', live: plan !== 'starter' },
-                    { id: 'competitors', icon: Swords, title: 'Competitors', text: "See what's working for similar brands." },
+                    { id: 'competitors', icon: Swords, title: 'Competitors', text: 'Their live ads in one click, and a swipe file to recreate the best.', live: plan !== 'starter' },
                     { id: 'website', icon: Globe, title: 'Website insights', text: 'Speed, SEO and a top-5 fix list.' },
                     { id: 'ads', icon: BarChart3, title: 'Paid ads', text: 'Meta and TikTok results in one view.' },
                 ].map((c) => (
@@ -194,7 +196,7 @@ function Overview({ data, go, onSetupDone, onMakeCarousels }) {
                         <c.icon size={18} />
                         <strong>{c.title}</strong>
                         <span className="muted">{c.text}</span>
-                        <span className={`badge ${c.live ? 'badge-success' : ''}`}>{c.live ? 'Ready' : c.id === 'create' ? 'Nano plan and up' : 'Coming next'}</span>
+                        <span className={`badge ${c.live ? 'badge-success' : ''}`}>{c.live ? 'Ready' : ['create', 'image-ads', 'video-ads', 'competitors'].includes(c.id) ? 'Nano plan and up' : 'Coming next'}</span>
                     </button>
                 ))}
             </div>

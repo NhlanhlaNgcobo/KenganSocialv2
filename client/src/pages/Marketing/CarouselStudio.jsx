@@ -43,12 +43,12 @@ async function downloadUrl(url, name) {
 }
 
 /** Create: on-brand carousels from the website, a topic or pasted text. */
-export default function CarouselStudio({ kit, initialSource = 'website' }) {
+export default function CarouselStudio({ kit, initialSource = 'website', initialTopic = '', initialExtra = '' }) {
     const { plan } = useAuth();
     const aiLocked = plan === 'starter';
     const [options, setOptions] = useState(null);
     const [list, setList] = useState([]);
-    const [form, setForm] = useState({ source: kit.website ? initialSource : 'topic', topic: '', text: '', goal: 'educate', format: '4:5', slideCount: 7, imagery: 'none', extra: '' });
+    const [form, setForm] = useState({ source: kit.website ? initialSource : 'topic', topic: initialTopic.slice(0, 300), text: '', goal: 'educate', format: '4:5', slideCount: 7, imagery: 'none', extra: initialExtra.slice(0, 400) });
     const [active, setActive] = useState(null); // carousel being made or edited
     const [error, setError] = useState('');
     const [starting, setStarting] = useState(false);
